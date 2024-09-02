@@ -1,0 +1,497 @@
+'''
+Streamlit interface for SPP Weis LMP forecasting endpoint
+'''
+
+# pylint: disable=W0621,C0103,W1203
+
+# base imports
+import os
+import logging
+import json
+import datetime
+from typing import List, Tuple
+import requests
+
+# data
+import numpy as np
+import pandas as pd
+from databricks import sql
+
+# user interface
+import streamlit as st
+
+# forecasting data
+from darts import TimeSeries, concatenate
+
+# custom modules
+import src.data_engineering.data_engineering as de
+from src.utils import plotting
+
+# define log
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
+# stream lit configs
+st.set_page_config(
+    page_title="SPP price forecast",
+    layout="wide",
+)
+
+
+###################################################
+# get sql warehouse connection
+###################################################
+from dotenv import load_dotenv
+load_dotenv()
+
+log.info('creating sql warehouse connection')
+connection = sql.connect(
+    server_hostname = os.getenv("DATABRICKS_HOST"),
+    http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
+    access_token    = os.getenv("DATABRICKS_TOKEN")
+    )
+
+
+###################################################
+# api request
+###################################################
+
+def create_tf_serving_json(data):
+    '''
+    create json to send to Databrics endpoint, see endpoint
+    documentation on Databricks
+    '''
+    return {'inputs': {name: data[name].tolist() for name in data.keys()} if isinstance(data, dict) else data.tolist()}
+
+def score_model(dataset):
+    '''
+    model scoring function for Databrics endpoint, see endpoint
+    documentation on Databricks
+    '''
+    url = 'https://dbc-beada314-1494.cloud.databricks.com/serving-endpoints/spp_weis/invocations'
+    api_token = os.environ['DATABRICKS_TOKEN']
+    headers = {'Authorization': f'Bearer {api_token}', 'Content-Type': 'application/json'}
+    ds_dict = (
+        {'dataframe_split': dataset.to_dict(orient='split')}
+          if isinstance(dataset, pd.DataFrame) else create_tf_serving_json(dataset)
+    )
+    data_json = json.dumps(ds_dict, allow_nan=True)
+    response = requests.request(
+        method='POST',
+        headers=headers,
+        url=url,
+        data=data_json,
+        timeout=60*5,
+        )
+    if response.status_code != 200:
+        raise Exception(f'Request failed with status {response.status_code}, {response.text}')
+    return response.json()
+
+
+###############################################################
+# Helper functions
+###############################################################
+
+@st.cache_data
+def get_price_nodes(price_df: pd.DataFrame) -> List[str]:
+    '''
+    get list of LMP nodes for drop down menu
+    args:
+        price_df: pd.DataFrame hourly LMP data with 'node' that contains
+            LMP names
+    returns: List[str] of LMP names
+    '''
+    price_node_list = price_df.node.sort_values().unique().tolist()
+    price_node_list = [p for p in price_node_list if 'PSCO' in p.upper()]
+    price_node_list = [p for p in price_node_list if '_LA' in p.upper()]
+
+    return price_node_list
+
+
+# @st.cache_data
+def get_hour_list(fcast_date: str, price_df: pd.DataFrame) -> List[str]:
+    '''
+    get list of hours for drop down menu
+    args:
+        fcast_date: str date returned from st.date_input, i.e. '2023-08-03'
+    returns: List[str] of zero padded hours, ['00', '01', ..., '23']
+    '''
+    # today = datetime.datetime.now()
+    # today = datetime.datetime.utcnow()
+    today = price_df.time.max()
+    log.info(f'type(today): {type(today)}')
+    log.info(f'today: {today}')
+
+    # if today, then limit list to previous hours
+    if fcast_date == today.date():
+        last_hour = today.hour
+    else:
+        last_hour = 23
+
+    hour_list = [str(h).zfill(2) for h in range(last_hour+1)]
+    return hour_list
+
+
+@st.cache_data
+def get_fcast_time(fcast_date: str, fcast_hour: str) -> str:
+    '''
+    get the forecast time, we drop all price observations after this
+    time and begin forecasting for the next time step. used in the
+    get_forecast() function.
+    args:
+        fcast_date: str - date from user input selection
+        fcast_hour: str - hour from user input selection
+    returns: str formated as datetime str
+    '''
+    return f'{fcast_date}T{fcast_hour}:00:00.000000000'
+
+
+# cache the model endpoint call so we can change
+# the plotting parameters without calling the endpoint again
+@st.cache_data
+def get_forecast(
+    price_df: pd.DataFrame,
+    node_name: str,
+    mtlf_df: pd.DataFrame,
+    mtrf_df: pd.DataFrame,
+    fcast_time: str,
+    n_days: str,
+    ) -> Tuple[str, pd.DataFrame]:
+    '''
+    formats input for endpoint call and calls endpoint
+    args:
+        price_df: pd.DataFrame - LMPs data
+        node_name: str - from user selection
+        mtlf_df: pd.DataFrame - mid-term load forecast data
+        mtrf_df: pd.DataFrame - dit-term resource forecast data
+        fcast_time: str - datetime str created from
+            date and hour user inputs
+        n_days: str - number of days to forecast from user inputs
+    returns: Tuple[str, pd.DataFrame] - str with json formated
+        output from the endpoint call, pd.DataFrame with the
+        covariates used in the forecast (this data is used for plotting)
+    '''
+
+    # remove duplicate time values
+    dups = mtlf_df.GMTIntervalEnd.duplicated()
+    log.info(f'mtlf_df duplicated: {dups.sum()}')
+    mtlf_df = mtlf_df[~dups]
+
+    dups = mtrf_df.GMTIntervalEnd.duplicated()
+    log.info(f'mtrf_df duplicated: {dups.sum()}')
+    mtrf_df = mtrf_df[~dups]
+
+    # create data to pass to model endpoint call
+    common_times = np.intersect1d(mtlf_df.GMTIntervalEnd, mtlf_df.GMTIntervalEnd)
+    mtlf_idx = [t in common_times for t in mtlf_df.GMTIntervalEnd]
+    mtrf_idx = [t in common_times for t in mtrf_df.GMTIntervalEnd]
+
+    mtrf_df = mtrf_df[mtrf_idx]
+    mtlf_df = mtlf_df[mtlf_idx]
+    log.info(f'mtrf_df.shape: {mtrf_df.shape}')
+    log.info(f'mtlf_df.shape: {mtlf_df.shape}')
+
+    # mtlf series
+    log.info(f'mtlf_df.columns: {mtlf_df.columns}')
+    mtlf_series, avg_act_series = de.create_mtlf_series(mtlf_df)
+
+    # mtrf series feature engineering
+    mtrf_ratio_df = de.add_enrgy_ratio_to_mtrf(mtlf_df, mtrf_df)
+    mtrf_ratio_df = de.add_enrgy_ratio_diff_to_mtrf(mtrf_ratio_df)
+    mtrf_series = de.create_mtrf_series(mtrf_ratio_df)
+
+    future_covariates = concatenate([mtlf_series, mtrf_series], axis=1)
+    past_covariates = avg_act_series
+
+    plot_cov_df = future_covariates.pd_dataframe()
+    plot_cov_df = plot_cov_df.reset_index().rename(columns={'GMTIntervalEnd':'time'})
+
+    lmp_series_df = price_df[price_df.node == node_name].drop('node', axis=1)
+    lmp_series_df.rename(columns={'LMP_HOURLY':node_name}, inplace=True)
+    lmp_series_df = lmp_series_df.sort_values('time')
+    dups = lmp_series_df.time.duplicated()
+    log.info(f'lmp_series_df duplicated: {dups.sum()}')
+    lmp_series_df = lmp_series_df[~dups]
+
+
+    lmp_series = TimeSeries.from_dataframe(
+            lmp_series_df,
+            time_col='time',
+            value_cols=node_name,
+            fill_missing_dates=True,
+            freq='H',
+            fillna_value=0,
+            static_covariates=None,
+            hierarchy=None
+        ).astype(np.float32)
+
+    FCAST_TIME = pd.Timestamp(fcast_time)
+    # drop after is inclusive...
+    if FCAST_TIME < lmp_series.end_time():
+        lmp_series = lmp_series.drop_after(FCAST_TIME + pd.Timedelta('1H'))
+
+    # subtract hour to account for the shift above and lag in covariate updates
+    forecast_horizon = 24*n_days - 1
+    log.info(f'forecast_horizon: {forecast_horizon}')
+
+    data = {
+        'series': [lmp_series.to_json()],
+        'past_covariates': [past_covariates.to_json()],
+        'future_covariates': [future_covariates.to_json()],
+        'n': forecast_horizon,
+        'num_samples': 200
+    }
+    df = pd.DataFrame(data)
+
+    log.info('calling endpoint')
+    endpoint_pred = score_model(df)
+    return endpoint_pred, plot_cov_df
+
+
+@st.cache_resource
+def convert_df(df: pd.DataFrame):
+    '''
+    save dataframe to csv file for downloading
+    args:
+        df: pd.DataFrame to be converted to csv file
+    '''
+    return df.to_csv(index=False).encode('utf-8')
+
+
+###############################################################
+# Design Streamlit app Layout
+###############################################################
+
+forcasted_data = st.container()
+
+with forcasted_data:
+
+    from PIL import Image
+    image = Image.open('./imgs/app_background.PNG')
+    st.image(image)
+
+    st.title('SPP Weis Nodal Price Forecast')
+
+    st.session_state.refresh_data = st.button('Refresh data')
+    log.info(f'st.session_state.refresh_data: {st.session_state.refresh_data}')
+
+    ###############################################################
+    # Get data from databricks
+    ###############################################################
+
+    if ('price_df' not in st.session_state) or st.session_state.refresh_data:
+        log.info('reading lmp data')
+
+        with st.spinner('Loading LMP data...'):
+            # query = 'SELECT * FROM sandbox_data_science.spp_weis.lmp_hourly'
+            # string that start with any number of characters ^.*
+            # contains PSCO
+            # has any number of characters ^.*
+            # ends with _LA$ 
+            query = '''
+                    SELECT * FROM prd_landing_zone.spp_weis.lmp_hourly
+                    WHERE PNODE_Name RLIKE '^.*PSCO.*_LA$'
+                    '''
+
+            log.info('executing query')
+            cursor = connection.cursor()
+            cursor.execute(query)
+            log.info('fetching results')
+            result = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            price_df = pd.DataFrame(result, columns=columns)
+            price_df.rename(columns={'GMTIntervalEnd':'time', 'PNODE_Name':'node'}, inplace=True)
+            # TODO: research why we need to remove the timezone to prevent 
+            # darts from throwing an error when creating the timeseries
+            price_df.time = price_df.time.dt.tz_localize(None)
+            st.session_state.price_df = price_df
+            log.info(f'price_df.shape: {price_df.shape}')
+            log.info(f'price_df.head(): {price_df.head()}')
+            log.info(f'price_df.info(): {price_df.info()}')
+            
+            cursor.close()
+
+        st.toast('Done loading LMP data')
+
+    if (
+        ('mtlf_df' not in st.session_state) or 
+        ('mtrf_df' not in st.session_state) or 
+        st.session_state.refresh_data
+        ):
+        
+        log.info('reading mtrf and mtlf data')
+
+        with st.spinner('Loading resource and load forecast data...'):
+            
+            # get resource forecast
+            query = 'SELECT * FROM prd_landing_zone.spp_weis.mtrf'
+            log.info(f'executing query: {query}')
+            cursor = connection.cursor()
+            cursor.execute(query)
+            log.info('fetching results')
+            result = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            mtrf_df = pd.DataFrame(result, columns=columns).sort_values('GMTIntervalEnd')
+            mtrf_df.Interval = mtrf_df.Interval.dt.tz_localize(None)
+            mtrf_df.GMTIntervalEnd = mtrf_df.GMTIntervalEnd.dt.tz_localize(None)
+            mtrf_df.timestamp  = mtrf_df.timestamp.dt.tz_localize(None)
+            st.session_state.mtrf_df = mtrf_df
+            log.info(f'mtrf_df.shape: {mtrf_df.shape}')
+            log.info(f'mtrf_df.head(): {mtrf_df.head()}')
+            log.info(f'mtrf_df.info(): {mtrf_df.info()}')
+
+            # get load forecast
+            query = 'SELECT * FROM prd_landing_zone.spp_weis.mtlf'
+            log.info(f'executing query: {query}')
+            cursor = connection.cursor()
+            cursor.execute(query)
+            log.info('fetching results')
+            result = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            mtlf_df = pd.DataFrame(result, columns=columns).sort_values('GMTIntervalEnd')
+            mtlf_df.Interval = mtlf_df.Interval.dt.tz_localize(None)
+            mtlf_df.GMTIntervalEnd = mtlf_df.GMTIntervalEnd.dt.tz_localize(None)
+            mtlf_df.timestamp  = mtlf_df.timestamp.dt.tz_localize(None)
+            st.session_state.mtlf_df = mtlf_df
+            log.info(f'mtlf_df.shape: {mtlf_df.shape}')
+            log.info(f'mtlf_df.head(): {mtlf_df.head()}')
+            log.info(f'mtlf_df.info(): {mtlf_df.info()}')
+
+            cursor.close()
+
+        st.toast('Done resource and load forecast data')
+
+
+###############################################################
+# Get user iputs
+###############################################################
+with st.sidebar:
+
+    st.header('Select forecast start date')
+
+    # today = datetime.datetime.now()
+    today = datetime.datetime.utcnow()
+    current_hour = today.hour
+    min_date = today - pd.Timedelta('60D')
+
+    fcast_date = st.date_input('Forecast date', today, min_date, today)
+    st.session_state.fcast_date = fcast_date
+
+    fcast_hour = st.selectbox(
+        'Forecast hour',
+        get_hour_list(st.session_state.fcast_date, st.session_state.price_df),
+        index=len(get_hour_list(st.session_state.fcast_date, st.session_state.price_df))-1,
+        )
+
+
+    log.info(f'\ttoday: {today}')
+    log.info(f'\ttoday.date: {today.date()}')
+    log.info(f'\tmin_date: {min_date}')
+    log.info(f'\tfcast_date: {fcast_date}')
+    log.info(f'\tcurrent_hour: {current_hour}')
+    log.info(f'\tfcast_hour: {fcast_hour}')
+
+    st.header('Select LMP node')
+    with st.form('form1'):
+        # get data from session state
+        price_df = st.session_state.price_df
+        mtrf_df = st.session_state.mtrf_df
+        mtlf_df = st.session_state.mtlf_df
+
+        # select node to forecast
+        node_name = st.selectbox('LMP node', get_price_nodes(price_df), index=0)
+
+        # select days to forecast and lookback window for plot
+        n_days = st.selectbox('Number of days to forecast', [6,5,4,3,2,1], index=0)
+        lookback_days = st.selectbox('Number of days to lookback', [6,5,4,3,2,1], index=0)
+
+        st.session_state.submitted1 = st.form_submit_button('Get forecast')
+
+log.info(f'st.session_state.submitted1: {st.session_state.submitted1}')
+
+
+###############################################################
+# get forecasts
+###############################################################
+
+if st.session_state.submitted1:
+
+    fcast_time = get_fcast_time(fcast_date, fcast_hour)
+    st.session_state.node_name = node_name
+    st.session_state.fcast_time = fcast_time
+
+    log.info('USER INPUTS:')
+    log.info(f'\tnode_name: {node_name}')
+    log.info(f'\tfcast_time: {fcast_time}')
+    log.info(f'\tn_days: {n_days}')
+
+    endpoint_pred, plot_cov_df = get_forecast(
+        price_df,
+        node_name,
+        mtlf_df,
+        mtrf_df,
+        fcast_time,
+        n_days
+        )
+    
+    st.session_state.endpoint_pred = endpoint_pred
+    st.session_state.plot_cov_df = plot_cov_df
+
+
+###############################################################
+# Plot forecasts
+###############################################################
+
+if 'endpoint_pred' in st.session_state:
+    node_name = st.session_state.node_name
+    fcast_time = st.session_state.fcast_time
+
+    st.write(f'### {node_name} forcasts')
+    st.write(f'Forecast start time: {fcast_time}')
+
+    endpoint_pred = st.session_state.endpoint_pred
+    plot_cov_df = st.session_state.plot_cov_df
+
+    log.info('formatting data for plotting')
+    preds = TimeSeries.from_json(endpoint_pred['predictions'])
+    q_df = plotting.get_quantile_df(preds)
+    plot_df = plotting.get_plot_df(preds, plot_cov_df, price_df, node_name)
+
+    # fig = plotting.plot_fcast(plot_df, node_name, lookback = f'{lookback_days}D')
+    # st.pyplot(fig)
+    fig = plotting.plotly_forecast(
+        plot_df,
+        node_name=node_name,
+        lookback=f'{lookback_days}D',
+        show_fig=False
+        )
+    log.info(f'type(fig): {type(fig)}')
+    st.plotly_chart(fig, node_name=node_name, use_container_width=False)
+
+    plot_idx = plotting.get_plot_idx(plot_df)
+    display_data = plot_df[plot_idx]
+    csv = convert_df(display_data)
+
+    st.write('### Forcast data')
+    st.dataframe(display_data)
+
+    # the download button resets the page see this link
+    # for download link workaround
+    # https://github.com/streamlit/streamlit/issues/4382
+    # st.download_button(
+    #     "Download data",
+    #     csv,
+    #     f"price-forecast-{node_name}-{fcast_time}.csv",
+    #     "text/csv",
+    #     key='download-csv'
+    #     )
+    import base64
+    def create_download_link(val, filename):
+        '''
+        create a link to download csv data
+        '''
+        b64 = base64.b64encode(val)
+        return f'<a href="data:application/octet-stream;base64,{b64.decode()}" download="{filename}.csv">Download file</a>'
+
+    download_url = create_download_link(csv, f"price-forecast-{node_name}-{fcast_time}.csv")
+    st.markdown(download_url, unsafe_allow_html=True)

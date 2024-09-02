@@ -1,0 +1,21 @@
+# see https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
+# cd to the directory with the docker file
+# build container
+docker build . -f Dockerfile -t spp_weis:latest --progress=plain
+
+# cd to project directory then start container
+# see for add :z to directory for permission denied error when writing to volume
+# https://stackoverflow.com/questions/24288616/permission-denied-on-accessing-host-directory-in-docker
+docker run -it --gpus all --rm  -p 8899:8899 -p 8501:8501 -v ${PWD}:/home/jovyan/work:z --name spp_weis -d spp_weis:latest 
+
+# access jupyter lab
+http://127.0.0.1:8899/lab?token=spp_weis
+
+# for streamlit
+http://127.0.0.1:8501
+
+# stop container
+docker stop spp_weis
+
+# list running containers
+docker ps
