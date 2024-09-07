@@ -41,8 +41,8 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
         log.info(f'MODEL_TYPE: {self.MODEL_TYPE}') 
 
         # load scalers
-        with open(context.artifacts["scalers"], 'rb') as handle:
-            self.scalers = pickle.load(handle)
+        # with open(context.artifacts["scalers"], 'rb') as handle:
+        #     self.scalers = pickle.load(handle)
 
         # load model based on MODEL_TYPE
         if self.MODEL_TYPE == "tft_model":
@@ -76,13 +76,14 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
         """
         Custom predict function for Darts forecasting model.
         Args:
-            model_input: pd.DataFrame. Containes the unscaled serie to make prediction for,
+            model_input: pd.DataFrame. Containes the unscaled series to make prediction for,
                          future covariate series, and past covariate series as columns of a dataframe.
         Returns:
             prediction: json-formatted time series in original scale.
         """
         # ".from_json() returns a float64 dtype"
         log.info('READING INPUTS...')
+        log.info(f'model_input.columns: {model_input.columns}')
         log.info(f"model_input['n']: {model_input['n'].item()}")
         series = TimeSeries.from_json(model_input['series'][0]).astype(np.float32) 
         past_covariates = TimeSeries.from_json(model_input['past_covariates'][0]).astype(np.float32)
@@ -92,30 +93,30 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
 
         
         # scale time series
-        log.info('SCALING INPUTS...')
-        series_scaled = TimeSeries.from_dataframe(
-            series.pd_dataframe()/self.scalers['series']
-            )
+        # log.info('SCALING INPUTS...')
+        # series_scaled = TimeSeries.from_dataframe(
+        #     series.pd_dataframe()/self.scalers['series']
+        #     )
 
-        past_covariates_scaled = TimeSeries.from_dataframe(
-            past_covariates.pd_dataframe()/self.scalers['pc']
-            )
+        # past_covariates_scaled = TimeSeries.from_dataframe(
+        #     past_covariates.pd_dataframe()/self.scalers['pc']
+        #     )
         
-        future_covariates_scaled = TimeSeries.from_dataframe(
-            future_covariates.pd_dataframe()/self.scalers['fc']
-            )
+        # future_covariates_scaled = TimeSeries.from_dataframe(
+        #     future_covariates.pd_dataframe()/self.scalers['fc']
+        #     )
 
         log.info('RUNNING PREDICT...')
         pred_series = self.model.predict(
-                series=series_scaled,
-                past_covariates=past_covariates_scaled,
-                future_covariates=future_covariates_scaled,
+                series=series,
+                past_covariates=past_covariates,
+                future_covariates=future_covariates,
                 n=forecast_horizon,
                 num_samples=num_samples
             )
         
         pred_series = TimeSeries.from_dataframe(
-            pred_series.pd_dataframe()*self.scalers['series']
+            pred_series.pd_dataframe()
             )
 
         return TimeSeries.to_json(pred_series)

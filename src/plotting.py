@@ -278,7 +278,7 @@ def plotly_forecast(
     ci_error = plotly_data.ci_error[ci_idx].mean()
 
     # create title
-    title_text = f'MAE forecast error: ${err} - CI error: {ci_error:0.3f}'
+    title_text = f'MAE forecast error: ${err} - CI coverage: {1-ci_error:0.3f}'
     log.info(f'node_name: {node_name}')
     log.info(f'title_text: {title_text}')
     if node_name:

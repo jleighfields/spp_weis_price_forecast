@@ -68,7 +68,7 @@ def convert_datetime_cols(
 
 def set_he(
         df: pd.DataFrame,
-        time_cols: List[str] = ['Interval', 'GMTIntervalEnd', 'timestamp_mt'],
+        time_cols: List[str] = ['Interval', 'GMTIntervalEnd', 'timestamp_mst'],
     ) -> None:
     """
     Function to add hour ending column for grouping 5 minute intervals.
@@ -138,26 +138,32 @@ def get_time_components(
     log.debug(f'time_stamp after ceil: {time_stamp}')
 
     try:
-        time_stamp = time_stamp.tz_localize("America/Chicago")
+        time_stamp_ct = time_stamp.tz_localize("America/Chicago")
         log.debug(f'time_stamp localized: {time_stamp}')
 
         # get time components for formatting url path
-        tc['YEAR'] = str(time_stamp.year)
-        tc['MONTH'] = str(time_stamp.month).zfill(2)
-        tc['DAY'] = str(time_stamp.day).zfill(2)
-        tc['HOUR'] = str(time_stamp.hour).zfill(2)
-        tc['MINUTE'] = str(time_stamp.minute).zfill(2)
+        # times are in central time
+        tc['YEAR'] = str(time_stamp_ct.year)
+        tc['MONTH'] = str(time_stamp_ct.month).zfill(2)
+        tc['DAY'] = str(time_stamp_ct.day).zfill(2)
+        tc['HOUR'] = str(time_stamp_ct.hour).zfill(2)
+        tc['MINUTE'] = str(time_stamp_ct.minute).zfill(2)
         tc['YM'] = tc['YEAR']+tc['MONTH']
         tc['YMD'] = tc['YM']+tc['DAY']
         tc['COMBINED'] = tc['YMD']+tc['HOUR']+tc['MINUTE']
-        tc['timestamp'] = time_stamp
-        tc['timestamp_mt'] = (time_stamp + pd.Timedelta('1h')).tz_localize(None) # central to mountain time
+        tc['timestamp'] = time_stamp_ct
         return tc
 
     except:
         log.error(f'error parsing: {time_stamp}')
         return None
     
+def add_timestamp_mst(df: pd.DataFrame):
+    df['timestamp_mst'] = (
+        df.GMTIntervalEnd.dt.tz_localize("UTC")
+        .dt.tz_convert('MST')
+        .dt.tz_localize(None)
+    )
 
 
 def format_df_colnames(df: pd.DataFrame) -> None:
@@ -365,7 +371,7 @@ def get_process_mtlf(tc: dict) -> pd.DataFrame:
     if df.shape[0] > 0:
         format_df_colnames(df)
         convert_datetime_cols(df)
-        df['timestamp_mt'] = tc['timestamp_mt']
+        add_timestamp_mst(df)
 
     return df
 
@@ -409,7 +415,7 @@ def get_process_mtrf(tc: dict) -> pd.DataFrame:
     if df.shape[0] > 0:
         format_df_colnames(df)
         convert_datetime_cols(df)
-        df['timestamp_mt'] = tc['timestamp_mt']
+        add_timestamp_mst(df)
 
     return df
 
@@ -444,7 +450,7 @@ def agg_lmp(five_min_lmp_df: pd.DataFrame) -> pd.DataFrame:
         he_lmp_df: pd.DataFrame hour ending aggregates
     """
     group_cols = [
-        'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mt_HE',
+        'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
         'Settlement_Location_Name', 'PNODE_Name'
     ]
     value_cols = ['LMP', 'MLC', 'MCC', 'MEC']
@@ -483,7 +489,7 @@ def get_process_5min_lmp(tc: dict) -> pd.DataFrame:
             inplace=True
         )
         convert_datetime_cols(df)
-        df['timestamp_mt'] = tc['timestamp_mt']
+        add_timestamp_mst(df)
         set_he(df)
         df = agg_lmp(df)
 
@@ -530,7 +536,7 @@ def get_process_daily_lmp(tc) -> pd.DataFrame:
         format_df_colnames(df)
         df.rename(columns={'GMT_Interval':'GMTIntervalEnd'}, inplace=True)
         convert_datetime_cols(df)
-        df['timestamp_mt'] = tc['timestamp_mt']
+        add_timestamp_mst(df)
         set_he(df)
         df = agg_lmp(df)
 
@@ -586,7 +592,7 @@ def upsert_mtlf(
     update_count = len(mtlf_upsert)
     # NOTE: the df col order must match the order in the table
     ordered_cols = [
-        'Interval', 'GMTIntervalEnd', 'timestamp_mt',
+        'Interval', 'GMTIntervalEnd', 'timestamp_mst',
         'MTLF', 'Averaged_Actual',
     ]
     mtlf_upsert = mtlf_upsert[ordered_cols]
@@ -597,7 +603,7 @@ def upsert_mtlf(
         CREATE TABLE IF NOT EXISTS mtlf (
              Interval TIMESTAMP,
              GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-             timestamp_mt TIMESTAMP,
+             timestamp_mst TIMESTAMP,
              MTLF INTEGER, 
              Averaged_Actual DOUBLE
              );
@@ -646,7 +652,7 @@ def upsert_mtrf(
     update_count = len(mtrf_upsert)
     # NOTE: the df col order must match the order in the table
     ordered_cols = [
-        'Interval', 'GMTIntervalEnd', 'timestamp_mt',
+        'Interval', 'GMTIntervalEnd', 'timestamp_mst',
         'Wind_Forecast_MW', 'Solar_Forecast_MW',
     ]
     mtrf_upsert = mtrf_upsert[ordered_cols]
@@ -657,7 +663,7 @@ def upsert_mtrf(
         CREATE TABLE IF NOT EXISTS mtrf (
              Interval TIMESTAMP,
              GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-             timestamp_mt TIMESTAMP,
+             timestamp_mst TIMESTAMP,
              Wind_Forecast_MW DOUBLE, 
              Solar_Forecast_MW DOUBLE
              );
@@ -702,7 +708,7 @@ def upsert_lmp(
     lmp_upsert = lmp_upsert[~idx]
     # NOTE: the df col order must match the order in the table
     ordered_cols = [
-        'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mt_HE',
+        'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
         'Settlement_Location_Name', 'PNODE_Name',
         'LMP', 'MLC', 'MCC', 'MEC'
     ]
@@ -715,7 +721,7 @@ def upsert_lmp(
         CREATE TABLE IF NOT EXISTS lmp (
              Interval_HE TIMESTAMP,
              GMTIntervalEnd_HE TIMESTAMP,
-             timestamp_mt_HE TIMESTAMP,
+             timestamp_mst_HE TIMESTAMP,
              Settlement_Location_Name STRING, 
              PNODE_Name STRING,
              LMP DOUBLE,

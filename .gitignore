@@ -1,4 +1,8 @@
 *data/
+*mlruns/
+*lightning_logs/
+*model_artifacts/
+*model_checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
