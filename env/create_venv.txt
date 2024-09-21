@@ -1,5 +1,6 @@
 ## https://docs.posit.co/ide/server-pro/user/posit-workbench/guide/python.html#virtual-environments
 ## /opt/python/3.11.3/bin/python3 -m venv ./venv
+# conda create --name py_3_11 python=3.11
 conda activate py_3_11
 python -m venv ./venv
 source venv/bin/activate
@@ -8,7 +9,6 @@ python -V # check python version
 ## install packages
 pip install --upgrade pip
 
-#pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --trusted-host download.pytorch.org
 pip install torch torchvision torchaudio
 
 pip install scikit-learn darts neuralforecast \
@@ -19,11 +19,15 @@ pytest pylint rsconnect-python
 
 pip install polars duckdb "ibis-framework[duckdb]"
 pip install mlflow
-pip install optuna-integration
 pip install optuna-integration[pytorch_lightning]
 pip install lightning
+pip install optuna-dashboard
+pip install jupyterlab jupyterlab-optuna
 
 pip freeze > requirements.txt
 
 jupyter kernelspec uninstall spp_weis -y
 ipython kernel install --name=spp_weis --user
+
+# restart gpu
+alias gpu_reset="sudo rmmod nvidia_uvm ; sudo modprobe nvidia_uvm"
