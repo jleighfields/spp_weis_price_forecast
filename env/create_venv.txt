@@ -23,6 +23,7 @@ pip install optuna-integration[pytorch_lightning]
 pip install lightning
 pip install optuna-dashboard
 pip install jupyterlab jupyterlab-optuna
+pip install tensorboard
 
 pip freeze > requirements.txt
 
