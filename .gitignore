@@ -3,6 +3,7 @@
 *lightning_logs/
 *model_artifacts/
 *model_checkpoints/
+.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

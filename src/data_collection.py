@@ -22,7 +22,7 @@ import duckdb
 # parallel processing
 from joblib import Parallel, delayed, cpu_count
 core_count = cpu_count()
-N_JOBS = max(1, core_count - 2)
+N_JOBS = max(1, core_count - 1)
 log.info(f'number of cores available: {core_count}')
 log.info(f'N_JOBS: {N_JOBS}')
 
