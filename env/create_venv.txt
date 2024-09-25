@@ -24,6 +24,8 @@ pip install lightning
 pip install optuna-dashboard
 pip install jupyterlab jupyterlab-optuna
 pip install tensorboard
+pip install papermill
+pip install lightning-sdk
 
 pip freeze > requirements.txt
 
