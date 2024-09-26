@@ -9,7 +9,7 @@ on:
   # pull_request:
   #   branches: [ "main" ]
   schedule:
-    - cron: "35 * * * *" # run every hour at minute 35
+    - cron: "40 23 * * *" # run every day at 11:35PM
   workflow_dispatch:  # manual triggers
 
 jobs:
@@ -31,5 +31,5 @@ jobs:
       env:
         LIGHTNING_USER_ID: ${{ secrets.LIGHTNING_USER_ID }}
         LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
-      run: python jobs/data_collection_hourly_job.py
+      run: python jobs/data_collection_daily_job.py
 
