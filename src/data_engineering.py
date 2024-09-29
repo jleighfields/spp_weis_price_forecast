@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import pandas as pd
 import duckdb
-from typing import List
+from typing import List, Optional
 
 import requests
 from io import StringIO
@@ -33,7 +33,7 @@ from src import params
 #############################################
 # parameters for column names
 #############################################
-FUTR_COLS = ['MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 're_ratio', 're_diff']
+FUTR_COLS = ['MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 're_ratio', 're_diff'] #, 're_diff_sum']
 PAST_COLS = ['Averaged_Actual']
 Y = ['LMP']
 IDS = ['unique_id']
@@ -42,32 +42,53 @@ IDS = ['unique_id']
 #############################################
 # data prep
 #############################################
-def prep_lmp(loc_filter: str='PSCO_'):
-    con = ibis.duckdb.connect("data/spp.ddb")
+def prep_lmp(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    loc_filter: str = 'PSCO_',
+):
+    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     lmp = con.table('lmp')
     lmp = lmp.filter(_.Settlement_Location_Name.contains(loc_filter))
     drop_cols = [
         'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
-        'Settlement_Location_Name', 'PNODE_Name', 
+        'Settlement_Location_Name', 'PNODE_Name',
         'MLC', 'MCC', 'MEC'
     ]
-    
+
+    # TODO: handle checks for start_time < end_time
+    if start_time:
+        lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
+
+    if end_time:
+        lmp = lmp.filter(_.timestamp_mst_HE <= end_time)
+
     lmp = (
         lmp
-        .mutate(unique_id = _.Settlement_Location_Name )
-        .mutate(timestamp_mst = _.timestamp_mst_HE)
+        .mutate(unique_id=_.Settlement_Location_Name)
+        .mutate(timestamp_mst=_.timestamp_mst_HE)
         # .mutate(y = _.LMP) 
-        .drop(drop_cols) 
+        .drop(drop_cols)
         .order_by(['unique_id', 'timestamp_mst'])
     )
 
     return lmp
 
 
-def prep_mtrf():
-    con = ibis.duckdb.connect("data/spp.ddb")
+def prep_mtrf(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
+    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     mtrf = con.table('mtrf')
     drop_cols = ['Interval', 'GMTIntervalEnd']
+
+    # TODO: handle checks for start_time < end_time
+    if start_time:
+        mtrf = mtrf.filter(_.timestamp_mst >= start_time)
+
+    if end_time:
+        mtrf = mtrf.filter(_.timestamp_mst <= end_time)
 
     mtrf = (
         mtrf
@@ -79,10 +100,20 @@ def prep_mtrf():
     return mtrf
 
 
-def prep_mtlf():
-    con = ibis.duckdb.connect("data/spp.ddb")
+def prep_mtlf(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
+    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     mtlf = con.table('mtlf')
     drop_cols = ['Interval', 'GMTIntervalEnd',]
+
+    # TODO: handle checks for start_time < end_time
+    if start_time:
+        mtlf = mtlf.filter(_.timestamp_mst >= start_time)
+
+    if end_time:
+        mtlf = mtlf.filter(_.timestamp_mst <= end_time)
 
     mtlf = (
         mtlf
@@ -94,18 +125,33 @@ def prep_mtlf():
     return mtlf
 
 
-def prep_all_df():
-    lmp = prep_lmp()
-    mtlf = prep_mtlf()
-    mtrf = prep_mtrf()
+def prep_all_df(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
+    lmp = prep_lmp(start_time=start_time, end_time=end_time)
+    mtlf = prep_mtlf(start_time=start_time, end_time=end_time)
+    mtrf = prep_mtrf(start_time=start_time, end_time=end_time)
 
     # join into single dataset
     all_df = (
         mtlf
         .left_join(mtrf, 'timestamp_mst')
-        .select(~s.contains("_right")) # remove 'dt_right'
-        .left_join(lmp, 'timestamp_mst')
-        .select(~s.contains("_right")) # remove 'dt_right'
+        .select(~s.contains("_right"))  # remove 'dt_right'
+        # .left_join(lmp, 'timestamp_mst')
+        # .select(~s.contains("_right")) # remove 'dt_right'
+        # .order_by(['unique_id', 'timestamp_mst'])
+    )
+
+    uid_df = ibis.memtable({'unique_id': lmp.unique_id.to_pandas().unique()})
+    ids_df = all_df[['timestamp_mst']].cross_join(uid_df)
+
+    all_df = (
+        all_df.left_join(ids_df, 'timestamp_mst')
+        .select(~s.contains("_right"))
+        .left_join(lmp, ['unique_id', 'timestamp_mst'])
+        .select(~s.contains("_right"))
+        .filter(_.timestamp_mst >= '2023-05-15') # some bad data early on...
         .order_by(['unique_id', 'timestamp_mst'])
     )
 
@@ -115,6 +161,7 @@ def prep_all_df():
         .drop_null(['unique_id'])
         .mutate(re_ratio = (_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF)
         .mutate(re_diff = _.re_ratio - _.re_ratio.lag(1))
+        # .mutate(re_diff_sum =_.re_diff + _.re_diff.lag(1))
     )
 
     return all_df
@@ -127,23 +174,29 @@ def all_df_to_pandas(all_df):
     return all_df_pd
 
 
+def get_train_test_all(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
 
-def get_train_test_all(all_df_pd):
-    train_start = all_df_pd.index.min() + pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
-    test_end = all_df_pd.index.max() - pd.Timedelta(f'{2*params.FORECAST_HORIZON}h')
+    lmp_all = prep_lmp(start_time=start_time, end_time=end_time)
+    lmp_all = lmp_all.to_pandas()
+    lmp_all.set_index('timestamp_mst', inplace=True)
+
+    train_start = lmp_all.index.min() + pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
+    test_end = lmp_all.index.max() - pd.Timedelta(f'{2*params.FORECAST_HORIZON}h')
     tr_tst_split =  test_end - pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
     log.info(f'train_start: {train_start}')
     log.info(f'tr_tst_split: {tr_tst_split}')
     log.info(f'test_end: {test_end}')
 
-    train_idx = (all_df_pd.index < tr_tst_split) & (all_df_pd.index > train_start)
-    test_idx = (all_df_pd.index > tr_tst_split) & (all_df_pd.index < test_end)
+    train_idx = (lmp_all.index < tr_tst_split) & (lmp_all.index > train_start)
+    test_idx = (lmp_all.index > tr_tst_split) & (lmp_all.index < test_end)
     
-    train_all = all_df_pd[train_idx]
-    test_all = all_df_pd[test_idx]
+    train_all = lmp_all[train_idx]
+    test_all = lmp_all[test_idx]
 
-    return train_all, test_all
-
+    return lmp_all, train_all, test_all
 
 
 def fill_missing(series):
@@ -152,9 +205,10 @@ def fill_missing(series):
         series[i] = transformer.transform(series[i])
 
 
-def get_all_series(all_df_pd):
+def get_all_series(lmp_all):
+
     all_series = TimeSeries.from_group_dataframe(
-        all_df_pd,
+        lmp_all,
         group_cols=IDS,
         value_cols=Y,
         fill_missing_dates=True,
