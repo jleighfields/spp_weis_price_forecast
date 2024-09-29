@@ -34,3 +34,4 @@ ipython kernel install --name=spp_weis --user
 
 # restart gpu
 alias gpu_reset="sudo rmmod nvidia_uvm ; sudo modprobe nvidia_uvm"
+watch -n 1 nvidia-smi
