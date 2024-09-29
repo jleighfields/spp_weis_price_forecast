@@ -85,20 +85,6 @@ def set_he(
         df[he_col] = df[time_col].dt.ceil('h')
 
 
-# def add_partion_cols(df: pd.DataFrame) -> None:
-#     """
-#     Function to create datetime value columns used in partioning
-#     when saving as a paquet file.
-#     Args:
-#         df: pd.DataFrame - with Interval column convert to datetime value
-#     Returns:
-#         None - df is modified in place
-#     """
-#     for dt_value in get_dt_partion_list():
-#         log.info(f'creating {dt_value} column')
-#         df[dt_value] = eval(f'df.Interval.dt.{dt_value}')
-
-
 def get_time_components(
         time_str: str = None,
         five_min_ceil: bool = False,

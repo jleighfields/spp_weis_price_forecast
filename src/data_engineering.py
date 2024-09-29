@@ -27,7 +27,20 @@ import logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-from src import params
+# adding module folder to system path
+# needed for running scripts as jobs
+home = os.getenv('HOME')
+module_paths = [
+    f'{home}/spp_weis_price_forecast/src',
+    f'{home}/Documents/spp_weis_price_forecast/src',
+]
+for module_path in module_paths:
+    if os.path.isdir(module_path):
+        log.info('adding module path')
+        sys.path.insert(0, module_path)
+
+# from src import params
+import params
 
 
 #############################################
