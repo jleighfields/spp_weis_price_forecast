@@ -582,6 +582,8 @@ def upsert_mtlf(
         'MTLF', 'Averaged_Actual',
     ]
     mtlf_upsert = mtlf_upsert[ordered_cols]
+    log.info(f'mtlf_upsert.timestamp_mst.min(): {mtlf_upsert.timestamp_mst.min()}')
+    log.info(f'mtlf_upsert.timestamp_mst.max(): {mtlf_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
     with duckdb.connect('data/spp.ddb') as con_ddb:
@@ -611,8 +613,9 @@ def upsert_mtlf(
         res = con_ddb.sql('select count(*) from mtlf')
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
+        rows_updated = update_count - insert_count
         log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {update_count - insert_count:,}')
+            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
 
 def upsert_mtrf(
@@ -642,6 +645,8 @@ def upsert_mtrf(
         'Wind_Forecast_MW', 'Solar_Forecast_MW',
     ]
     mtrf_upsert = mtrf_upsert[ordered_cols]
+    log.info(f'mtrf_upsert.timestamp_mst.min(): {mtrf_upsert.timestamp_mst.min()}')
+    log.info(f'mtrf_upsert.timestamp_mst.max(): {mtrf_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
     with duckdb.connect('data/spp.ddb') as con_ddb:
@@ -671,8 +676,9 @@ def upsert_mtrf(
         res = con_ddb.sql('select count(*) from mtrf')
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
+        rows_updated = update_count - insert_count
         log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {update_count - insert_count:,}')
+            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
@@ -700,6 +706,8 @@ def upsert_lmp(
     ]
     lmp_upsert = lmp_upsert[ordered_cols]
     update_count = len(lmp_upsert)
+    log.info(f'lmp_upsert.timestamp_mst_HE.min(): {lmp_upsert.timestamp_mst_HE.min()}')
+    log.info(f'lmp_upsert.timestamp_mst_HE.max(): {lmp_upsert.timestamp_mst_HE.max()}')
 
     # upsert with duckdb
     with duckdb.connect('data/spp.ddb') as con_ddb:
@@ -737,8 +745,9 @@ def upsert_lmp(
         res = con_ddb.sql('select count(*) from lmp')
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
+        rows_updated = update_count - insert_count
         log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {update_count - insert_count:,}')
+            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
 ###########################################################
 # COLLECT AND UPSERT DATA
