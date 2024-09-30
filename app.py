@@ -6,6 +6,7 @@ Streamlit interface for SPP Weis LMP forecasting endpoint
 
 # base imports
 import os
+import pickle
 import logging
 import json
 import datetime
@@ -15,6 +16,7 @@ import requests
 # data
 import numpy as np
 import pandas as pd
+import ibis
 
 # user interface
 import streamlit as st
@@ -97,111 +99,9 @@ def get_fcast_time(fcast_date: str, fcast_hour: str) -> str:
     args:
         fcast_date: str - date from user input selection
         fcast_hour: str - hour from user input selection
-    returns: str formated as datetime str
+    returns: str formatted as datetime str
     '''
     return f'{fcast_date}T{fcast_hour}:00:00.000000000'
-
-
-# cache the model endpoint call so we can change
-# the plotting parameters without calling the endpoint again
-@st.cache_data
-def get_forecast(
-    price_df: pd.DataFrame,
-    node_name: str,
-    mtlf_df: pd.DataFrame,
-    mtrf_df: pd.DataFrame,
-    fcast_time: str,
-    n_days: str,
-    ) -> Tuple[str, pd.DataFrame]:
-    '''
-    formats input for endpoint call and calls endpoint
-    args:
-        price_df: pd.DataFrame - LMPs data
-        node_name: str - from user selection
-        mtlf_df: pd.DataFrame - mid-term load forecast data
-        mtrf_df: pd.DataFrame - dit-term resource forecast data
-        fcast_time: str - datetime str created from
-            date and hour user inputs
-        n_days: str - number of days to forecast from user inputs
-    returns: Tuple[str, pd.DataFrame] - str with json formated
-        output from the endpoint call, pd.DataFrame with the
-        covariates used in the forecast (this data is used for plotting)
-    '''
-
-    # remove duplicate time values
-    dups = mtlf_df.GMTIntervalEnd.duplicated()
-    log.info(f'mtlf_df duplicated: {dups.sum()}')
-    mtlf_df = mtlf_df[~dups]
-
-    dups = mtrf_df.GMTIntervalEnd.duplicated()
-    log.info(f'mtrf_df duplicated: {dups.sum()}')
-    mtrf_df = mtrf_df[~dups]
-
-    # create data to pass to model endpoint call
-    common_times = np.intersect1d(mtlf_df.GMTIntervalEnd, mtlf_df.GMTIntervalEnd)
-    mtlf_idx = [t in common_times for t in mtlf_df.GMTIntervalEnd]
-    mtrf_idx = [t in common_times for t in mtrf_df.GMTIntervalEnd]
-
-    mtrf_df = mtrf_df[mtrf_idx]
-    mtlf_df = mtlf_df[mtlf_idx]
-    log.info(f'mtrf_df.shape: {mtrf_df.shape}')
-    log.info(f'mtlf_df.shape: {mtlf_df.shape}')
-
-    # mtlf series
-    log.info(f'mtlf_df.columns: {mtlf_df.columns}')
-    mtlf_series, avg_act_series = de.create_mtlf_series(mtlf_df)
-
-    # mtrf series feature engineering
-    mtrf_ratio_df = de.add_enrgy_ratio_to_mtrf(mtlf_df, mtrf_df)
-    mtrf_ratio_df = de.add_enrgy_ratio_diff_to_mtrf(mtrf_ratio_df)
-    mtrf_series = de.create_mtrf_series(mtrf_ratio_df)
-
-    future_covariates = concatenate([mtlf_series, mtrf_series], axis=1)
-    past_covariates = avg_act_series
-
-    plot_cov_df = future_covariates.pd_dataframe()
-    plot_cov_df = plot_cov_df.reset_index().rename(columns={'GMTIntervalEnd':'time'})
-
-    lmp_series_df = price_df[price_df.node == node_name].drop('node', axis=1)
-    lmp_series_df.rename(columns={'LMP_HOURLY':node_name}, inplace=True)
-    lmp_series_df = lmp_series_df.sort_values('time')
-    dups = lmp_series_df.time.duplicated()
-    log.info(f'lmp_series_df duplicated: {dups.sum()}')
-    lmp_series_df = lmp_series_df[~dups]
-
-
-    lmp_series = TimeSeries.from_dataframe(
-            lmp_series_df,
-            time_col='time',
-            value_cols=node_name,
-            fill_missing_dates=True,
-            freq='H',
-            fillna_value=0,
-            static_covariates=None,
-            hierarchy=None
-        ).astype(np.float32)
-
-    FCAST_TIME = pd.Timestamp(fcast_time)
-    # drop after is inclusive...
-    if FCAST_TIME < lmp_series.end_time():
-        lmp_series = lmp_series.drop_after(FCAST_TIME + pd.Timedelta('1H'))
-
-    # subtract hour to account for the shift above and lag in covariate updates
-    forecast_horizon = 24*n_days - 1
-    log.info(f'forecast_horizon: {forecast_horizon}')
-
-    data = {
-        'series': [lmp_series.to_json()],
-        'past_covariates': [past_covariates.to_json()],
-        'future_covariates': [future_covariates.to_json()],
-        'n': forecast_horizon,
-        'num_samples': 200
-    }
-    df = pd.DataFrame(data)
-
-    log.info('calling endpoint')
-    endpoint_pred = score_model(df)
-    return endpoint_pred, plot_cov_df
 
 
 @st.cache_resource
@@ -236,17 +136,19 @@ with forcasted_data:
     # Get data
     ###############################################################
 
-    if ('all_df_pd' not in st.session_state):
+    if ('all_df_pd' not in st.session_state) or st.session_state.refresh_data:
         log.info('loading data')
 
         with st.spinner('Loading LMP data...'):
-            st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df())
-            st.session_state['lmp'] = de.prep_lmp()
+            con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+            st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
+            st.session_state['lmp'] = de.prep_lmp(con)
             st.session_state['lmp_pd_df'] = (
                 st.session_state['lmp']
                 .to_pandas()
                 .set_index('timestamp_mst')
             )
+            con.disconnect()
 
         st.toast('Done loading data')
 
@@ -267,11 +169,17 @@ with forcasted_data:
             model_path = runs['artifact_uri'].iloc[0] + '/GlobalForecasting'
             st.session_state['loaded_model'] = mlflow.pyfunc.load_model(model_path)
 
+            train_timestamp_path = (
+                    runs['artifact_uri'].iloc[0] + '/GlobalForecasting/artifacts/TRAIN_TIMESTAMP.pkl'
+            ).replace('file://', '')
+            with open(train_timestamp_path, 'rb') as handle:
+                st.session_state['TRAIN_TIMESTAMP'] = pickle.load(handle)
+
         st.toast('Done loading model')
 
 
 ###############################################################
-# Get user iputs
+# Get user inputs
 ###############################################################
 with st.sidebar:
 
@@ -301,10 +209,6 @@ with st.sidebar:
 
     st.header('Select LMP node')
     with st.form('form1'):
-        # get data from session state
-        # price_df = st.session_state.price_df
-        # mtrf_df = st.session_state.mtrf_df
-        # mtlf_df = st.session_state.mtlf_df
 
         # select node to forecast
         node_name = st.selectbox(
@@ -316,16 +220,20 @@ with st.sidebar:
         n_days = st.selectbox('Number of days to forecast', [5,4,3,2,1], index=0)
         lookback_days = st.selectbox('Number of days to lookback', [7,6,5,4,3,2,1], index=0)
 
-        st.session_state.submitted1 = st.form_submit_button('Get forecast')
+        st.session_state.get_fcast_btn = st.form_submit_button('Get forecast')
 
-log.info(f'st.session_state.submitted1: {st.session_state.submitted1}')
+        # model_trained = st.session_state.loaded_model.TRAIN_TIMESTAMP
+        st.markdown('Model last trained:')
+        st.markdown(f'**{st.session_state.TRAIN_TIMESTAMP}**')
+
+log.info(f'st.session_state.submitted1: {st.session_state.get_fcast_btn}')
 
 
 ###############################################################
 # get forecasts
 ###############################################################
 
-if st.session_state.submitted1:
+if st.session_state.get_fcast_btn:
 
     fcast_time = get_fcast_time(fcast_date, fcast_hour)
     st.session_state.node_name = node_name
@@ -336,17 +244,18 @@ if st.session_state.submitted1:
     log.info(f'\tfcast_time: {fcast_time}')
     log.info(f'\tn_days: {n_days}')
 
-
+    # get prices for user selected node
     idx = st.session_state.lmp_pd_df.unique_id == node_name
     price_df = st.session_state.lmp_pd_df[idx]
 
+    # get covariates for user selected node
     idx = st.session_state.all_df_pd.unique_id == node_name
     plot_cov_df = st.session_state.all_df_pd[idx]
 
+    # prepare data for getting predictions
     plot_series = de.get_all_series(price_df)[0]
     future_cov_series = de.get_futr_cov(plot_cov_df)[0]
     past_cov_series = de.get_past_cov(plot_cov_df)[0]
-
     node_series = plot_series.drop_after(pd.Timestamp(fcast_time))
 
     data = {
@@ -358,6 +267,11 @@ if st.session_state.submitted1:
     }
     df = pd.DataFrame(data)
 
+    # Predict on a Pandas DataFrame.
+    df['num_samples'] = 500
+    preds_json = st.session_state.loaded_model.predict(df)
+    preds = TimeSeries.from_json(preds_json)
+
     plot_cov_df = future_cov_series.pd_dataframe()
     plot_cov_df = (
         plot_cov_df
@@ -365,11 +279,7 @@ if st.session_state.submitted1:
         .rename(columns={'timestamp_mst': 'time', 're_ratio': 'Ratio'})
     )
 
-    # Predict on a Pandas DataFrame.
-    df['num_samples'] = 500
-    preds = st.session_state.loaded_model.predict(df)
-    preds = TimeSeries.from_json(preds)
-
+    # save data for plotting
     st.session_state.preds = preds
     st.session_state.plot_cov_df = plot_cov_df
 
@@ -391,18 +301,17 @@ if 'preds' in st.session_state:
     log.info('formatting data for plotting')
 
     q_df = plotting.get_quantile_df(preds)
-    # plot_df = plotting.get_mean_df(preds).merge(
-    #     plotting.get_quantile_df(preds),
-    #     left_index=True,
-    #     right_index=True,
-    # )
 
-    lmp_df = st.session_state.lmp.to_pandas().rename(
+    lmp_df = (
+        st.session_state.lmp_pd_df
+        .reset_index()
+        .rename(
         columns={
             'LMP': 'LMP_HOURLY',
             'unique_id': 'node',
             'timestamp_mst': 'time'
         })
+    )
 
     plot_df = plotting.get_plot_df(
         preds,
