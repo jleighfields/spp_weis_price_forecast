@@ -84,14 +84,14 @@ log = logging.getLogger(__name__)
 
 
 
-import optuna
-from optuna.integration import PyTorchLightningPruningCallback
-from optuna.visualization import (
-    plot_optimization_history,
-    plot_contour,
-    plot_param_importances,
-    plot_pareto_front,
-)
+# import optuna
+# from optuna.integration import PyTorchLightningPruningCallback
+# from optuna.visualization import (
+#     plot_optimization_history,
+#     plot_contour,
+#     plot_param_importances,
+#     plot_pareto_front,
+# )
 
 
 # adding module folder to system path
