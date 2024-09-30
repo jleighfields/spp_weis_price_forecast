@@ -56,11 +56,12 @@ IDS = ['unique_id']
 # data prep
 #############################################
 def prep_lmp(
+    con: ibis.duckdb.connect,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     loc_filter: str = 'PSCO_',
 ):
-    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     lmp = con.table('lmp')
     lmp = lmp.filter(_.Settlement_Location_Name.contains(loc_filter))
     drop_cols = [
@@ -89,10 +90,11 @@ def prep_lmp(
 
 
 def prep_mtrf(
+    con: ibis.duckdb.connect,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ):
-    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     mtrf = con.table('mtrf')
     drop_cols = ['Interval', 'GMTIntervalEnd']
 
@@ -114,10 +116,11 @@ def prep_mtrf(
 
 
 def prep_mtlf(
+    con: ibis.duckdb.connect,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ):
-    con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     mtlf = con.table('mtlf')
     drop_cols = ['Interval', 'GMTIntervalEnd',]
 
@@ -139,12 +142,13 @@ def prep_mtlf(
 
 
 def prep_all_df(
+    con: ibis.duckdb.connect,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ):
-    lmp = prep_lmp(start_time=start_time, end_time=end_time)
-    mtlf = prep_mtlf(start_time=start_time, end_time=end_time)
-    mtrf = prep_mtrf(start_time=start_time, end_time=end_time)
+    lmp = prep_lmp(con, start_time=start_time, end_time=end_time)
+    mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
+    mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
     all_df = (
@@ -188,17 +192,20 @@ def all_df_to_pandas(all_df):
 
 
 def get_train_test_all(
+    con: ibis.duckdb.connect,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ):
 
-    lmp_all = prep_lmp(start_time=start_time, end_time=end_time)
+    lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time)
     lmp_all = lmp_all.to_pandas()
     lmp_all.set_index('timestamp_mst', inplace=True)
 
+    # remove last week of prices since they might get revised
+    test_end_buffer = 168
     train_start = lmp_all.index.min() + pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
-    test_end = lmp_all.index.max() - pd.Timedelta(f'{2*params.FORECAST_HORIZON}h')
-    tr_tst_split =  test_end - pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
+    test_end = lmp_all.index.max() - pd.Timedelta(f'{test_end_buffer}h')
+    tr_tst_split = test_end - pd.Timedelta(f'{2*params.INPUT_CHUNK_LENGTH}h')
     log.info(f'train_start: {train_start}')
     log.info(f'tr_tst_split: {tr_tst_split}')
     log.info(f'test_end: {test_end}')

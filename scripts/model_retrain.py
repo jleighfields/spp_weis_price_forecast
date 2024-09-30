@@ -121,24 +121,39 @@ log.info(f'FORECAST_HORIZON: {params.FORECAST_HORIZON}')
 log.info(f'INPUT_CHUNK_LENGTH: {params.INPUT_CHUNK_LENGTH}')
 
 # Data prep
+print('\n' + '*'*40)
 log.info('preparing data')
 
-lmp = de.prep_lmp()
-all_df = de.prep_all_df()
-all_df_pd = de.all_df_to_pandas(de.prep_all_df())
+# connect to database
+con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+
+lmp = de.prep_lmp(con)
+lmp_df = lmp.to_pandas().rename(
+    columns={
+        'LMP': 'LMP_HOURLY',
+        'unique_id':'node',
+        'timestamp_mst':'time'
+    }
+)
+
+all_df = de.prep_all_df(con)
+all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
 
-lmp_all, train_all, test_all = de.get_train_test_all()
-all_series = de.get_all_series(lmp_all)
-all_series[0].plot()
+lmp_all, train_all, test_all = de.get_train_test_all(con)
+con.disconnect()
 
+all_series = de.get_all_series(lmp_all)
 train_series = de.get_train_series(train_all)
 test_series = de.get_test_series(test_all)
 
 futr_cov = de.get_futr_cov(all_df_pd)
 past_cov = de.get_past_cov(all_df_pd)
 
+
+
 # MLFlow setup
+print('\n' + '*'*40)
 log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 exp_name = 'spp_weis'
 
@@ -260,12 +275,17 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
     model_type_path = '/'.join([artifact_path, 'MODEL_TYPE.pkl'])
     with open(model_type_path, 'wb') as handle:
         pickle.dump(model.MODEL_TYPE, handle)
-    
-    # map model artifacts in dictionary
+
+    model_timestamp = '/'.join([artifact_path, 'TRAIN_TIMESTAMP.pkl'])
+    with open(model_timestamp, 'wb') as handle:
+        pickle.dump(model.TRAIN_TIMESTAMP, handle)
+
+    # map model artififacts in dictionary
     artifacts = {
         'model': model_path,
-        'model.ckpt': model_path+'.ckpt',
+        'model.ckpt': model_path + '.ckpt',
         'MODEL_TYPE': model_type_path,
+        'TRAIN_TIMESTAMP': model_timestamp,
     }
     
     # log model
@@ -279,6 +299,7 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         pip_requirements=["-r notebooks/model_training/requirements.txt"],
     )
 
+print('\n' + '*'*40)
 log.info('loading model from mlflow for testing')
 # test predictions on latest run
 runs = mlflow.search_runs(
@@ -318,5 +339,6 @@ df = pd.DataFrame(data)
 df['num_samples'] = 2
 pred = loaded_model.predict(df)
 
+print('\n' + '*'*40)
 log.info(f'pred: {pred}')
 

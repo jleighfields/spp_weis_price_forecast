@@ -38,8 +38,9 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
         # load model type
         with open(context.artifacts["MODEL_TYPE"], 'rb') as handle:
             self.MODEL_TYPE = pickle.load(handle)
-        log.info(f'MODEL_TYPE: {self.MODEL_TYPE}') 
+        log.info(f'MODEL_TYPE: {self.MODEL_TYPE}')
 
+        
         # load scalers
         # with open(context.artifacts["scalers"], 'rb') as handle:
         #     self.scalers = pickle.load(handle)
@@ -64,6 +65,11 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             
         else:
             raise ValueError(f'Unsuported MODEL_TYPE: {self.MODEL_TYPE}')
+
+        # load model train time
+        with open(context.artifacts["TRAIN_TIMESTAMP"], 'rb') as handle:
+            self.model.TRAIN_TIMESTAMP = pickle.load(handle)
+        log.info(f'TRAIN_TIMESTAMP: {self.model.TRAIN_TIMESTAMP}')
 
 
     def __repr__(self):
