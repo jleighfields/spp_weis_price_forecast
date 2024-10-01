@@ -586,7 +586,7 @@ def upsert_mtlf(
     log.info(f'mtlf_upsert.timestamp_mst.max(): {mtlf_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
-   with duckdb.connect('data/spp.ddb', config = {'access_mode': 'READ_WRITE'}) as con_ddb:
+    with duckdb.connect('data/spp.ddb') as con_ddb:
         create_mtlf = '''
         CREATE TABLE IF NOT EXISTS mtlf (
              Interval TIMESTAMP,
@@ -650,7 +650,7 @@ def upsert_mtrf(
     log.info(f'mtrf_upsert.timestamp_mst.max(): {mtrf_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
-    with duckdb.connect('data/spp.ddb', config = {'access_mode': 'READ_WRITE'}) as con_ddb:
+    with duckdb.connect('data/spp.ddb') as con_ddb:
         create_mtrf = '''
         CREATE TABLE IF NOT EXISTS mtrf (
              Interval TIMESTAMP,
@@ -712,7 +712,7 @@ def upsert_lmp(
     log.info(f'lmp_upsert.timestamp_mst_HE.max(): {lmp_upsert.timestamp_mst_HE.max()}')
 
     # upsert with duckdb
-    with duckdb.connect('data/spp.ddb', config = {'access_mode': 'READ_WRITE'}) as con_ddb:
+    with duckdb.connect('data/spp.ddb') as con_ddb:
         create_lmp = '''
         CREATE TABLE IF NOT EXISTS lmp (
              Interval_HE TIMESTAMP,

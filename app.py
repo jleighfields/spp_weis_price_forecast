@@ -236,9 +236,10 @@ log.info(f'st.session_state.submitted1: {st.session_state.get_fcast_btn}')
 if st.session_state.get_fcast_btn:
 
     fcast_time = get_fcast_time(fcast_date, fcast_hour)
-    fcast_time = pd.Timestamp(fcast_time)
+    fcast_time = pd.Timestamp(fcast_time) + pd.Timedelta('1h')
     st.session_state.node_name = node_name
     st.session_state.fcast_time = fcast_time
+    log.info(f'fcast_time: {fcast_time}')
 
     log.info('USER INPUTS:')
     log.info(f'\tnode_name: {node_name}')
@@ -257,7 +258,9 @@ if st.session_state.get_fcast_btn:
     plot_series = de.get_all_series(price_df)[0]
     future_cov_series = de.get_futr_cov(plot_cov_df)[0]
     past_cov_series = de.get_past_cov(plot_cov_df)[0]
-    node_series = plot_series.drop_after(fcast_time)
+    node_series = plot_series
+    if fcast_time <= node_series.end_time():
+        node_series = node_series.drop_after(fcast_time)
 
     data = {
         'series': [node_series.to_json()],
