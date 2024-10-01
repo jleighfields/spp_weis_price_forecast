@@ -49,7 +49,7 @@ log.info('GETTING MTRF')
 dc.collect_upsert_mtrf(n_periods=24)
 
 log.info('copying database')
-shutil.copyfile('data/spp.ddb', '~/spp.ddb')
+shutil.copy2('data/spp.ddb', '~/')
 
 log.info('FINISHED')
 
