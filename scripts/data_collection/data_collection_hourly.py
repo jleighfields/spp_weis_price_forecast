@@ -2,6 +2,7 @@
 # Gather public SPP Weis data from https://marketplace.spp.org/groups/operational-data-weis
 import sys
 import os
+import shutil
 import pandas as pd
 import duckdb
 
@@ -46,6 +47,9 @@ dc.collect_upsert_mtlf(n_periods=24)
 
 log.info('GETTING MTRF')
 dc.collect_upsert_mtrf(n_periods=24)
+
+log.info('copying database')
+shutil.copyfile('data/spp.ddb', '~/spp.ddb')
 
 log.info('FINISHED')
 
