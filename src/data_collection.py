@@ -752,7 +752,7 @@ def upsert_lmp(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
-        con_ddb.sql("COPY lmp TO '/teamspace/s3_connections/spp-weis/lmp.parquet' (FORMAT PARQUET);")
+        con_ddb.sql("COPY lmp TO '~/lmp.parquet' (FORMAT PARQUET);")
 
 ###########################################################
 # COLLECT AND UPSERT DATA

@@ -48,7 +48,7 @@ dc.collect_upsert_mtlf(n_periods=24)
 log.info('GETTING MTRF')
 dc.collect_upsert_mtrf(n_periods=24)
 
-log.info('copying database')
+# log.info('copying database')
 
 log.info('FINISHED')
 
