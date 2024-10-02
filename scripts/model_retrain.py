@@ -1,16 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
-# TODO:
-#    1. early stopping not working optuna experiment
-
-
-# In[2]:
-
-
 import os
 import shutil
 import pickle
@@ -71,6 +58,7 @@ from torchmetrics import (
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import mlflow
+from mlflow.models import infer_signature
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -81,17 +69,6 @@ import logging
 # define log
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
-
-
-
-# import optuna
-# from optuna.integration import PyTorchLightningPruningCallback
-# from optuna.visualization import (
-#     plot_optimization_history,
-#     plot_contour,
-#     plot_param_importances,
-#     plot_pareto_front,
-# )
 
 
 # adding module folder to system path
@@ -120,11 +97,10 @@ from darts_wrapper import DartsGlobalModel
 log.info(f'FORECAST_HORIZON: {params.FORECAST_HORIZON}')
 log.info(f'INPUT_CHUNK_LENGTH: {params.INPUT_CHUNK_LENGTH}')
 
-# Data prep
+
+# connect to database and prepare data
 print('\n' + '*'*40)
 log.info('preparing data')
-
-# connect to database
 con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
 
 lmp = de.prep_lmp(con)
@@ -151,7 +127,6 @@ futr_cov = de.get_futr_cov(all_df_pd)
 past_cov = de.get_past_cov(all_df_pd)
 
 
-
 # MLFlow setup
 print('\n' + '*'*40)
 log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
@@ -176,11 +151,9 @@ data = {
 }
 
 df = pd.DataFrame(data)
-
 ouput_example = 'the endpoint return json as a string'
-
-from mlflow.models import infer_signature
 darts_signature = infer_signature(df, ouput_example)
+
 
 # Refit and log model with best params
 log.info('refit model')
@@ -299,9 +272,10 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         pip_requirements=["-r notebooks/model_training/requirements.txt"],
     )
 
+
+# test predictions on latest run
 print('\n' + '*'*40)
 log.info('loading model from mlflow for testing')
-# test predictions on latest run
 runs = mlflow.search_runs(
     experiment_ids = exp.experiment_id,
     # order_by=['metrics.test_mae']
@@ -312,6 +286,7 @@ runs.sort_values('end_time', ascending=False, inplace=True)
 best_run_id = runs.run_id.iloc[0]
 model_path = runs['artifact_uri'].iloc[0] + '/GlobalForecasting'
 loaded_model = mlflow.pyfunc.load_model(model_path)
+
 
 log.info('test getting predictions')
 plot_ind = 3
@@ -341,4 +316,3 @@ pred = loaded_model.predict(df)
 
 print('\n' + '*'*40)
 log.info(f'pred: {pred}')
-
