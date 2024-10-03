@@ -89,7 +89,7 @@ log.info(f'os.listdir(): {os.listdir()}')
 # from module path
 import data_engineering as de
 import params
-from modeling import get_ci_err, build_fit_tsmixerx, log_pretty
+from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, log_pretty
 
 ## will be loaded from root when deployed
 from darts_wrapper import DartsGlobalModel
@@ -158,7 +158,7 @@ darts_signature = infer_signature(df, ouput_example)
 # Refit and log model with best params
 log.info('refit model')
 with mlflow.start_run(experiment_id=exp.experiment_id) as run:
-    model = build_fit_tsmixerx(
+    model = build_fit_tft(
         series=train_series,
         val_series=test_series,
         future_covariates=futr_cov,
