@@ -4,23 +4,36 @@
 from lightning_sdk import Machine, Studio, JobsPlugin, MultiMachineTrainingPlugin
 from dotenv import load_dotenv
 import time
+
+# logging
+import logging
+
+# define log
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
 load_dotenv()  # take environment variables from .env.
 
-print("starting Studio...")
+log.info("starting Studio...")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start(machine=Machine.T4)
-for i in range(30):
-    print(f'status: {s.status} - count: {i}')
-    if s.status == 'Running':
-        break
 
+# ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
+s.auto_shutdown = True
+s.auto_shutdown_time = 2 * 60  # the time is in seconds for granular control
+
+i = 0
+while str(s.status) != 'Status.Running':
+    log.info(f'status: {s.status} - count: {i}')
+    i+=1
+    if i > 30:
+        break
     time.sleep(30)
 
 
 try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
 except Exception as e:
-        print("command failed with error: ", e)
+        log.error("command failed with error: ", e)
 
-print("Stopping Studio")
-s.stop()
+log.info("Job complete")
