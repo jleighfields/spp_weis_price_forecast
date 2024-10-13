@@ -18,7 +18,7 @@ log.info("starting Studio...")
 s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'L4':
+if str(s.machine) != 'Machine.L4':
     s.switch_machine(machine=Machine.L4)
 
 # ensure it's turned on and a Studio will wait for 2 minutes before shutting down.

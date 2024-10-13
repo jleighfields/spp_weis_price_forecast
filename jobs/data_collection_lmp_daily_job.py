@@ -17,7 +17,10 @@ load_dotenv()  # take environment variables from .env.
 
 log.info("starting Studio...")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
-s.start(machine=Machine.CPU)
+s.start()
+log.info(f's.machine: {s.machine}')
+if str(s.machine) != 'Machine.CPU':
+    s.switch_machine(machine=Machine.CPU)
 
 # ensure it's turned on and a Studio will wait for 10 minutes before shutting down.
 s.auto_shutdown = True
