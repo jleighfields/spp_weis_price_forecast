@@ -1,5 +1,6 @@
 *data/
 *mlruns/
+*mlruns.db
 *lightning_logs/
 *model_artifacts/
 *model_checkpoints/

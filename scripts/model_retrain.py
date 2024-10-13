@@ -71,6 +71,8 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
+MODEL_NAME = 'spp_weis'
+
 # adding module folder to system path
 # needed for running scripts as jobs
 home = os.getenv('HOME')
@@ -101,7 +103,7 @@ log.info(f'INPUT_CHUNK_LENGTH: {params.INPUT_CHUNK_LENGTH}')
 # connect to database and prepare data
 print('\n' + '*'*40)
 log.info('preparing data')
-con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+con = ibis.duckdb.connect("/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", read_only=True)
 
 lmp = de.prep_lmp(con)
 lmp_df = lmp.to_pandas().rename(
@@ -129,6 +131,7 @@ past_cov = de.get_past_cov(all_df_pd)
 
 # MLFlow setup
 print('\n' + '*'*40)
+os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
 log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 exp_name = 'spp_weis'
 
@@ -158,7 +161,7 @@ darts_signature = infer_signature(df, ouput_example)
 # Refit and log model with best params
 log.info('refit model')
 with mlflow.start_run(experiment_id=exp.experiment_id) as run:
-    model = build_fit_tft(
+    model = build_fit_tsmixerx(
         series=train_series,
         val_series=test_series,
         future_covariates=futr_cov,
@@ -270,22 +273,38 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         artifacts=artifacts,
         python_model=DartsGlobalModel(), 
         pip_requirements=["-r notebooks/model_training/requirements.txt"],
+        registered_model_name=MODEL_NAME,
     )
 
 
 # test predictions on latest run
 print('\n' + '*'*40)
 log.info('loading model from mlflow for testing')
-runs = mlflow.search_runs(
-    experiment_ids = exp.experiment_id,
-    # order_by=['metrics.test_mae']
-    order_by=['end_time']
-    )
+# runs = mlflow.search_runs(
+#     experiment_ids = exp.experiment_id,
+#     # order_by=['metrics.test_mae']
+#     order_by=['end_time']
+#     )
 
-runs.sort_values('end_time', ascending=False, inplace=True)
-best_run_id = runs.run_id.iloc[0]
-model_path = runs['artifact_uri'].iloc[0] + '/GlobalForecasting'
-loaded_model = mlflow.pyfunc.load_model(model_path)
+# runs.sort_values('end_time', ascending=False, inplace=True)
+# best_run_id = runs.run_id.iloc[0]
+# model_path = runs['artifact_uri'].iloc[0] + '/GlobalForecasting'
+# loaded_model = mlflow.pyfunc.load_model(model_path)
+from mlflow import MlflowClient
+client = MlflowClient()
+def get_latest_registered_model_version(model_name = MODEL_NAME):
+    filter_string = f"name='{model_name}'"
+    results = client.search_registered_models(filter_string=filter_string)
+    return results[0].latest_versions[0].version
+
+
+client.set_registered_model_alias(MODEL_NAME, "champion", get_latest_registered_model_version())
+
+# model uri for the above model
+model_uri = "models:/spp_weis@champion"
+
+# Load the model and access the custom metadata
+loaded_model = mlflow.pyfunc.load_model(model_uri=model_uri)
 
 
 log.info('test getting predictions')

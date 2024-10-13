@@ -140,7 +140,10 @@ with forcasted_data:
         log.info('loading data')
 
         with st.spinner('Loading LMP data...'):
-            con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+            con = ibis.duckdb.connect(
+                "/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", 
+                read_only=True
+                )
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
             st.session_state['lmp'] = de.prep_lmp(con)
             st.session_state['lmp_pd_df'] = (
@@ -156,24 +159,32 @@ with forcasted_data:
         log.info('loading model')
 
         with st.spinner('Loading model'):
+            os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
             log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
-            exp_name = 'spp_weis'
-            exp = mlflow.get_experiment_by_name(exp_name)
-            runs = mlflow.search_runs(
-                experiment_ids=exp.experiment_id,
-                # order_by=['metrics.test_mae']
-                order_by=['end_time']
-            )
-            runs.sort_values('end_time', ascending=False, inplace=True)
-            best_run_id = runs.run_id.iloc[0]
-            model_path = runs['artifact_uri'].iloc[0] + '/GlobalForecasting'
-            st.session_state['loaded_model'] = mlflow.pyfunc.load_model(model_path)
 
-            train_timestamp_path = (
-                    runs['artifact_uri'].iloc[0] + '/GlobalForecasting/artifacts/TRAIN_TIMESTAMP.pkl'
-            ).replace('file://', '')
-            with open(train_timestamp_path, 'rb') as handle:
-                st.session_state['TRAIN_TIMESTAMP'] = pickle.load(handle)
+            # model uri for the above model
+            model_uri = "models:/spp_weis@champion"
+
+            # Load the model and access the custom metadata
+            loaded_model = mlflow.pyfunc.load_model(model_uri=model_uri)
+            log.info(f'loaded_model: {loaded_model}')
+            st.session_state['loaded_model'] = loaded_model
+
+            # get model training timestamp
+            load_model_dict = loaded_model.metadata.to_dict()
+            from mlflow import MlflowClient
+            client = MlflowClient()
+            local_dir = "./" # existing and accessible DBFS folder
+            run_id = load_model_dict['run_id']
+            artifact_path = 'GlobalForecasting/artifacts/TRAIN_TIMESTAMP.pkl'
+            local_path = client.download_artifacts(run_id, artifact_path, local_dir)
+            with open(artifact_path, 'rb') as handle:
+                TRAIN_TIMESTAMP = pickle.load(handle)
+            
+            log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
+            os.remove(artifact_path)
+
+            st.session_state['TRAIN_TIMESTAMP'] = TRAIN_TIMESTAMP
 
         st.toast('Done loading model')
 

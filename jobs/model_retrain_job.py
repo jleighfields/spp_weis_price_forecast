@@ -15,8 +15,9 @@ log = logging.getLogger(__name__)
 load_dotenv()  # take environment variables from .env.
 
 log.info("starting Studio...")
-s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
-s.start(machine=Machine.T4)
+s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
+s.start()
+s.switch_machine(machine=Machine.L4)
 
 # ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
 s.auto_shutdown = True
@@ -35,5 +36,7 @@ try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
 except Exception as e:
         log.error("command failed with error: ", e)
+
+s.switch_machine(Machine.CPU)
 
 log.info("Job complete")

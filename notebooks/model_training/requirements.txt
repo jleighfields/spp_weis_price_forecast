@@ -1,2 +1,2 @@
 darts==0.30.0
-scikit-learn==1.5.1
+scikit-learn==1.5.2
