@@ -96,15 +96,15 @@ def build_fit_tsmixerx(
     val_series: List[TimeSeries],
     future_covariates: List[TimeSeries],
     past_covariates: List[TimeSeries],
-    hidden_size: int=16,
-    ff_size: int=16,
-    num_blocks: int=16,
+    hidden_size: int=22,
+    ff_size: int=13,
+    num_blocks: int=8,
     forecast_horizon: int=params.FORECAST_HORIZON,
     input_chunk_length: int=params.INPUT_CHUNK_LENGTH,
-    lr: float=1.3e-4,
+    lr: float=1.2e-4,
     batch_size: int=64,
-    n_epochs: int=8,
-    dropout: float=0.41,
+    n_epochs: int=4,
+    dropout: float=0.5,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
 ):
@@ -188,6 +188,110 @@ def build_fit_tsmixerx(
     return model
 
 
+def build_fit_tide(
+    series: List[TimeSeries],
+    val_series: List[TimeSeries],
+    future_covariates: List[TimeSeries],
+    past_covariates: List[TimeSeries],
+    num_encoder_layers: int=1,
+    num_decoder_layers: int=1,
+    decoder_output_dim: int=10,
+    hidden_size: int=148,
+    temporal_width_past: int=4,
+    temporal_width_future: int=4,
+    temporal_decoder_hidden: int=64,
+    forecast_horizon: int=params.FORECAST_HORIZON,
+    input_chunk_length: int=params.INPUT_CHUNK_LENGTH,
+    lr: float=7.0e-5,
+    batch_size: int=64,
+    n_epochs: int=4,
+    dropout: float=0.37,
+    force_reset: bool=True, # reset model if already exists
+    callbacks=None,
+):
+    work_dir = os.getcwd() + '/model_checkpoints'
+    MODEL_TYPE = "tide_model"
+    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    
+    #TODO: pick a metric...
+    torch_metrics = MeanAbsoluteError()
+    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
+    
+    encoders = {
+        "datetime_attribute": {
+            "future": ["hour", "dayofweek", "month"], # 
+            "past": ["hour", "dayofweek", "month"], # 
+        },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
+    }
+
+    # common parameters across models
+    model_params = {
+        'num_encoder_layers': num_encoder_layers,
+        'num_decoder_layers': num_decoder_layers,
+        'decoder_output_dim': decoder_output_dim,
+        'hidden_size': hidden_size,
+        'temporal_width_past': temporal_width_past,
+        'temporal_width_future': temporal_width_future,
+        'temporal_decoder_hidden': temporal_decoder_hidden,
+        'input_chunk_length': input_chunk_length,
+        'output_chunk_length': forecast_horizon,
+        'batch_size': batch_size,
+        'n_epochs': n_epochs,
+        'dropout': dropout,
+        'add_encoders': encoders,
+        'likelihood': QuantileRegression(quantiles=quantiles),  # QuantileRegression is set per default
+        'optimizer_kwargs': {"lr": lr},
+        'random_state': 42,
+        'torch_metrics': torch_metrics,
+        'use_static_covariates': False,
+        'save_checkpoints': True,
+        'work_dir': work_dir,
+        'model_name': MODEL_TYPE, # used for checkpoint saves
+        'force_reset': force_reset, # reset model if already exists
+        'log_tensorboard': True,
+    }
+
+    # throughout training we'll monitor the validation loss for early stopping
+    early_stopper = EarlyStopping("val_loss", min_delta=0.01, patience=3, verbose=True)
+    if callbacks is None:
+        callbacks = [early_stopper]
+    else:
+        callbacks = [early_stopper] + callbacks
+
+    pl_trainer_kwargs = {"callbacks": callbacks}
+    # model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
+    log.info(f'model_params: \n{log_pretty(model_params)}')
+    
+    model = TiDEModel(**model_params)
+
+    # train the model
+    fit_params = {
+        'series': series,
+        'val_series': val_series,
+        'future_covariates': future_covariates,
+        'past_covariates': past_covariates,
+        'val_future_covariates': future_covariates,
+        'val_past_covariates': past_covariates,
+    }
+    model.fit(**fit_params)
+
+    # reload best model over course of training
+    model = TiDEModel.load_from_checkpoint(
+        work_dir=work_dir,
+        model_name=MODEL_TYPE
+    )
+    
+    model.MODEL_TYPE = MODEL_TYPE
+    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
+
+    return model
+
 
 def build_fit_tft(
     series: List[TimeSeries],
@@ -198,10 +302,11 @@ def build_fit_tft(
     lstm_layers: int = 1, # Number of layers for the Long Short Term Memory (LSTM) Encoder and Decoder (1 is a good default).
     num_attention_heads: int=2, # Number of attention heads (4 is a good default)
     dropout: float=0.1,
+    full_attention: bool=True,
     forecast_horizon: int=params.FORECAST_HORIZON,
     input_chunk_length: int=params.INPUT_CHUNK_LENGTH,
     lr: float=2.5e-4,
-    batch_size: int=64,
+    batch_size: int=32,
     n_epochs: int=6,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
@@ -233,6 +338,7 @@ def build_fit_tft(
         'lstm_layers': lstm_layers,
         'num_attention_heads': num_attention_heads,
         'dropout': dropout,
+        'full_attention': full_attention,
         'input_chunk_length': input_chunk_length,
         'output_chunk_length': forecast_horizon,
         'batch_size': batch_size,
