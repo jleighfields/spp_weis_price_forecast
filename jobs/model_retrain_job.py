@@ -17,7 +17,9 @@ load_dotenv()  # take environment variables from .env.
 log.info("starting Studio...")
 s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
-s.switch_machine(machine=Machine.L4)
+log.info(f's.machine: {s.machine}')
+if str(s.machine) != 'L4':
+    s.switch_machine(machine=Machine.L4)
 
 # ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
 s.auto_shutdown = True
@@ -30,7 +32,6 @@ while str(s.status) != 'Status.Running':
     if i > 30:
         break
     time.sleep(30)
-
 
 try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
