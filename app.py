@@ -296,7 +296,7 @@ if 'preds' in st.session_state:
     node_name = st.session_state.node_name
     fcast_time = st.session_state.fcast_time
 
-    st.write(f'### {node_name} forcasts')
+    st.write(f'### {node_name} forecasts')
     st.write(f'Forecast start time: {fcast_time}')
 
     preds = st.session_state.preds
