@@ -67,9 +67,13 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
 
         # load model train time
         with open(context.artifacts["TRAIN_TIMESTAMP"], 'rb') as handle:
-            self.model.TRAIN_TIMESTAMP = pickle.load(handle)
-        log.info(f'TRAIN_TIMESTAMP: {self.model.TRAIN_TIMESTAMP}')
+            self.TRAIN_TIMESTAMP = pickle.load(handle)
+        log.info(f'TRAIN_TIMESTAMP: {self.TRAIN_TIMESTAMP}')
 
+    def get_raw_model(self, context):
+        with open(context.artifacts["TRAIN_TIMESTAMP"], 'rb') as handle:
+            TRAIN_TIMESTAMP = pickle.load(handle)
+        return TRAIN_TIMESTAMP
 
     def __repr__(self):
         return self.model.__repr__()
@@ -126,7 +130,3 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
 
         return TimeSeries.to_json(pred_series)
     
-# Changed the output format of prediction function due to the folowing exception error:
-# Exception: Request failed with status 400, 
-# {"error_code": "BAD_REQUEST", "message": "Encountered an unexpected error while converting model response to JSON.Error 
-# 'Object of type TimeSeries is not JSON serializable'"
