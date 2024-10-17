@@ -123,10 +123,11 @@ forcasted_data = st.container()
 with forcasted_data:
 
     from PIL import Image
-    # image = Image.open('./imgs/app_background.PNG')
-    # st.image(image)
+    image = Image.open('./imgs/wind_farm.png')
+    st.image(image)
 
     st.title('SPP Weis Nodal Price Forecast')
+    st.write('**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)**')
 
     st.session_state.refresh_data = st.button('Refresh data')
     log.info(f'st.session_state.refresh_data: {st.session_state.refresh_data}')
@@ -140,10 +141,11 @@ with forcasted_data:
         log.info('loading data')
 
         with st.spinner('Loading LMP data...'):
-            con = ibis.duckdb.connect(
-                "/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", 
-                read_only=True
-                )
+            con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+            # con = ibis.duckdb.connect(
+            #     "/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", 
+            #     read_only=True
+            #     )
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
             st.session_state['lmp'] = de.prep_lmp(con)
             st.session_state['lmp_pd_df'] = (
@@ -160,6 +162,7 @@ with forcasted_data:
 
         with st.spinner('Loading model'):
             os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
+            # os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///teamspace/studios/model_train/spp_weis_price_forecast/mlruns.db'
             log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
             # model uri for the above model
@@ -233,9 +236,12 @@ with st.sidebar:
 
         st.session_state.get_fcast_btn = st.form_submit_button('Get forecast')
 
-        # model_trained = st.session_state.loaded_model.TRAIN_TIMESTAMP
-        st.markdown('Model last trained:')
-        st.markdown(f'**{st.session_state.TRAIN_TIMESTAMP}**')
+    # model_trained = st.session_state.loaded_model.TRAIN_TIMESTAMP
+    st.markdown('**NOTES:**')
+    st.markdown('Data is updated every 4-6 hours')
+    st.markdown('Model last trained:')
+    st.markdown(f'**{st.session_state.TRAIN_TIMESTAMP}**')
+    
 
 log.info(f'st.session_state.submitted1: {st.session_state.get_fcast_btn}')
 

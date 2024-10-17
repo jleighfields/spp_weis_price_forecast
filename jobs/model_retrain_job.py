@@ -18,12 +18,15 @@ log.info("starting Studio...")
 s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'Machine.L4':
-    s.switch_machine(machine=Machine.L4)
+# if str(s.machine) != 'Machine.L4':
+#     s.switch_machine(machine=Machine.L4)
+
+if str(s.machine) != 'Machine.CPU':
+    s.switch_machine(machine=Machine.CPU)
 
 # ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
-s.auto_shutdown = True
-s.auto_shutdown_time = 2 * 60  # the time is in seconds for granular control
+# s.auto_shutdown = True
+# s.auto_shutdown_time = 2 * 60  # the time is in seconds for granular control
 
 i = 0
 while str(s.status) != 'Status.Running':
@@ -38,6 +41,6 @@ try:
 except Exception as e:
         log.error("command failed with error: ", e)
 
-s.switch_machine(Machine.CPU)
+# s.switch_machine(Machine.CPU)
 
 log.info("Job complete")

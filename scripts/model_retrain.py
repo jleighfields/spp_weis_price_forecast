@@ -103,7 +103,8 @@ log.info(f'INPUT_CHUNK_LENGTH: {params.INPUT_CHUNK_LENGTH}')
 # connect to database and prepare data
 print('\n' + '*'*40)
 log.info('preparing data')
-con = ibis.duckdb.connect("/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", read_only=True)
+# con = ibis.duckdb.connect("/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", read_only=True)
+con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
 
 lmp = de.prep_lmp(con)
 lmp_df = lmp.to_pandas().rename(
