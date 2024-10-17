@@ -24,6 +24,9 @@ log.info(f's.machine: {s.machine}')
 if str(s.machine) != 'Machine.CPU':
     s.switch_machine(machine=Machine.CPU)
 
+# give some time for environment to be created
+time.sleep(60)
+
 # ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
 # s.auto_shutdown = True
 # s.auto_shutdown_time = 2 * 60  # the time is in seconds for granular control
