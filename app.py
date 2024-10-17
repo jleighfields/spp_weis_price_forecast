@@ -356,6 +356,13 @@ if 'preds' in st.session_state:
 
     plot_idx = plotting.get_plot_idx(plot_df)
     display_data = plot_df[plot_idx]
+    # configure columns for displaying and downloading data
+    download_cols = [
+        'node', 'time', 'LMP_HOURLY', 'mean_fcast', 0.1, 0.5, 0.9,
+        'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 'Ratio'
+        ]
+    display_data = display_data.loc[:, download_cols]
+    log.info(f'display_data.columns: {display_data.columns}')
     csv = convert_df(display_data)
 
     st.write('### Forcast data')
