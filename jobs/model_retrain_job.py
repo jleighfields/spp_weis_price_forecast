@@ -15,7 +15,8 @@ log = logging.getLogger(__name__)
 load_dotenv()  # take environment variables from .env.
 
 log.info("starting Studio...")
-s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
+# s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
+s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
 log.info(f's.machine: {s.machine}')
 # if str(s.machine) != 'Machine.L4':

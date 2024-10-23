@@ -273,7 +273,7 @@ def plotly_forecast(
     else:
         err = '-'
 
-    ci_idx = ~plotly_data.mean_fcast.isna()
+    ci_idx = (~plotly_data.mean_fcast.isna()) & (~plotly_data.LMP_HOURLY.isna())
     plotly_data['ci_error'] = (plotly_data.LMP_HOURLY < plotly_data[0.1]) | (plotly_data.LMP_HOURLY > plotly_data[0.9])
     ci_error = plotly_data.ci_error[ci_idx].mean()
 
