@@ -47,7 +47,7 @@ import params
 # parameters for column names
 #############################################
 FUTR_COLS = ['MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 're_ratio', 're_diff'] #, 're_diff_sum']
-PAST_COLS = ['Averaged_Actual']
+PAST_COLS = ['Averaged_Actual', 'lmp_diff'] #
 Y = ['LMP']
 IDS = ['unique_id']
 
@@ -176,9 +176,10 @@ def prep_all_df(
     all_df = (
         all_df
         .drop_null(['unique_id'])
+        .group_by(['unique_id'])
         .mutate(re_ratio = (_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF)
         .mutate(re_diff = _.re_ratio - _.re_ratio.lag(1))
-        # .mutate(re_diff_sum =_.re_diff + _.re_diff.lag(1))
+        .mutate(lmp_diff =_.LMP - _.LMP.lag(1))
     )
 
     return all_df
