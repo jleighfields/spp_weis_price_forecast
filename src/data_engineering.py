@@ -70,9 +70,12 @@ def prep_lmp(
         'MLC', 'MCC', 'MEC'
     ]
 
+    if not start_time:
+        # get last 1.5 years
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        
     # TODO: handle checks for start_time < end_time
-    if start_time:
-        lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
+    lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
 
     if end_time:
         lmp = lmp.filter(_.timestamp_mst_HE <= end_time)
@@ -81,7 +84,7 @@ def prep_lmp(
         lmp
         .mutate(unique_id=_.Settlement_Location_Name)
         .mutate(timestamp_mst=_.timestamp_mst_HE)
-        # .mutate(y = _.LMP) 
+        .mutate(LMP=_.LMP.cast(params.PRECISION))
         .drop(drop_cols)
         .order_by(['unique_id', 'timestamp_mst'])
     )
@@ -98,16 +101,20 @@ def prep_mtrf(
     mtrf = con.table('mtrf')
     drop_cols = ['Interval', 'GMTIntervalEnd']
 
+    if not start_time:
+        # get last 1.5 years
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        
     # TODO: handle checks for start_time < end_time
-    if start_time:
-        mtrf = mtrf.filter(_.timestamp_mst >= start_time)
+    mtrf = mtrf.filter(_.timestamp_mst >= start_time)
 
     if end_time:
         mtrf = mtrf.filter(_.timestamp_mst <= end_time)
 
     mtrf = (
         mtrf
-        # .mutate(ds = _.timestamp_mst)
+        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(params.PRECISION))
+        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(params.PRECISION))
         .drop(drop_cols) 
         .order_by(['timestamp_mst'])
     )
@@ -124,16 +131,20 @@ def prep_mtlf(
     mtlf = con.table('mtlf')
     drop_cols = ['Interval', 'GMTIntervalEnd',]
 
+    if not start_time:
+        # get last 1.5 years
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        
     # TODO: handle checks for start_time < end_time
-    if start_time:
-        mtlf = mtlf.filter(_.timestamp_mst >= start_time)
+    mtlf = mtlf.filter(_.timestamp_mst >= start_time)
 
     if end_time:
         mtlf = mtlf.filter(_.timestamp_mst <= end_time)
 
     mtlf = (
         mtlf
-        # .mutate(ds = _.timestamp_mst)
+        .mutate(MTLF=_.MTLF.cast(params.PRECISION))
+        .mutate(Averaged_Actual=_.Averaged_Actual.cast(params.PRECISION))
         .drop(drop_cols) 
         .order_by(['timestamp_mst'])
     )
@@ -180,6 +191,19 @@ def prep_all_df(
         .mutate(re_ratio = (_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF)
         .mutate(re_diff = _.re_ratio - _.re_ratio.lag(1))
         .mutate(lmp_diff =_.LMP - _.LMP.lag(1))
+    )
+
+    # convert precision for model training
+    all_df = (
+        all_df
+        .mutate(MTLF=_.MTLF.cast(params.PRECISION))
+        .mutate(Averaged_Actual=_.Averaged_Actual.cast(params.PRECISION))
+        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(params.PRECISION))
+        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(params.PRECISION))
+        .mutate(LMP=_.LMP.cast(params.PRECISION))
+        .mutate(re_ratio=_.re_ratio.cast(params.PRECISION))
+        .mutate(re_diff=_.re_diff.cast(params.PRECISION))
+        .mutate(lmp_diff=_.lmp_diff.cast(params.PRECISION))
     )
 
     return all_df

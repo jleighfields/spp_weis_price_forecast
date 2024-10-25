@@ -179,7 +179,8 @@ def build_fit_tsmixerx(
     # reload best model over course of training
     model = TSMixerModel.load_from_checkpoint(
         work_dir=work_dir,
-        model_name=MODEL_TYPE
+        model_name=MODEL_TYPE,
+        best=False,
     )
     
     model.MODEL_TYPE = MODEL_TYPE
@@ -284,7 +285,8 @@ def build_fit_tide(
     # reload best model over course of training
     model = TiDEModel.load_from_checkpoint(
         work_dir=work_dir,
-        model_name=MODEL_TYPE
+        model_name=MODEL_TYPE,
+        best=False,
     )
     
     model.MODEL_TYPE = MODEL_TYPE
@@ -298,16 +300,16 @@ def build_fit_tft(
     val_series: List[TimeSeries],
     future_covariates: List[TimeSeries],
     past_covariates: List[TimeSeries],
-    hidden_size: int=12, # Hidden state size of the TFT. It is the main hyper-parameter and common across the internal TFT architecture.
-    lstm_layers: int = 1, # Number of layers for the Long Short Term Memory (LSTM) Encoder and Decoder (1 is a good default).
-    num_attention_heads: int=2, # Number of attention heads (4 is a good default)
-    dropout: float=0.1,
+    hidden_size: int=9, # Hidden state size of the TFT. It is the main hyper-parameter and common across the internal TFT architecture.
+    lstm_layers: int=4, # Number of layers for the Long Short Term Memory (LSTM) Encoder and Decoder (1 is a good default).
+    num_attention_heads: int=1, # Number of attention heads (4 is a good default)
+    dropout: float=0.49,
     full_attention: bool=True,
     forecast_horizon: int=params.FORECAST_HORIZON,
     input_chunk_length: int=params.INPUT_CHUNK_LENGTH,
-    lr: float=2.5e-4,
-    batch_size: int=32,
-    n_epochs: int=6,
+    lr: float=1.0e-3,
+    batch_size: int=64,
+    n_epochs: int=3,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
 ):
@@ -384,7 +386,8 @@ def build_fit_tft(
     # reload best model over course of training
     model = TFTModel.load_from_checkpoint(
         work_dir=work_dir,
-        model_name=MODEL_TYPE
+        model_name=MODEL_TYPE,
+        best=False,
     )
     
     model.MODEL_TYPE = MODEL_TYPE
