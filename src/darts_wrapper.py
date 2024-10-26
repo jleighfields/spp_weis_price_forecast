@@ -30,16 +30,19 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             DLinearModel,
             NLinearModel,
             TSMixerModel,
+            NaiveEnsembleModel,
+            RegressionEnsembleModel,
         )
         import pickle
         # print(f'context.artifacts: {context.artifacts}')
         # device = 0 if torch.cuda.is_available() else -1
 
         # load model type
-        with open(context.artifacts["MODEL_TYPE"], 'rb') as handle:
+        with open(context.artifacts["MODEL_TYPE.pkl"], 'rb') as handle:
             self.MODEL_TYPE = pickle.load(handle)
         log.info(f'MODEL_TYPE: {self.MODEL_TYPE}')
 
+        
         # load scalers
         # with open(context.artifacts["scalers"], 'rb') as handle:
         #     self.scalers = pickle.load(handle)
@@ -60,20 +63,22 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
         elif self.MODEL_TYPE == "ts_mixer_model":
             self.model = TSMixerModel.load(context.artifacts["model"], map_location=torch.device('cpu'))
 
+        elif self.MODEL_TYPE == 'naive_ens':
+            self.model = NaiveEnsembleModel.load(context.artifacts["model"])
+
+        elif self.MODEL_TYPE == 'reg_ens':
+            self.model = RegressionEnsembleModel.load(context.artifacts["model"])
+
         # TODO: add ensemble models
             
         else:
             raise ValueError(f'Unsuported MODEL_TYPE: {self.MODEL_TYPE}')
 
         # load model train time
-        with open(context.artifacts["TRAIN_TIMESTAMP"], 'rb') as handle:
-            self.TRAIN_TIMESTAMP = pickle.load(handle)
-        log.info(f'TRAIN_TIMESTAMP: {self.TRAIN_TIMESTAMP}')
+        with open(context.artifacts["TRAIN_TIMESTAMP.pkl"], 'rb') as handle:
+            self.model.TRAIN_TIMESTAMP = pickle.load(handle)
+        log.info(f'TRAIN_TIMESTAMP: {self.model.TRAIN_TIMESTAMP}')
 
-    def get_raw_model(self, context):
-        with open(context.artifacts["TRAIN_TIMESTAMP"], 'rb') as handle:
-            TRAIN_TIMESTAMP = pickle.load(handle)
-        return TRAIN_TIMESTAMP
 
     def __repr__(self):
         return self.model.__repr__()
@@ -130,3 +135,7 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
 
         return TimeSeries.to_json(pred_series)
     
+# Changed the output format of prediction function due to the folowing exception error:
+# Exception: Request failed with status 400, 
+# {"error_code": "BAD_REQUEST", "message": "Encountered an unexpected error while converting model response to JSON.Error 
+# 'Object of type TimeSeries is not JSON serializable'"

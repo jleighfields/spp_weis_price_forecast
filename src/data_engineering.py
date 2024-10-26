@@ -235,13 +235,15 @@ def get_train_test_all(
     log.info(f'tr_tst_split: {tr_tst_split}')
     log.info(f'test_end: {test_end}')
 
-    train_idx = (lmp_all.index < tr_tst_split) & (lmp_all.index > train_start)
+    train_idx =  (lmp_all.index > train_start) & (lmp_all.index < tr_tst_split)
     test_idx = (lmp_all.index > tr_tst_split) & (lmp_all.index < test_end)
+    all_idx = (lmp_all.index > train_start) & (lmp_all.index < test_end)
     
     train_all = lmp_all[train_idx]
     test_all = lmp_all[test_idx]
+    train_test_all = lmp_all[all_idx]
 
-    return lmp_all, train_all, test_all
+    return lmp_all, train_all, test_all, train_test_all
 
 
 def fill_missing(series):
@@ -250,7 +252,7 @@ def fill_missing(series):
         series[i] = transformer.transform(series[i])
 
 
-def get_all_series(lmp_all):
+def get_series(lmp_all):
 
     all_series = TimeSeries.from_group_dataframe(
         lmp_all,
@@ -262,30 +264,6 @@ def get_all_series(lmp_all):
     
     fill_missing(all_series) 
     return all_series
-
-
-def get_train_series(train_all):
-    train_series = TimeSeries.from_group_dataframe(
-        train_all,
-        group_cols=IDS,
-        value_cols=Y,
-        fill_missing_dates=True,
-        freq='h',
-    )
-    fill_missing(train_series)
-    return train_series
-
-
-def get_test_series(test_all):
-    test_series = TimeSeries.from_group_dataframe(
-        test_all,
-        group_cols=IDS,
-        value_cols=Y,
-        fill_missing_dates=True,
-        freq='h',
-    )
-    fill_missing(test_series)
-    return test_series
 
 
 def get_futr_cov(all_df_pd):
