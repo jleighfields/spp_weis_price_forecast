@@ -45,7 +45,8 @@ from darts.models import (
     TiDEModel,
     DLinearModel,
     NLinearModel,
-    TSMixerModel
+    TSMixerModel,
+    NaiveEnsembleModel,
 )
 
 
@@ -91,7 +92,7 @@ log.info(f'os.listdir(): {os.listdir()}')
 # from module path
 import data_engineering as de
 import params
-from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, log_pretty
+from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, build_fit_tide, log_pretty
 
 ## will be loaded from root when deployed
 from darts_wrapper import DartsGlobalModel
@@ -119,12 +120,13 @@ all_df = de.prep_all_df(con)
 all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
 
-lmp_all, train_all, test_all = de.get_train_test_all(con)
+lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(con)
 con.disconnect()
 
-all_series = de.get_all_series(lmp_all)
-train_series = de.get_train_series(train_all)
-test_series = de.get_test_series(test_all)
+all_series = de.get_series(lmp_all)
+train_test_all_series = de.get_series(train_test_all)
+train_series = de.get_series(train_all)
+test_series = de.get_series(test_all)
 
 futr_cov = de.get_futr_cov(all_df_pd)
 past_cov = de.get_past_cov(all_df_pd)
@@ -159,15 +161,36 @@ ouput_example = 'the endpoint return json as a string'
 darts_signature = infer_signature(df, ouput_example)
 
 
+## build pretrained models   
+model_tsmixer = build_fit_tsmixerx(
+    series=train_test_all_series,
+    val_series=test_series,
+    future_covariates=futr_cov,
+    past_covariates=past_cov,
+)
+
+model_tide = build_fit_tide(
+    series=train_test_all_series,
+    val_series=test_series,
+    future_covariates=futr_cov,
+    past_covariates=past_cov,
+)
+
+
 # Refit and log model with best params
-log.info('refit model')
+log.info('log ensemble model')
 with mlflow.start_run(experiment_id=exp.experiment_id) as run:
-    model = build_fit_tsmixerx(
-        series=train_series,
-        val_series=test_series,
-        future_covariates=futr_cov,
-        past_covariates=past_cov,
+
+    MODEL_TYPE = 'naive_ens'
+    
+    # fit model with best params from study
+    model = NaiveEnsembleModel(
+        forecasting_models=[model_tsmixer, model_tide], 
+        train_forecasting_models=False
     )
+
+    model.MODEL_TYPE = MODEL_TYPE
+    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
     
     log.info(f'run.info: \n{run.info}')
     artifact_path = "model_artifacts"
@@ -181,13 +204,14 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         past_covariates=past_cov,
         future_covariates=futr_cov,
         retrain=False,
-        forecast_horizon=model_params['output_chunk_length'],
+        forecast_horizon=params.FORECAST_HORIZON,
         stride=25,
         metric=[mae, rmse, get_ci_err],
         verbose=False,
         num_samples=200,
     )
 
+    # log.info(f'BACKTEST: acc: {acc}')
     log.info(f'BACKTEST: np.mean(acc, axis=0): {np.mean(acc, axis=0)}')
     acc_df = pd.DataFrame(
         np.mean(acc, axis=0).reshape(1,-1),
@@ -200,14 +224,14 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
     metrics['test_ci_error'] = acc_df.ci_error[0]
 
     # final training
-    final_train_series = test_series
-    log.info('final training')
-    model.fit(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            verbose=True,
-            )
+    # final_train_series = test_series
+    # log.info('final training')
+    # model.fit(
+    #         series=test_series,
+    #         past_covariates=past_cov,
+    #         future_covariates=futr_cov,
+    #         verbose=True,
+    #         )
     
     # final model back test on validation data
     acc = model.backtest(
@@ -215,7 +239,7 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
             past_covariates=past_cov,
             future_covariates=futr_cov,
             retrain=False,
-            forecast_horizon=model_params['output_chunk_length'],
+            forecast_horizon=params.FORECAST_HORIZON,
             stride=25,
             metric=[mae, rmse, get_ci_err],
             verbose=False,
@@ -256,14 +280,16 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
     model_timestamp = '/'.join([artifact_path, 'TRAIN_TIMESTAMP.pkl'])
     with open(model_timestamp, 'wb') as handle:
         pickle.dump(model.TRAIN_TIMESTAMP, handle)
-
+    
     # map model artififacts in dictionary
-    artifacts = {
-        'model': model_path,
-        'model.ckpt': model_path + '.ckpt',
-        'MODEL_TYPE': model_type_path,
-        'TRAIN_TIMESTAMP': model_timestamp,
-    }
+    # artifacts = {
+    #     'model': model_path,
+    #     'model.ckpt': model_path+'.ckpt',
+    #     'MODEL_TYPE': model_type_path,
+    #     'TRAIN_TIMESTAMP': model_timestamp,
+    # }
+    artifacts = {f:f'{artifact_path}/{f}' for f in os.listdir('model_artifacts')}
+    artifacts['model'] = model_path
     
     # log model
     # https://www.mlflow.org/docs/latest/tutorials-and-examples/tutorial.html#pip-requirements-example
