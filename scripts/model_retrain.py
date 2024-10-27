@@ -162,30 +162,43 @@ darts_signature = infer_signature(df, ouput_example)
 
 
 ## build pretrained models   
-model_tsmixer = build_fit_tsmixerx(
-    series=train_test_all_series,
-    val_series=test_series,
-    future_covariates=futr_cov,
-    past_covariates=past_cov,
-)
+models_tsmixer = []
+for i, param in enumerate(params.TSMIXER_PARAMS):
+    print(f'\ni: {i} \t' + '*'*25, flush=True)
+    model_tsmixer = build_fit_tsmixerx(
+        series=train_test_all_series,
+        val_series=test_series,
+        future_covariates=futr_cov,
+        past_covariates=past_cov,
+        **param
+    )
+    models_tsmixer += [model_tsmixer]
 
-model_tide = build_fit_tide(
-    series=train_test_all_series,
-    val_series=test_series,
-    future_covariates=futr_cov,
-    past_covariates=past_cov,
-)
+models_tide = []
+for i, param in enumerate(params.TIDE_PARAMS):
+    print(f'\ni: {i} \t' + '*'*25, flush=True)
+    model_tide = build_fit_tide(
+        series=train_test_all_series,
+        val_series=test_series,
+        future_covariates=futr_cov,
+        past_covariates=past_cov,
+        **param
+    )
+    models_tide += [model_tide]
 
 
 # Refit and log model with best params
 log.info('log ensemble model')
+
+# supress training logging
+# logging.disable(logging.WARNING)
 with mlflow.start_run(experiment_id=exp.experiment_id) as run:
 
     MODEL_TYPE = 'naive_ens'
     
     # fit model with best params from study
     model = NaiveEnsembleModel(
-        forecasting_models=[model_tsmixer, model_tide], 
+        forecasting_models=models_tsmixer + models_tide, 
         train_forecasting_models=False
     )
 
@@ -198,40 +211,30 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
     model_params = model.model_params
     
     # back test on validation data
-    acc = model.backtest(
-        series=test_series,
-        # series=all_series,
-        past_covariates=past_cov,
-        future_covariates=futr_cov,
-        retrain=False,
-        forecast_horizon=params.FORECAST_HORIZON,
-        stride=25,
-        metric=[mae, rmse, get_ci_err],
-        verbose=False,
-        num_samples=200,
-    )
+    # acc = model.backtest(
+    #     series=test_series,
+    #     # series=all_series,
+    #     past_covariates=past_cov,
+    #     future_covariates=futr_cov,
+    #     retrain=False,
+    #     forecast_horizon=params.FORECAST_HORIZON,
+    #     stride=25,
+    #     metric=[mae, rmse, get_ci_err],
+    #     verbose=False,
+    #     num_samples=200,
+    # )
 
-    # log.info(f'BACKTEST: acc: {acc}')
-    log.info(f'BACKTEST: np.mean(acc, axis=0): {np.mean(acc, axis=0)}')
-    acc_df = pd.DataFrame(
-        np.mean(acc, axis=0).reshape(1,-1),
-        columns=['mae', 'rmse', 'ci_error']
-    )
+    # # log.info(f'BACKTEST: acc: {acc}')
+    # log.info(f'BACKTEST: np.mean(acc, axis=0): {np.mean(acc, axis=0)}')
+    # acc_df = pd.DataFrame(
+    #     np.mean(acc, axis=0).reshape(1,-1),
+    #     columns=['mae', 'rmse', 'ci_error']
+    # )
 
-    # add metrics
-    metrics['test_mae'] = acc_df.mae[0]
-    metrics['test_rmse'] = acc_df.rmse[0]
-    metrics['test_ci_error'] = acc_df.ci_error[0]
-
-    # final training
-    # final_train_series = test_series
-    # log.info('final training')
-    # model.fit(
-    #         series=test_series,
-    #         past_covariates=past_cov,
-    #         future_covariates=futr_cov,
-    #         verbose=True,
-    #         )
+    # # add metrics
+    # metrics['test_mae'] = acc_df.mae[0]
+    # metrics['test_rmse'] = acc_df.rmse[0]
+    # metrics['test_ci_error'] = acc_df.ci_error[0]
     
     # final model back test on validation data
     acc = model.backtest(
@@ -240,15 +243,16 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
             future_covariates=futr_cov,
             retrain=False,
             forecast_horizon=params.FORECAST_HORIZON,
-            stride=25,
+            stride=49,
             metric=[mae, rmse, get_ci_err],
             verbose=False,
             num_samples=200,
         )
 
-    log.info(f'FINAL ACC: np.mean(acc, axis=0): {np.mean(acc, axis=0)}')
+    mean_acc = np.mean(acc, axis=0)
+    log.info(f'FINAL ACC: mae - {mean_acc[0]} | rmse - {mean_acc[1]} | ci_err - {mean_acc[2]}')
     acc_df = pd.DataFrame(
-        np.mean(acc, axis=0).reshape(1,-1),
+        mean_acc.reshape(1,-1),
         columns=['mae', 'rmse', 'ci_error']
     )
 
@@ -303,6 +307,8 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         registered_model_name=MODEL_NAME,
     )
 
+
+logging.basicConfig(level=logging.INFO)
 
 # test predictions on latest run
 print('\n' + '*'*40)
