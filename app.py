@@ -162,7 +162,7 @@ with forcasted_data:
 
         with st.spinner('Loading model'):
             os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
-            # os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///teamspace/studios/model_train/spp_weis_price_forecast/mlruns.db'
+            # os.environ['MLFLOW_TRACKING_URI'] = 'file:///teamspace/studios/model-train/spp_weis_price_forecast/mlruns'
             log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
             # model uri for the above model
@@ -272,7 +272,7 @@ if st.session_state.get_fcast_btn:
     plot_cov_df = st.session_state.all_df_pd[idx]
 
     # prepare data for getting predictions
-    plot_series = de.get_all_series(price_df)[0]
+    plot_series = de.get_series(price_df)[0]
     future_cov_series = de.get_futr_cov(plot_cov_df)[0]
     past_cov_series = de.get_past_cov(plot_cov_df)[0]
     node_series = plot_series
