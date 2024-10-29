@@ -1,6 +1,7 @@
 FORECAST_HORIZON = 24*5
 INPUT_CHUNK_LENGTH = 2*FORECAST_HORIZON
 PRECISION = 'float32'
+MODEL_NAME = 'spp_weis'
 
 # best tsmixer model params from optuna experiment
 TSMIXER_PARAMS = [
