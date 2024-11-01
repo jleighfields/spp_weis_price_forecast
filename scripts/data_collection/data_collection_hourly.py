@@ -1,19 +1,11 @@
-# Data collection 5 minute intervals
-# Gather public SPP Weis data from https://marketplace.spp.org/groups/operational-data-weis
+'''
+Gather the last 24 hours of 5 minute lmps and
+the last 24 hours of load and resource forecasts
+https://marketplace.spp.org/groups/operational-data-weis
+'''
+
 import sys
 import os
-import shutil
-import pandas as pd
-import duckdb
-
-import requests
-from io import StringIO
-
-import ibis
-import ibis.selectors as s
-ibis.options.interactive = True
-
-# logging
 import logging
 
 # define log
@@ -47,8 +39,6 @@ dc.collect_upsert_mtlf(n_periods=24)
 
 log.info('GETTING MTRF')
 dc.collect_upsert_mtrf(n_periods=24)
-
-# log.info('copying database')
 
 log.info('FINISHED')
 

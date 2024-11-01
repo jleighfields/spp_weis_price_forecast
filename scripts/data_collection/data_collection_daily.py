@@ -1,18 +1,10 @@
-# Data collection 5 minute intervals
-# Gather public SPP Weis data from https://marketplace.spp.org/groups/operational-data-weis
+
+'''
+Gather daily 5 minute lmp files from SPP Weis: https://marketplace.spp.org/groups/operational-data-weis
+'''
+
 import sys
 import os
-import pandas as pd
-import duckdb
-
-import requests
-from io import StringIO
-
-import ibis
-import ibis.selectors as s
-ibis.options.interactive = True
-
-# logging
 import logging
 
 # define log
