@@ -8,13 +8,9 @@ Streamlit interface for SPP Weis LMP forecasting endpoint
 import os
 import pickle
 import logging
-import json
-import datetime
-from typing import List, Tuple
-import requests
+from typing import List
 
 # data
-import numpy as np
 import pandas as pd
 import ibis
 
@@ -28,7 +24,7 @@ import mlflow
 # custom modules
 import src.data_engineering as de
 from src import plotting
-from src import params
+from src import parameters
 
 # define log
 logging.basicConfig(level=logging.INFO)
@@ -283,7 +279,7 @@ if st.session_state.get_fcast_btn:
         'series': [node_series.to_json()],
         'past_covariates': [past_cov_series.to_json()],
         'future_covariates': [future_cov_series.to_json()],
-        'n': params.FORECAST_HORIZON,
+        'n': parameters.FORECAST_HORIZON,
         'num_samples': 200
     }
     df = pd.DataFrame(data)

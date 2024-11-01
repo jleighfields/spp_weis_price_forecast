@@ -44,7 +44,7 @@ for module_path in module_paths:
         sys.path.insert(0, module_path)
 
 # global user defined parameters
-import params
+import parameters
 
 # set up pretty printer
 import pprint
@@ -65,8 +65,8 @@ def build_fit_tsmixerx(
         hidden_size: int = 10,
         ff_size: int = 27,
         num_blocks: int = 3,
-        forecast_horizon: int = params.FORECAST_HORIZON,
-        input_chunk_length: int = params.INPUT_CHUNK_LENGTH,
+        forecast_horizon: int = parameters.FORECAST_HORIZON,
+        input_chunk_length: int = parameters.INPUT_CHUNK_LENGTH,
         lr: float = 8e-4,
         batch_size: int = 64,
         n_epochs: int = 8,
@@ -154,8 +154,8 @@ def build_fit_tide(
         temporal_decoder_hidden: int = 20,
         temporal_hidden_size_past: int = 4,
         temporal_hidden_size_future: int = 24,
-        forecast_horizon: int = params.FORECAST_HORIZON,
-        input_chunk_length: int = params.INPUT_CHUNK_LENGTH,
+        forecast_horizon: int = parameters.FORECAST_HORIZON,
+        input_chunk_length: int = parameters.INPUT_CHUNK_LENGTH,
         lr: float = 3e-4,
         batch_size: int = 64,
         n_epochs: int = 10,
@@ -247,8 +247,8 @@ def build_fit_tft(
         num_attention_heads: int = 1,  # Number of attention heads (4 is a good default)
         dropout: float = 0.49,
         full_attention: bool = True,
-        forecast_horizon: int = params.FORECAST_HORIZON,
-        input_chunk_length: int = params.INPUT_CHUNK_LENGTH,
+        forecast_horizon: int = parameters.FORECAST_HORIZON,
+        input_chunk_length: int = parameters.INPUT_CHUNK_LENGTH,
         lr: float = 1.0e-3,
         batch_size: int = 64,
         n_epochs: int = 3,

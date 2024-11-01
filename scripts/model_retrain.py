@@ -50,16 +50,16 @@ log.info(f'os.listdir(): {os.listdir()}')
 
 # from module path
 import data_engineering as de
-import params
+import parameters
 from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, build_fit_tide, log_pretty
 
 # will be loaded from root when deployed
 from darts_wrapper import DartsGlobalModel
 
 # check parameters
-log.info(f'FORECAST_HORIZON: {params.FORECAST_HORIZON}')
-log.info(f'INPUT_CHUNK_LENGTH: {params.INPUT_CHUNK_LENGTH}')
-log.info(f'MODEL_NAME: {params.MODEL_NAME}')
+log.info(f'FORECAST_HORIZON: {parameters.FORECAST_HORIZON}')
+log.info(f'INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}')
+log.info(f'MODEL_NAME: {parameters.MODEL_NAME}')
 
 # connect to database and prepare data
 print('\n' + '*' * 40)
@@ -95,10 +95,10 @@ print('\n' + '*' * 40)
 os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
 log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
-if mlflow.get_experiment_by_name(params.MODEL_NAME) is None:
-    _ = mlflow.create_experiment(params.MODEL_NAME)
+if mlflow.get_experiment_by_name(parameters.MODEL_NAME) is None:
+    _ = mlflow.create_experiment(parameters.MODEL_NAME)
 
-exp = mlflow.get_experiment_by_name(params.MODEL_NAME)
+exp = mlflow.get_experiment_by_name(parameters.MODEL_NAME)
 
 # Get model signature
 node_series = train_series[0]
@@ -109,7 +109,7 @@ data = {
     'series': [node_series.to_json()],
     'past_covariates': [past_cov_series.to_json()],
     'future_covariates': [future_cov_series.to_json()],
-    'n': params.FORECAST_HORIZON,
+    'n': parameters.FORECAST_HORIZON,
     'num_samples': 200
 }
 
@@ -119,7 +119,7 @@ darts_signature = infer_signature(df, ouput_example)
 
 # build pretrained models
 models_tsmixer = []
-for i, param in enumerate(params.TSMIXER_PARAMS):
+for i, param in enumerate(parameters.TSMIXER_PARAMS):
     print(f'\ni: {i} \t' + '*' * 25, flush=True)
     model_tsmixer = build_fit_tsmixerx(
         series=train_test_all_series,
@@ -131,7 +131,7 @@ for i, param in enumerate(params.TSMIXER_PARAMS):
     models_tsmixer += [model_tsmixer]
 
 models_tide = []
-for i, param in enumerate(params.TIDE_PARAMS):
+for i, param in enumerate(parameters.TIDE_PARAMS):
     print(f'\ni: {i} \t' + '*' * 25, flush=True)
     model_tide = build_fit_tide(
         series=train_test_all_series,
@@ -170,7 +170,7 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         past_covariates=past_cov,
         future_covariates=futr_cov,
         retrain=False,
-        forecast_horizon=params.FORECAST_HORIZON,
+        forecast_horizon=parameters.FORECAST_HORIZON,
         stride=49,
         metric=[mae, rmse, get_ci_err],
         verbose=False,
@@ -226,7 +226,7 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         artifacts=artifacts,
         python_model=DartsGlobalModel(),
         pip_requirements=["-r notebooks/model_training/requirements.txt"],
-        registered_model_name=params.MODEL_NAME,
+        registered_model_name=parameters.MODEL_NAME,
     )
 
 logging.basicConfig(level=logging.INFO)
@@ -237,16 +237,16 @@ log.info('loading model from mlflow for testing')
 client = MlflowClient()
 
 
-def get_latest_registered_model_version(model_name=params.MODEL_NAME):
+def get_latest_registered_model_version(model_name=parameters.MODEL_NAME):
     filter_string = f"name='{model_name}'"
     results = client.search_registered_models(filter_string=filter_string)
     return results[0].latest_versions[0].version
 
 
-client.set_registered_model_alias(params.MODEL_NAME, "champion", get_latest_registered_model_version())
+client.set_registered_model_alias(parameters.MODEL_NAME, "champion", get_latest_registered_model_version())
 
 # model uri for the above model
-model_uri = f"models:/{params.MODEL_NAME}@champion"
+model_uri = f"models:/{parameters.MODEL_NAME}@champion"
 
 # Load the model and access the custom metadata
 loaded_model = mlflow.pyfunc.load_model(model_uri=model_uri)
@@ -255,7 +255,7 @@ log.info('test getting predictions')
 plot_ind = 3
 plot_series = all_series[plot_ind]
 
-plot_end_time = plot_series.end_time() - pd.Timedelta(f'{params.INPUT_CHUNK_LENGTH + 1}h')
+plot_end_time = plot_series.end_time() - pd.Timedelta(f'{parameters.INPUT_CHUNK_LENGTH + 1}h')
 log.info(f'plot_end_time: {plot_end_time}')
 
 plot_node_name = plot_series.static_covariates.unique_id.LMP

@@ -38,7 +38,7 @@ for module_path in module_paths:
         sys.path.insert(0, module_path)
 
 # from src import params
-import params
+import parameters
 
 
 #############################################
@@ -82,7 +82,7 @@ def prep_lmp(
         lmp
         .mutate(unique_id=_.Settlement_Location_Name)
         .mutate(timestamp_mst=_.timestamp_mst_HE)
-        .mutate(LMP=_.LMP.cast(params.PRECISION))
+        .mutate(LMP=_.LMP.cast(parameters.PRECISION))
         .drop(drop_cols)
         .order_by(['unique_id', 'timestamp_mst'])
     )
@@ -111,8 +111,8 @@ def prep_mtrf(
 
     mtrf = (
         mtrf
-        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(params.PRECISION))
-        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(params.PRECISION))
+        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(parameters.PRECISION))
+        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(parameters.PRECISION))
         .drop(drop_cols)
         .order_by(['timestamp_mst'])
     )
@@ -141,8 +141,8 @@ def prep_mtlf(
 
     mtlf = (
         mtlf
-        .mutate(MTLF=_.MTLF.cast(params.PRECISION))
-        .mutate(Averaged_Actual=_.Averaged_Actual.cast(params.PRECISION))
+        .mutate(MTLF=_.MTLF.cast(parameters.PRECISION))
+        .mutate(Averaged_Actual=_.Averaged_Actual.cast(parameters.PRECISION))
         .drop(drop_cols)
         .order_by(['timestamp_mst'])
     )
@@ -191,14 +191,14 @@ def prep_all_df(
     # convert precision for model training
     all_df = (
         all_df
-        .mutate(MTLF=_.MTLF.cast(params.PRECISION))
-        .mutate(Averaged_Actual=_.Averaged_Actual.cast(params.PRECISION))
-        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(params.PRECISION))
-        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(params.PRECISION))
-        .mutate(LMP=_.LMP.cast(params.PRECISION))
-        .mutate(re_ratio=_.re_ratio.cast(params.PRECISION))
-        .mutate(re_diff=_.re_diff.cast(params.PRECISION))
-        .mutate(lmp_diff=_.lmp_diff.cast(params.PRECISION))
+        .mutate(MTLF=_.MTLF.cast(parameters.PRECISION))
+        .mutate(Averaged_Actual=_.Averaged_Actual.cast(parameters.PRECISION))
+        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(parameters.PRECISION))
+        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(parameters.PRECISION))
+        .mutate(LMP=_.LMP.cast(parameters.PRECISION))
+        .mutate(re_ratio=_.re_ratio.cast(parameters.PRECISION))
+        .mutate(re_diff=_.re_diff.cast(parameters.PRECISION))
+        .mutate(lmp_diff=_.lmp_diff.cast(parameters.PRECISION))
     )
 
     return all_df
@@ -222,9 +222,9 @@ def get_train_test_all(
 
     # remove last week of prices since they might get revised
     test_end_buffer = 168
-    train_start = lmp_all.index.min() + pd.Timedelta(f'{2 * params.INPUT_CHUNK_LENGTH}h')
+    train_start = lmp_all.index.min() + pd.Timedelta(f'{2 * parameters.INPUT_CHUNK_LENGTH}h')
     test_end = lmp_all.index.max() - pd.Timedelta(f'{test_end_buffer}h')
-    tr_tst_split = test_end - pd.Timedelta(f'{2 * params.INPUT_CHUNK_LENGTH}h')
+    tr_tst_split = test_end - pd.Timedelta(f'{2 * parameters.INPUT_CHUNK_LENGTH}h')
     log.info(f'train_start: {train_start}')
     log.info(f'tr_tst_split: {tr_tst_split}')
     log.info(f'test_end: {test_end}')
