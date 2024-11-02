@@ -42,7 +42,9 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
 
         elif self.MODEL_TYPE == 'naive_ens':
             # TODO: subclass ensemble model to allow map_location kwarg
-            # otherwise loading model fails if ensembled models are trained on gpu
+            # otherwise loading model fails if ensembled models are trained on a gpu
+            # because the models are pickled when saved
+            # https://stackoverflow.com/questions/57081727/load-pickle-file-obtained-from-gpu-to-cpu
             self.model = NaiveEnsembleModel.load(context.artifacts["model"])
             
         else:
