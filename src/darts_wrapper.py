@@ -41,6 +41,8 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             self.model = TSMixerModel.load(context.artifacts["model"], map_location=torch.device('cpu'))
 
         elif self.MODEL_TYPE == 'naive_ens':
+            # TODO: subclass ensemble model to allow map_location kwarg
+            # otherwise loading model fails if ensembled models are trained on gpu
             self.model = NaiveEnsembleModel.load(context.artifacts["model"])
             
         else:
