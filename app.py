@@ -123,7 +123,14 @@ with forcasted_data:
     st.image(image)
 
     st.title('SPP Weis Nodal Price Forecast')
-    st.write('**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)**')
+    st.write(
+        '''
+        **[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** -- 
+        **[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** --
+        **[SPP Weis generation mix](https://portal.spp.org/pages/weis-generation-mix)**
+        ''')
+    # st.write('**[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)**')
+    
 
     st.session_state.refresh_data = st.button('Refresh data')
     log.info(f'st.session_state.refresh_data: {st.session_state.refresh_data}')
@@ -275,11 +282,12 @@ if st.session_state.get_fcast_btn:
     if fcast_time <= node_series.end_time():
         node_series = node_series.drop_after(fcast_time)
 
+    log.info(f'n_days: {n_days}')
     data = {
         'series': [node_series.to_json()],
         'past_covariates': [past_cov_series.to_json()],
         'future_covariates': [future_cov_series.to_json()],
-        'n': parameters.FORECAST_HORIZON,
+        'n': n_days*24,
         'num_samples': 200
     }
     df = pd.DataFrame(data)
