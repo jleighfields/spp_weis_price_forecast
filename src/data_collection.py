@@ -249,6 +249,8 @@ def get_daily_lmp_url(tc: dict) -> str:
     Returns:
         str - url used for reading in the csv
     """
+
+    # https://portal.spp.org/file-browser-api/download/mid-term-resource-forecast-mtrf-weis?path=%2F2020%2F12%2F02%2FWEIS-OP-MTRF-202012021700.csv
     base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
     path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2FBy_Day%2FWEIS-RTBM-LMP-DAILY-SL-{tc['YMD']}.csv"
     url = base_url + path_url
