@@ -22,8 +22,8 @@ log.info(f's.machine: {s.machine}')
 # if str(s.machine) != 'Machine.L4':
 #     s.switch_machine(machine=Machine.L4)
 
-if str(s.machine) != 'Machine.CPU':
-    s.switch_machine(machine=Machine.CPU)
+if str(s.machine) != 'Machine.DATA_PREP':
+    s.switch_machine(machine=Machine.DATA_PREP)
 
 # give some time for environment to be created
 time.sleep(60)
@@ -44,7 +44,8 @@ try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
 except Exception as e:
         log.error("command failed with error: ", e)
-
-# s.switch_machine(Machine.CPU)
+finally:
+    log.info('switching to CPU machine')
+    s.switch_machine(Machine.CPU)
 
 log.info("Job complete")
