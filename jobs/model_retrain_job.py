@@ -12,40 +12,42 @@ import logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-load_dotenv()  # take environment variables from .env.
+load_dotenv()  # load environment variables from .env
 
 log.info("starting Studio...")
 # s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
-log.info(f's.machine: {s.machine}')
-# if str(s.machine) != 'Machine.L4':
-#     s.switch_machine(machine=Machine.L4)
 
+
+# switch machine for training
+log.info(f's.machine: {s.machine}')
 if str(s.machine) != 'Machine.DATA_PREP':
+    log.info('switching to Machine.DATA_PREP')
     s.switch_machine(machine=Machine.DATA_PREP)
 
-# give some time for environment to be created
-time.sleep(60)
 
-# ensure it's turned on and a Studio will wait for 2 minutes before shutting down.
-# s.auto_shutdown = True
-# s.auto_shutdown_time = 2 * 60  # the time is in seconds for granular control
-
+# wait for studio to be running
+log.info(f'status: {s.status}')
 i = 0
 while str(s.status) != 'Status.Running':
-    log.info(f'status: {s.status} - count: {i}')
+    
     i+=1
     if i > 30:
         break
     time.sleep(30)
+    log.info(f'status: {s.status} - count: {i}')
 
+
+# run training script
+log.info('start training')
 try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
-except Exception as e:
-        log.error("command failed with error: ", e)
+except:
+    pass
 finally:
     log.info('switching to CPU machine')
     s.switch_machine(Machine.CPU)
+
 
 log.info("Job complete")
