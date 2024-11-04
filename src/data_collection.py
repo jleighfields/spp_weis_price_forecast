@@ -48,6 +48,7 @@ class ProgressParallel(Parallel):
         self._pbar.n = self.n_completed_tasks
         self._pbar.refresh()
 
+
 def convert_datetime_cols(
         df: pd.DataFrame,
         dt_cols: List[str] = ['Interval', 'GMTIntervalEnd'],
@@ -197,6 +198,8 @@ def get_csv_from_url(
         log.error(e)
         df = pd.DataFrame()
     return df
+
+
 def get_hourly_mtlf_url(tc: dict) -> str:
     """
     Function to create url for mid-term load forecast csv from time components.
@@ -206,7 +209,8 @@ def get_hourly_mtlf_url(tc: dict) -> str:
         str - url used for reading in the csv
 
     """
-    base_url = 'https://marketplace.spp.org/file-browser-api/download/systemwide-hourly-load-forecast-mtlf-vs-actual-weis?'
+    base_url = 'https://portal.spp.org/file-browser-api/download/systemwide-hourly-load-forecast-mtlf-vs-actual-weis?'
+    # base_url = 'https://marketplace.spp.org/file-browser-api/download/systemwide-hourly-load-forecast-mtlf-vs-actual-weis?'
     path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2F{tc['DAY']}%2FWEIS-OP-MTLF-{tc['COMBINED']}.csv"
     url = base_url + path_url
     return url
@@ -220,8 +224,8 @@ def get_hourly_mtrf_url(tc: dict) -> str:
     Returns:
         str - url used for reading in the csv
     """
-
-    base_url = 'https://marketplace.spp.org/file-browser-api/download/mid-term-resource-forecast-mtrf-weis?'
+    base_url = 'https://portal.spp.org/file-browser-api/download/mid-term-resource-forecast-mtrf-weis?'
+    # base_url = 'https://marketplace.spp.org/file-browser-api/download/mid-term-resource-forecast-mtrf-weis?'
     path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2F{tc['DAY']}%2FWEIS-OP-MTRF-{tc['COMBINED']}.csv"
     url = base_url + path_url
     return url
@@ -235,7 +239,9 @@ def get_5min_lmp_url(tc: dict) -> str:
     Returns:
         str - url used for reading in the csv
     """
-    base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
+
+    base_url = 'https://portal.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
+    # base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
     path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2FBy_Interval%2F{tc['DAY']}%2FWEIS-RTBM-LMP-SL-{tc['COMBINED']}.csv"
     url = base_url + path_url
     return url
@@ -250,8 +256,8 @@ def get_daily_lmp_url(tc: dict) -> str:
         str - url used for reading in the csv
     """
 
-    # https://portal.spp.org/file-browser-api/download/mid-term-resource-forecast-mtrf-weis?path=%2F2020%2F12%2F02%2FWEIS-OP-MTRF-202012021700.csv
-    base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
+    base_url = 'https://portal.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
+    # base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
     path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2FBy_Day%2FWEIS-RTBM-LMP-DAILY-SL-{tc['YMD']}.csv"
     url = base_url + path_url
     return url
