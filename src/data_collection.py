@@ -593,9 +593,9 @@ def get_process_gen_cap(tc: dict) -> pd.DataFrame:
     if df.shape[0] > 0:
         format_df_colnames(df)
         df['GMT_TIME'] = pd.to_datetime(df['GMT_TIME'], format='ISO8601')
-        df.rename(columns={'GMT_TIME': 'GMTIntervalEnd_HE'}, inplace=True)
-        df['timestamp_mst_HE'] = (
-            df.GMTIntervalEnd_HE
+        df.rename(columns={'GMT_TIME': 'GMTIntervalEnd'}, inplace=True)
+        df['timestamp_mst'] = (
+            df.GMTIntervalEnd
             .dt.tz_convert('MST')
             .dt.tz_localize(None)
         )
@@ -621,7 +621,7 @@ def get_range_data_gen_cap(
     """
     freq = 'D'
     get_process_func = get_process_gen_cap
-    dup_cols = ['GMTIntervalEnd_HE']
+    dup_cols = ['GMTIntervalEnd']
     return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
 
 
@@ -849,11 +849,11 @@ def upsert_gen_cap(
     if backfill:
         gen_cap_upsert.dropna(axis=0, how='any', inplace=True)
     # remove any duplicated primary keys
-    gen_cap_upsert = gen_cap_upsert[~gen_cap_upsert.GMTIntervalEnd_HE.duplicated()]
+    gen_cap_upsert = gen_cap_upsert[~gen_cap_upsert.GMTIntervalEnd.duplicated()]
     update_count = len(gen_cap_upsert)
     # NOTE: the df col order must match the order in the table
     ordered_cols = [
-        'GMTIntervalEnd_HE', 'timestamp_mst_HE',
+        'GMTIntervalEnd', 'timestamp_mst',
         'Coal_Market', 'Coal_Self', 'Hydro', 
         'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
     ]
@@ -865,8 +865,8 @@ def upsert_gen_cap(
     with duckdb.connect('~/spp_weis_price_forecast/data/spp.ddb') as con_ddb:
         create_gen_cap = '''
         CREATE TABLE IF NOT EXISTS gen_cap (
-             GMTIntervalEnd_HE TIMESTAMP PRIMARY KEY,
-             timestamp_mst_HE TIMESTAMP,
+             GMTIntervalEnd TIMESTAMP PRIMARY KEY,
+             timestamp_mst TIMESTAMP,
              Coal_Market DOUBLE, 
              Coal_Self DOUBLE,
              Hydro DOUBLE,
