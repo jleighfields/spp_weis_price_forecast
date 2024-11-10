@@ -262,6 +262,23 @@ def get_daily_lmp_url(tc: dict) -> str:
     url = base_url + path_url
     return url
 
+
+def get_gen_cap_url(tc: dict) -> str:
+    """
+    Function to create url for daily 5 minute lmp csv from time components.
+    Args:
+        tc: dict - dictionary returned from get_time_components()
+    Returns:
+        str - url used for reading in the csv
+    """
+    # https://portal.spp.org/file-browser-api/download/hourly-gen-capacity-by-fuel-type-weis?path=%2F2024%2F11%2FWEIS-HRLY-GEN-CAP-BY-FUEL-TYPE-20241108.csv
+    base_url = 'https://portal.spp.org/file-browser-api/download/hourly-gen-capacity-by-fuel-type-weis?'
+    # base_url = 'https://marketplace.spp.org/file-browser-api/download/lmp-by-settlement-location-weis?'
+    path_url = f"path=%2F{tc['YEAR']}%2F{tc['MONTH']}%2FWEIS-HRLY-GEN-CAP-BY-FUEL-TYPE-{tc['YMD']}.csv"
+    url = base_url + path_url
+    return url
+
+
 ###########################################################
 # PROCESS AND COLLECT DATA
 ###########################################################
@@ -435,6 +452,7 @@ def get_range_data_mtrf(
     dup_cols = ['GMTIntervalEnd']
     return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
 
+
 def agg_lmp(five_min_lmp_df: pd.DataFrame) -> pd.DataFrame:
     """
     Helper function to aggregate 5 minute LMPs to hour ending LMPs.
@@ -555,6 +573,55 @@ def get_range_data_interval_daily_lmps(
     freq = 'D'
     get_process_func = get_process_daily_lmp
     dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
+    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+
+
+def get_process_gen_cap(tc: dict) -> pd.DataFrame:
+    """
+    Function to get and process MTLF data.
+    Args:
+        tc: dict - dictionary returned from get_time_components()
+    Returns:
+        pd.DataFrame with processed data for file corresponding to
+            url created from tc
+    """
+    gen_cap_url = get_gen_cap_url(tc)
+    log.debug(f'gen_cap_url: {gen_cap_url}')
+
+    df = get_csv_from_url(gen_cap_url)
+
+    if df.shape[0] > 0:
+        format_df_colnames(df)
+        df['GMT_TIME'] = pd.to_datetime(df['GMT_TIME'], format='ISO8601')
+        df.rename(columns={'GMT_TIME': 'GMTIntervalEnd_HE'}, inplace=True)
+        df['timestamp_mst_HE'] = (
+            df.GMTIntervalEnd_HE
+            .dt.tz_convert('MST')
+            .dt.tz_localize(None)
+        )
+
+    return df
+    
+
+def get_range_data_gen_cap(
+        end_ts: pd.Timestamp,
+        n_periods: int,
+    ):
+    """
+    Helper function to get and process MTRF data for a range of datetimes.
+    Default args are set for MTLF and passed to get_range_data()
+    Args:
+        end_ts: pd.Timestamp - the last time period to get data
+            i.e. pd.Timestamp('6/4/2023') or
+            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+        n_periods: int - the number of time periods to gather prior to end_ts
+    Returns:
+        pd.DataFrame with processed data for file corresponding to
+            url created from tc
+    """
+    freq = 'h'
+    get_process_func = get_process_gen_cap
+    dup_cols = ['GMTIntervalEnd']
     return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
 
 
@@ -760,7 +827,82 @@ def upsert_lmp(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
-        con_ddb.sql("COPY lmp TO '~/lmp.parquet' (FORMAT PARQUET);")
+        # con_ddb.sql("COPY lmp TO '~/lmp.parquet' (FORMAT PARQUET);")
+
+
+def upsert_gen_cap(
+        gen_cap_upsert: pd.DataFrame,
+        backfill: bool=False,
+) -> None:
+    """
+    Function to upsert new/backfilled generation capacity data into duckdb database.
+    Args:
+        gen_cap_upsert: pd.DataFrame - dataframe to upsert to MTRF table in database.
+        backfill: bool = False - if true removes rows with missing values before
+            upsert.  This removes rows where average actual is missing because
+            the time period is forecasted and prevents overwriting actual values
+            with forecasted values.
+    Returns:
+        None - new data is upserted to table
+    """
+    # remove missing values if backfilling
+    if backfill:
+        gen_cap_upsert.dropna(axis=0, how='any', inplace=True)
+    # remove any duplicated primary keys
+    gen_cap_upsert = gen_cap_upsert[~gen_cap_upsert.GMTIntervalEnd_HE.duplicated()]
+    update_count = len(gen_cap_upsert)
+    # NOTE: the df col order must match the order in the table
+    ordered_cols = [
+        'GMTIntervalEnd_HE', 'timestamp_mst',
+        'Coal_Market', 'Coal_Self', 'Hydro', 
+        'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
+    ]
+    gen_cap_upsert = gen_cap_upsert[ordered_cols]
+    log.info(f'gen_cap_upsert.timestamp_mst_HE.min(): {gen_cap_upsert.timestamp_mst_HE.min()}')
+    log.info(f'gen_cap_upsert.timestamp_mst_HE.max(): {gen_cap_upsert.timestamp_mst_HE.max()}')
+
+    # upsert with duckdb
+    with duckdb.connect('~/spp_weis_price_forecast/data/spp.ddb') as con_ddb:
+        create_gen_cap = '''
+        CREATE TABLE IF NOT EXISTS gen_cap (
+             GMTIntervalEnd_HE TIMESTAMP PRIMARY KEY,
+             timestamp_mst_HE TIMESTAMP,
+             Coal_Market DOUBLE, 
+             Coal_Self DOUBLE,
+             Hydro DOUBLE,
+             Natural_Gas DOUBLE,
+             Nuclear DOUBLE,
+             Solar DOUBLE,
+             Wind DOUBLE
+             );
+        '''
+        con_ddb.sql(create_gen_cap)
+
+        res = con_ddb.sql('select count(*) from gen_cap')
+        start_count = res.fetchall()[0][0]
+        log.info(f'starting count: {start_count:,}')
+
+        gen_cap_insert_update = '''
+        INSERT INTO gen_cap
+            SELECT * FROM gen_cap_upsert
+            ON CONFLICT DO UPDATE SET Coal_Market = EXCLUDED.Coal_Market, 
+            Coal_Self = EXCLUDED.Coal_Self,
+            Hydro = EXCLUDED.Hydro,
+            Natural_Gas = EXCLUDED.Natural_Gas,
+            Nuclear = EXCLUDED.Nuclear,
+            Solar = EXCLUDED.Solar,
+            Wind = EXCLUDED.Wind;
+        '''
+
+        con_ddb.sql(gen_cap_insert_update)
+
+        res = con_ddb.sql('select count(*) from gen_cap')
+        end_count = res.fetchall()[0][0]
+        insert_count = end_count - start_count
+        rows_updated = update_count - insert_count
+        log.info(
+            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
+
 
 ###########################################################
 # COLLECT AND UPSERT DATA
@@ -919,4 +1061,39 @@ def collect_upsert_lmp(
         n_periods,
         primary_key_cols,
         end_ts=end_ts,
+    )
+
+
+def collect_upsert_gen_cap(
+    end_ts: Union[pd.Timestamp, None] = None,
+    n_periods: int = 6,
+    backfill: bool = False,
+) -> None:
+    """
+    Helper function to wrap collect_upsert_data() with defaults for
+    the MTRF data.
+    Args:
+        end_ts: pd.Timestamp - the last time period to get data
+            i.e. pd.Timestamp('6/4/2023') or
+            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+        n_periods: int - the number of time periods to gather prior to end_ts
+            default set to get the previous 6 hours of data
+        backfill: bool = False - if true removes rows with missing values before
+            upsert.  This removes rows where average actual is missing because
+            the time period is forecasted and prevents overwriting actual values
+            with forecasted values.
+    Returns:
+        None - new data is upserted to table
+    """
+
+    # set default table
+    primary_key_cols = ['GMTIntervalEnd_HE']
+
+    collect_upsert_data(
+        get_range_data_gen_cap,
+        upsert_gen_cap,
+        n_periods,
+        primary_key_cols,
+        end_ts=end_ts,
+        backfill=backfill,
     )
