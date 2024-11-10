@@ -1,6 +1,7 @@
 
 '''
 Gather daily 5 minute lmp files from SPP Weis: https://marketplace.spp.org/groups/operational-data-weis
+Also get daily generation capacity files
 '''
 
 import sys
@@ -33,6 +34,7 @@ import data_collection as dc
 
 # lookback 10 days to cover holidays and long weekends when data doesn't get updated
 dc.collect_upsert_lmp(n_periods=10, daily_file=True)
+dc.collect_upsert_gen_cap(n_periods=10)
 
 
 

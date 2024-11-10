@@ -619,9 +619,9 @@ def get_range_data_gen_cap(
         pd.DataFrame with processed data for file corresponding to
             url created from tc
     """
-    freq = 'h'
+    freq = 'D'
     get_process_func = get_process_gen_cap
-    dup_cols = ['GMTIntervalEnd']
+    dup_cols = ['GMTIntervalEnd_HE']
     return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
 
 
@@ -853,7 +853,7 @@ def upsert_gen_cap(
     update_count = len(gen_cap_upsert)
     # NOTE: the df col order must match the order in the table
     ordered_cols = [
-        'GMTIntervalEnd_HE', 'timestamp_mst',
+        'GMTIntervalEnd_HE', 'timestamp_mst_HE',
         'Coal_Market', 'Coal_Self', 'Hydro', 
         'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
     ]
@@ -1097,3 +1097,4 @@ def collect_upsert_gen_cap(
         end_ts=end_ts,
         backfill=backfill,
     )
+
