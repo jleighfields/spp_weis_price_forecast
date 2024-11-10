@@ -8,24 +8,24 @@ PRECISION = 'float32'
 MODEL_NAME = 'spp_weis'
 
 # best tsmixer model params from optuna experiment
-TSMIXER_PARAMS = [{'hidden_size': 24,
+TSMIXER_PARAMS = [{'hidden_size': 19,
   'ff_size': 29,
   'num_blocks': 4,
-  'lr': 0.000261,
-  'n_epochs': 4,
-  'dropout': 0.5},
- {'hidden_size': 8,
-  'ff_size': 29,
-  'num_blocks': 4,
-  'lr': 0.000288,
-  'n_epochs': 7,
-  'dropout': 0.45},
- {'hidden_size': 19,
-  'ff_size': 13,
-  'num_blocks': 3,
-  'lr': 0.000467,
+  'lr': 0.00021999999999999998,
   'n_epochs': 6,
-  'dropout': 0.44}]
+  'dropout': 0.43000000000000005},
+ {'hidden_size': 37,
+  'ff_size': 27,
+  'num_blocks': 6,
+  'lr': 6.500000000000001e-05,
+  'n_epochs': 5,
+  'dropout': 0.4},
+ {'hidden_size': 26,
+  'ff_size': 24,
+  'num_blocks': 4,
+  'lr': 0.000373,
+  'n_epochs': 10,
+  'dropout': 0.45}]
 
 # best tide model params from optuna experiment
 TIDE_PARAMS = [{'num_encoder_layers': 1,

@@ -46,13 +46,13 @@ import parameters
 #############################################
 FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
-    're_ratio', 're_diff', 
+    're_ratio', 're_diff', 'load_net_re',
     'mtlf_diff', 'wind_diff', 'solar_diff']  # , 're_diff_sum']
 
 PAST_COLS = [
     'Averaged_Actual', 'lmp_diff',
-    'Coal_Market', 'Coal_Self', 'Hydro', 
-    'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
+    # 'Coal', 'Hydro', 'Natural_Gas', 
+    # 'Nuclear', 'Solar', 'Wind',
     ]
 
 Y = ['LMP']
@@ -180,14 +180,13 @@ def prep_gen_cap(
 
     gen_cap = (
         gen_cap
-        .mutate(Coal_Market=_.Coal_Market.cast(parameters.PRECISION))
-        .mutate(Coal_Self=_.Coal_Self.cast(parameters.PRECISION))
+        .mutate(Coal=(_.Coal_Market + _.Coal_Self).cast(parameters.PRECISION))
         .mutate(Hydro=_.Hydro.cast(parameters.PRECISION))
         .mutate(Natural_Gas=_.Natural_Gas.cast(parameters.PRECISION))
         .mutate(Nuclear=_.Nuclear.cast(parameters.PRECISION))
         .mutate(Solar=_.Solar.cast(parameters.PRECISION))
         .mutate(Wind=_.Wind.cast(parameters.PRECISION))
-        .drop(drop_cols)
+        .drop(drop_cols + ['Coal_Market', 'Coal_Self'])
         .order_by(['timestamp_mst'])
     )
 
@@ -202,15 +201,15 @@ def prep_all_df(
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
-    gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
+    # gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
     all_df = (
         mtlf
         .left_join(mtrf, 'timestamp_mst')
         .select(~s.contains("_right"))  # remove 'dt_right'
-        .left_join(gen_cap, 'timestamp_mst')
-        .select(~s.contains("_right"))  # remove 'dt_right'
+        # .left_join(gen_cap, 'timestamp_mst')
+        # .select(~s.contains("_right"))  # remove 'dt_right'
     )
 
     uid_df = ibis.memtable({'unique_id': lmp.unique_id.to_pandas().unique()})
@@ -250,6 +249,7 @@ def prep_all_df(
         .mutate(re_diff=_.re_diff.cast(parameters.PRECISION))
         .mutate(lmp_diff=_.lmp_diff.cast(parameters.PRECISION))
         .mutate(mtlf_diff=_.mtlf_diff.cast(parameters.PRECISION))
+        .mutate(load_net_re = (_.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW).cast(parameters.PRECISION))
     )
 
     return all_df
