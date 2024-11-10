@@ -48,7 +48,13 @@ FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     're_ratio', 're_diff', 
     'mtlf_diff', 'wind_diff', 'solar_diff']  # , 're_diff_sum']
-PAST_COLS = ['Averaged_Actual', 'lmp_diff']  #
+
+PAST_COLS = [
+    'Averaged_Actual', 'lmp_diff',
+    'Coal_Market', 'Coal_Self', 'Hydro', 
+    'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
+    ]
+
 Y = ['LMP']
 IDS = ['unique_id']
 
@@ -153,6 +159,41 @@ def prep_mtlf(
     return mtlf
 
 
+def prep_gen_cap(
+        con: ibis.duckdb.connect,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+):
+    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+    gen_cap = con.table('gen_cap')
+    drop_cols = ['GMTIntervalEnd', ]
+
+    if not start_time:
+        # get last 1.5 years
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+
+    # TODO: handle checks for start_time < end_time
+    gen_cap = gen_cap.filter(_.timestamp_mst >= start_time)
+
+    if end_time:
+        gen_cap = gen_cap.filter(_.timestamp_mst <= end_time)
+
+    gen_cap = (
+        gen_cap
+        .mutate(Coal_Market=_.Coal_Market.cast(parameters.PRECISION))
+        .mutate(Coal_Self=_.Coal_Self.cast(parameters.PRECISION))
+        .mutate(Hydro=_.Hydro.cast(parameters.PRECISION))
+        .mutate(Natural_Gas=_.Natural_Gas.cast(parameters.PRECISION))
+        .mutate(Nuclear=_.Nuclear.cast(parameters.PRECISION))
+        .mutate(Solar=_.Solar.cast(parameters.PRECISION))
+        .mutate(Wind=_.Wind.cast(parameters.PRECISION))
+        .drop(drop_cols)
+        .order_by(['timestamp_mst'])
+    )
+
+    return gen_cap
+
+
 def prep_all_df(
         con: ibis.duckdb.connect,
         start_time: Optional[str] = None,
@@ -161,11 +202,14 @@ def prep_all_df(
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
+    gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
     all_df = (
         mtlf
         .left_join(mtrf, 'timestamp_mst')
+        .select(~s.contains("_right"))  # remove 'dt_right'
+        .left_join(gen_cap, 'timestamp_mst')
         .select(~s.contains("_right"))  # remove 'dt_right'
     )
 

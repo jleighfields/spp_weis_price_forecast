@@ -858,8 +858,8 @@ def upsert_gen_cap(
         'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
     ]
     gen_cap_upsert = gen_cap_upsert[ordered_cols]
-    log.info(f'gen_cap_upsert.timestamp_mst_HE.min(): {gen_cap_upsert.timestamp_mst_HE.min()}')
-    log.info(f'gen_cap_upsert.timestamp_mst_HE.max(): {gen_cap_upsert.timestamp_mst_HE.max()}')
+    log.info(f'gen_cap_upsert.timestamp_mst.min(): {gen_cap_upsert.timestamp_mst.min()}')
+    log.info(f'gen_cap_upsert.timestamp_mst.max(): {gen_cap_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
     with duckdb.connect('~/spp_weis_price_forecast/data/spp.ddb') as con_ddb:
@@ -1087,7 +1087,7 @@ def collect_upsert_gen_cap(
     """
 
     # set default table
-    primary_key_cols = ['GMTIntervalEnd_HE']
+    primary_key_cols = ['GMTIntervalEnd']
 
     collect_upsert_data(
         get_range_data_gen_cap,
