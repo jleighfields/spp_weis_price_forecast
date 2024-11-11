@@ -46,8 +46,11 @@ import parameters
 #############################################
 FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
-    're_ratio', 're_diff', 'load_net_re',
-    'mtlf_diff', 'wind_diff', 'solar_diff']  # , 're_diff_sum']
+    're_ratio', 're_diff', 
+    'load_net_re', 'load_net_re_diff',
+    'mtlf_diff',
+    # 'wind_diff', 'solar_diff'
+]  
 
 PAST_COLS = [
     'Averaged_Actual', 'lmp_diff',
@@ -235,6 +238,8 @@ def prep_all_df(
         .mutate(mtlf_diff=_.MTLF - _.MTLF.lag(1))
         .mutate(wind_diff=_.Wind_Forecast_MW - _.Wind_Forecast_MW.lag(1))
         .mutate(solar_diff=_.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1))
+        .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
+        .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
     )
 
     # convert precision for model training
@@ -249,7 +254,8 @@ def prep_all_df(
         .mutate(re_diff=_.re_diff.cast(parameters.PRECISION))
         .mutate(lmp_diff=_.lmp_diff.cast(parameters.PRECISION))
         .mutate(mtlf_diff=_.mtlf_diff.cast(parameters.PRECISION))
-        .mutate(load_net_re = (_.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW).cast(parameters.PRECISION))
+        .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
+        .mutate(load_net_re_diff = _.load_net_re.cast(parameters.PRECISION))
     )
 
     return all_df
