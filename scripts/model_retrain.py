@@ -131,16 +131,28 @@ for i, param in enumerate(parameters.TSMIXER_PARAMS):
     models_tsmixer += [model_tsmixer]
 
 models_tide = []
-for i, param in enumerate(parameters.TIDE_PARAMS):
-    print(f'\ni: {i} \t' + '*' * 25, flush=True)
-    model_tide = build_fit_tide(
-        series=train_test_all_series,
-        val_series=test_series,
-        future_covariates=futr_cov,
-        past_covariates=past_cov,
-        **param
-    )
-    models_tide += [model_tide]
+# for i, param in enumerate(parameters.TIDE_PARAMS):
+#     print(f'\ni: {i} \t' + '*' * 25, flush=True)
+#     model_tide = build_fit_tide(
+#         series=train_test_all_series,
+#         val_series=test_series,
+#         future_covariates=futr_cov,
+#         past_covariates=past_cov,
+#         **param
+#     )
+#     models_tide += [model_tide]
+
+models_tft = []
+# for i, param in enumerate(parameters.TFT_PARAMS):
+#     print(f'\ni: {i} \t' + '*' * 25, flush=True)
+#     model_tft = build_fit_tft(
+#         series=train_test_all_series,
+#         val_series=test_series,
+#         future_covariates=futr_cov,
+#         past_covariates=past_cov,
+#         **param
+#     )
+#     models_tft += [model_tft]
 
 # Refit and log model with best params
 log.info('log ensemble model')
@@ -152,7 +164,7 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
 
     # fit model with best params from study
     model = NaiveEnsembleModel(
-        forecasting_models=models_tsmixer + models_tide,
+        forecasting_models=models_tsmixer + models_tide + models_tft,
         train_forecasting_models=False
     )
 

@@ -122,10 +122,10 @@ def build_fit_tsmixerx(
             "future": ["hour", "dayofweek", "month"], # 
             "past": ["hour", "dayofweek", "month"], # 
         },
-        "position": {
-            "past": ["relative"], 
-            "future": ["relative"]
-        },
+        # "position": {
+        #     "past": ["relative"], 
+        #     "future": ["relative"]
+        # },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -177,11 +177,11 @@ def build_fit_tsmixerx(
     model.fit(**fit_params)
 
     # reload best model over course of training
-    model = TSMixerModel.load_from_checkpoint(
-        work_dir=work_dir,
-        model_name=MODEL_TYPE,
-        best=False,
-    )
+    # model = TSMixerModel.load_from_checkpoint(
+    #     work_dir=work_dir,
+    #     model_name=MODEL_TYPE,
+    #     best=False,
+    # )
     
     model.MODEL_TYPE = MODEL_TYPE
     model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
@@ -226,10 +226,10 @@ def build_fit_tide(
             "future": ["hour", "dayofweek", "month"], # 
             "past": ["hour", "dayofweek", "month"], # 
         },
-        "position": {
-            "past": ["relative"], 
-            "future": ["relative"]
-        },
+        # "position": {
+        #     "past": ["relative"], 
+        #     "future": ["relative"]
+        # },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -287,11 +287,11 @@ def build_fit_tide(
     model.fit(**fit_params)
 
     # reload best model over course of training
-    model = TiDEModel.load_from_checkpoint(
-        work_dir=work_dir,
-        model_name=MODEL_TYPE,
-        best=False,
-    )
+    # model = TiDEModel.load_from_checkpoint(
+    #     work_dir=work_dir,
+    #     model_name=MODEL_TYPE,
+    #     best=False,
+    # )
     
     model.MODEL_TYPE = MODEL_TYPE
     model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
@@ -331,10 +331,10 @@ def build_fit_tft(
             "future": ["hour", "dayofweek", "month"], # 
             "past": ["hour", "dayofweek", "month"], # 
         },
-        "position": {
-            "past": ["relative"], 
-            "future": ["relative"]
-        },
+        # "position": {
+        #     "past": ["relative"], 
+        #     "future": ["relative"]
+        # },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -388,11 +388,11 @@ def build_fit_tft(
     model.fit(**fit_params)
 
     # reload best model over course of training
-    model = TFTModel.load_from_checkpoint(
-        work_dir=work_dir,
-        model_name=MODEL_TYPE,
-        best=False,
-    )
+    # model = TFTModel.load_from_checkpoint(
+    #     work_dir=work_dir,
+    #     model_name=MODEL_TYPE,
+    #     best=False,
+    # )
     
     model.MODEL_TYPE = MODEL_TYPE
     model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()

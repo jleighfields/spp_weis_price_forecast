@@ -49,11 +49,13 @@ FUTR_COLS = [
     're_ratio', 're_diff', 
     'load_net_re', 'load_net_re_diff',
     'mtlf_diff',
-    # 'wind_diff', 'solar_diff'
+    'wind_diff', 'solar_diff'
 ]  
 
 PAST_COLS = [
     'Averaged_Actual', 'lmp_diff',
+    'lmp_load_net_re',
+    # 'lmp_re',
     # 'Coal', 'Hydro', 'Natural_Gas', 
     # 'Nuclear', 'Solar', 'Wind',
     ]
@@ -239,7 +241,9 @@ def prep_all_df(
         .mutate(wind_diff=_.Wind_Forecast_MW - _.Wind_Forecast_MW.lag(1))
         .mutate(solar_diff=_.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1))
         .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
+        .mutate(load_net_re = ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)) # avoid div/0 errors
         .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
+        .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
     )
 
     # convert precision for model training
@@ -254,8 +258,11 @@ def prep_all_df(
         .mutate(re_diff=_.re_diff.cast(parameters.PRECISION))
         .mutate(lmp_diff=_.lmp_diff.cast(parameters.PRECISION))
         .mutate(mtlf_diff=_.mtlf_diff.cast(parameters.PRECISION))
+        .mutate(wind_diff=_.wind_diff.cast(parameters.PRECISION))
+        .mutate(solar_diff=_.solar_diff.cast(parameters.PRECISION))
         .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
         .mutate(load_net_re_diff = _.load_net_re.cast(parameters.PRECISION))
+        .mutate(lmp_load_net_re = _.lmp_load_net_re.cast(parameters.PRECISION))
     )
 
     return all_df
