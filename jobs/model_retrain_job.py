@@ -22,9 +22,9 @@ s.start()
 
 # switch machine for training
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'Machine.DATA_PREP':
-    log.info('switching to Machine.DATA_PREP')
-    s.switch_machine(machine=Machine.DATA_PREP)
+if str(s.machine) != 'Machine.L4':
+    log.info('switching to Machine.L4')
+    s.switch_machine(machine=Machine.L4)
 
 
 # wait for studio to be running

@@ -2,6 +2,7 @@
 Module for custom Darts model serving using mlflow pyfunc
 '''
 
+import os
 import logging
 import numpy as np
 import mlflow.pyfunc
@@ -45,7 +46,30 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             # otherwise loading model fails if ensembled models are trained on a gpu
             # because the models are pickled when saved
             # https://stackoverflow.com/questions/57081727/load-pickle-file-obtained-from-gpu-to-cpu
-            self.model = NaiveEnsembleModel.load(context.artifacts["model"])
+            
+            log.info(f'context.artifacts["ens_models"]: {context.artifacts["ens_models"]}')
+            model_path = context.artifacts["ens_models"] + '/'
+            m_ckpts = [f.replace('.ckpt', '') for f in os.listdir(model_path) if '.ckpt' in f]
+            log.info(m_ckpts)
+            
+            all_models = []
+            for m in m_ckpts:
+                if 'ts_mixer' in m.lower():
+                    all_models += [TSMixerModel.load(model_path + m) for m in m_ckpts]
+                    
+                elif 'tide_model' in m.lower():
+                    all_models += [TiDEModel.load(model_path + m) for m in m_ckpts]
+            
+                elif 'tft_model' in m.lower():
+                    all_models += [TFTModel.load(model_path + m) for m in m_ckpts]
+            
+                else:
+                    raise ValueError(f'Unsuported MODEL_TYPE: {m}')
+                
+                self.model = NaiveEnsembleModel(
+                    forecasting_models=all_models, 
+                    train_forecasting_models=False
+                )
             
         else:
             raise ValueError(f'Unsuported MODEL_TYPE: {self.MODEL_TYPE}')

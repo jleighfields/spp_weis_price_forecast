@@ -160,39 +160,42 @@ log.info('log ensemble model')
 # supress training logging
 # logging.disable(logging.WARNING)
 with mlflow.start_run(experiment_id=exp.experiment_id) as run:
+
     MODEL_TYPE = 'naive_ens'
 
+    all_models = models_tsmixer + models_tide + models_tft
     # fit model with best params from study
     model = NaiveEnsembleModel(
-        forecasting_models=models_tsmixer + models_tide + models_tft,
+        forecasting_models=all_models, 
         train_forecasting_models=False
     )
 
     model.MODEL_TYPE = MODEL_TYPE
     model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
-
+    
     log.info(f'run.info: \n{run.info}')
     artifact_path = "model_artifacts"
+    
     metrics = {}
     model_params = model.model_params
-
+    
     # final model back test on validation data
     acc = model.backtest(
-        series=test_series,
-        past_covariates=past_cov,
-        future_covariates=futr_cov,
-        retrain=False,
-        forecast_horizon=parameters.FORECAST_HORIZON,
-        stride=49,
-        metric=[mae, rmse, get_ci_err],
-        verbose=False,
-        num_samples=200,
-    )
+            series=test_series,
+            past_covariates=past_cov,
+            future_covariates=futr_cov,
+            retrain=False,
+            forecast_horizon=parameters.FORECAST_HORIZON,
+            stride=49,
+            metric=[mae, rmse, get_ci_err],
+            verbose=False,
+            num_samples=200,
+        )
 
     mean_acc = np.mean(acc, axis=0)
     log.info(f'FINAL ACC: mae - {mean_acc[0]} | rmse - {mean_acc[1]} | ci_err - {mean_acc[2]}')
     acc_df = pd.DataFrame(
-        mean_acc.reshape(1, -1),
+        mean_acc.reshape(1,-1),
         columns=['mae', 'rmse', 'ci_error']
     )
 
@@ -204,16 +207,20 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
 
     # set up path to save model
     model_path = '/'.join([artifact_path, model.MODEL_TYPE])
+    model_path = '/'.join([artifact_path, 'ens_models'])
 
     shutil.rmtree(artifact_path, ignore_errors=True)
-    os.makedirs(artifact_path)
+    os.makedirs(model_path)
 
     # log params
     mlflow.log_params(model_params)
 
     # save model files (model, model.ckpt) 
     # and load them to artifacts when logging the model
-    model.save(model_path)
+    # model.save(model_path)
+    
+    for i, m in enumerate(all_models):
+        m.save(f'{model_path}/{m.MODEL_TYPE}_{i}')
 
     # save MODEL_TYPE to artifacts
     # this will be used to load the model from the artifacts
@@ -224,11 +231,11 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
     model_timestamp = '/'.join([artifact_path, 'TRAIN_TIMESTAMP.pkl'])
     with open(model_timestamp, 'wb') as handle:
         pickle.dump(model.TRAIN_TIMESTAMP, handle)
-
-    # map model artifacts in dictionary
-    artifacts = {f: f'{artifact_path}/{f}' for f in os.listdir('model_artifacts')}
+    
+    # map model artififacts in dictionary
+    artifacts = {f:f'{artifact_path}/{f}' for f in os.listdir('model_artifacts')}
     artifacts['model'] = model_path
-
+    
     # log model
     # https://www.mlflow.org/docs/latest/tutorials-and-examples/tutorial.html#pip-requirements-example
     mlflow.pyfunc.log_model(
@@ -236,10 +243,11 @@ with mlflow.start_run(experiment_id=exp.experiment_id) as run:
         code_path=['src/darts_wrapper.py'],
         signature=darts_signature,
         artifacts=artifacts,
-        python_model=DartsGlobalModel(),
+        python_model=DartsGlobalModel(), 
         pip_requirements=["-r notebooks/model_training/requirements.txt"],
         registered_model_name=parameters.MODEL_NAME,
     )
+
 
 logging.basicConfig(level=logging.INFO)
 
