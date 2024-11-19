@@ -55,13 +55,13 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             all_models = []
             for m in m_ckpts:
                 if 'ts_mixer' in m.lower():
-                    all_models += [TSMixerModel.load(model_path + m) for m in m_ckpts]
+                    all_models += [TSMixerModel.load(model_path + m, map_location=torch.device('cpu')) for m in m_ckpts]
                     
                 elif 'tide_model' in m.lower():
-                    all_models += [TiDEModel.load(model_path + m) for m in m_ckpts]
+                    all_models += [TiDEModel.load(model_path + m, map_location=torch.device('cpu')) for m in m_ckpts]
             
                 elif 'tft_model' in m.lower():
-                    all_models += [TFTModel.load(model_path + m) for m in m_ckpts]
+                    all_models += [TFTModel.load(model_path + m, map_location=torch.device('cpu')) for m in m_ckpts]
             
                 else:
                     raise ValueError(f'Unsuported MODEL_TYPE: {m}')
