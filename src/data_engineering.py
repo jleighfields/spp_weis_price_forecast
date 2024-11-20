@@ -49,7 +49,7 @@ FUTR_COLS = [
     're_ratio', 're_diff', 
     'load_net_re', 'load_net_re_diff',
     'mtlf_diff',
-    'wind_diff', 'solar_diff'
+    # 'wind_diff', 'solar_diff'
 ]  
 
 PAST_COLS = [
