@@ -9,7 +9,7 @@ on:
   # pull_request:
   #   branches: [ "main" ]
   schedule:
-    - cron: "35 */1 * * *" # run every hour at minute 35
+    - cron: "45 */1 * * *" # run every hour at minute 45
   workflow_dispatch:  # manual triggers
 
 jobs:
