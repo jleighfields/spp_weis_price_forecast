@@ -6,6 +6,7 @@
 *model_checkpoints/
 .env
 *logs/
+*optuna/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
