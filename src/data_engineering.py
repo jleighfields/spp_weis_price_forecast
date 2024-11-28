@@ -48,7 +48,7 @@ FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     're_ratio', 're_diff', 
     'load_net_re', 'load_net_re_diff', #'load_net_re_diff_diff',
-    'mtlf_diff',
+    # 'mtlf_diff',
     # 'wind_diff', 'solar_diff'
 ]  
 
