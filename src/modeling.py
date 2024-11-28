@@ -107,9 +107,11 @@ def build_fit_tsmixerx(
     dropout: float=0.45,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
+    model_id: str='ts_mixer',
 ):
-    work_dir = os.getcwd() + '/model_checkpoints'
+
     MODEL_TYPE = "ts_mixer_model"
+    work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
@@ -147,7 +149,7 @@ def build_fit_tsmixerx(
         'use_static_covariates': False,
         'save_checkpoints': True,
         'work_dir': work_dir,
-        'model_name': MODEL_TYPE, # used for checkpoint saves
+        'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
         'log_tensorboard': True,
     }
@@ -211,9 +213,11 @@ def build_fit_tide(
     dropout: float=0.43,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
+    model_id: str='tide',
 ):
-    work_dir = os.getcwd() + '/model_checkpoints'
+
     MODEL_TYPE = "tide_model"
+    work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
@@ -257,7 +261,7 @@ def build_fit_tide(
         'use_static_covariates': False,
         'save_checkpoints': True,
         'work_dir': work_dir,
-        'model_name': MODEL_TYPE, # used for checkpoint saves
+        'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
         'log_tensorboard': True,
     }
@@ -316,9 +320,11 @@ def build_fit_tft(
     n_epochs: int=3,
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
+    model_id: str='tft',
 ):
-    work_dir = os.getcwd() + '/model_checkpoints'
     MODEL_TYPE = "tft_model"
+    work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
+    
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
@@ -357,7 +363,7 @@ def build_fit_tft(
         'use_static_covariates': False,
         'save_checkpoints': True,
         'work_dir': work_dir,
-        'model_name': MODEL_TYPE, # used for checkpoint saves
+        'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
         'log_tensorboard': True,
     }
