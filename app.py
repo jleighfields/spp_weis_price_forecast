@@ -298,6 +298,7 @@ if st.session_state.get_fcast_btn:
     preds = TimeSeries.from_json(preds_json)
 
     plot_cov_df = future_cov_series.pd_dataframe()
+    plot_cov_df['re_ratio'] = (plot_cov_df.Wind_Forecast_MW + plot_cov_df.Solar_Forecast_MW) / plot_cov_df.MTLF
     plot_cov_df = (
         plot_cov_df
         .reset_index()

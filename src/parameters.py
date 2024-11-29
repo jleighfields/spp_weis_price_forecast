@@ -3,7 +3,7 @@ set up global parameters
 '''
 
 FORECAST_HORIZON = 24*5
-INPUT_CHUNK_LENGTH = 2*FORECAST_HORIZON
+INPUT_CHUNK_LENGTH = 24*7
 PRECISION = 'float32'
 MODEL_NAME = 'spp_weis'
 
