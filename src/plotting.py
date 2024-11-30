@@ -213,7 +213,8 @@ def plot_fcast(
     ax1.set_ylabel('$')
     ax1.set_title(title_text)
 
-    plot_df.loc[plot_idx, ['time', 'Ratio']].plot(x='time', ax=ax2)
+    # plot_df.loc[plot_idx, ['time', 'Ratio']].plot(x='time', ax=ax2)
+    plot_df.loc[plot_idx, ['time', 'load_net_re']].plot(x='time', ax=ax2)
     ax2.set_ylabel('RE gen / load')
 
     fig.set_size_inches(6, 6)
@@ -244,7 +245,7 @@ def plotly_forecast(
         lookback: str - string formatted for pd.Timedelta to create
             lookback period
         show_fig: bool - whether to display plot
-        is_job: bool - whether the plot is for jobs orthe app
+        is_job: bool - whether the plot is for jobs or the app
     returns: plotly.graph_objs._figure.Figure - plotly figure
     '''
 
@@ -264,7 +265,8 @@ def plotly_forecast(
 
     # mean forecast and RE ratio
     y_fcast = plotly_data.mean_fcast
-    y_ratio = plotly_data.Ratio
+    # y_ratio = plotly_data.Ratio
+    y_ax_2 = plotly_data.load_net_re
 
     # get accuracy
     acc_data = plotly_data[['mean_fcast', 'LMP_HOURLY']].dropna(axis=0)
@@ -334,10 +336,10 @@ def plotly_forecast(
         fig.append_trace(
             go.Scatter(
                     x=x_fcast,
-                    y=y_ratio,
+                    y=y_ax_2,
                     line=dict(color='rgb(40,40,200)'),
                     mode='lines',
-                    name='energy_ratio',
+                    name='Net load',
                 ), row=2, col=1,
         )
 
@@ -357,7 +359,7 @@ def plotly_forecast(
         fig.update_yaxes(title_text="$")
     else:
         fig.update_yaxes(title_text="$", row=1, col=1)
-        fig.update_yaxes(title_text=" RE / Load", row=2, col=1)
+        fig.update_yaxes(title_text=" Net load", row=2, col=1)
         # range slider for subplots
         # https://community.plotly.com/t/subplot-with-shared-x-axis-and-range-slider/3148
         fig.update_layout(xaxis2_rangeslider_visible=True,
