@@ -265,7 +265,7 @@ def prep_all_df(
         .mutate(solar_diff = _.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1))
         .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
         .mutate(load_net_re = ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)) # avoid div/0 errors
-        .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
+        # .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
         .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
         .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
     )
