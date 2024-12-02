@@ -47,15 +47,17 @@ import parameters
 FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     # 're_ratio', 're_diff', 
-    'load_net_re', #'load_net_re_diff', #'load_net_re_diff_diff',
+    'load_net_re', 'load_net_re_diff', #'load_net_re_diff_diff',
     # 'mtlf_diff',
     # 'wind_diff', 'solar_diff'
+    # 'daily_max_load_net_re', 'daily_min_load_net_re',
 ]  
 
 PAST_COLS = [
     'Averaged_Actual', 
     'lmp_diff',
     'lmp_load_net_re',
+    # 'daily_max_lmp', 'daily_min_lmp',
     # 'lmp_re',
     # 'Coal', 'Hydro', 'Natural_Gas', 
     # 'Nuclear', 'Solar', 'Wind',
@@ -99,6 +101,26 @@ def prep_lmp(
         .mutate(timestamp_mst=_.timestamp_mst_HE)
         .mutate(LMP=_.LMP.cast(parameters.PRECISION))
         .drop(drop_cols)
+        .order_by(['unique_id', 'timestamp_mst'])
+    )
+
+    min_max_lmp = (
+        lmp
+        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+        .group_by(['unique_id', 'date_mst'])
+        .agg(
+            daily_max_lmp=_.LMP.max(),
+            daily_min_lmp=_.LMP.min()
+        )
+    )
+
+    lmp = (
+        lmp
+        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+        .join(
+            min_max_lmp, ['unique_id', 'date_mst'], how='left', 
+        )
+        .drop(s.startswith(("date_mst")))
         .order_by(['unique_id', 'timestamp_mst'])
     )
 
@@ -243,11 +265,30 @@ def prep_all_df(
         .mutate(solar_diff = _.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1))
         .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
         .mutate(load_net_re = ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)) # avoid div/0 errors
+        .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
         .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
-        # .mutate(load_net_re_diff_diff = _.load_net_re_diff - _.load_net_re_diff.lag(1))
         .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
-        # .mutate(ratio_net = _.re_ratio * _.load_net_re)
     )
+
+    min_max_load_net_re = (
+        all_df
+        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+        .group_by(['date_mst'])
+        .agg(
+            daily_max_load_net_re=_.load_net_re.max(),
+            daily_min_load_net_re=_.load_net_re.min()
+        )
+    )
+    
+    all_df = (
+        all_df
+        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+        .join(
+            min_max_load_net_re, ['date_mst'], how='left', 
+        )
+        .drop(s.startswith(("date_mst")))
+    )
+
 
     # convert precision for model training
     all_df = (
@@ -264,12 +305,14 @@ def prep_all_df(
         .mutate(wind_diff = _.wind_diff.cast(parameters.PRECISION))
         .mutate(solar_diff = _.solar_diff.cast(parameters.PRECISION))
         .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
-        .mutate(load_net_re_diff = _.load_net_re_diff.cast(parameters.PRECISION))
-        # .mutate(load_net_re_diff_diff = _.load_net_re_diff_diff.cast(parameters.PRECISION))
         .mutate(lmp_load_net_re = _.lmp_load_net_re.cast(parameters.PRECISION))
-        # .mutate(ratio_net = _.ratio_net.cast(parameters.PRECISION))
+        .mutate(load_net_re_diff = _.load_net_re_diff.cast(parameters.PRECISION))
+        .mutate(daily_max_load_net_re = _.daily_max_load_net_re.cast(parameters.PRECISION))
+        .mutate(daily_min_load_net_re = _.daily_min_load_net_re.cast(parameters.PRECISION))
         
     )
+
+    
 
     return all_df
 

@@ -115,19 +115,19 @@ def build_fit_tsmixerx(
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
-    torch_metrics = MeanAbsoluteError()
-    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = MeanAbsoluteError()
+    torch_metrics = MeanSquaredError(squared=False)
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
         "datetime_attribute": {
-            "future": ["dayofweek", "month"], # , "hour"
-            "past": ["dayofweek", "month"], # , "hour"
+            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
         },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -221,19 +221,19 @@ def build_fit_tide(
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
-    torch_metrics = MeanAbsoluteError()
-    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = MeanAbsoluteError()
+    torch_metrics = MeanSquaredError(squared=False)
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
         "datetime_attribute": {
-            "future": ["dayofweek", "month"], # , "hour"
-            "past": ["dayofweek", "month"], # , "hour"
+            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
         },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -328,19 +328,19 @@ def build_fit_tft(
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
-    torch_metrics = MeanAbsoluteError()
-    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = MeanAbsoluteError()
+    torch_metrics = MeanSquaredError(squared=False)
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
         "datetime_attribute": {
-            "future": ["dayofweek", "month"], # , "hour"
-            "past": ["dayofweek", "month"], # , "hour"
+            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
         },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -425,19 +425,19 @@ def build_fit_dlinear(
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
-    torch_metrics = MeanAbsoluteError()
-    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = MeanAbsoluteError()
+    torch_metrics = MeanSquaredError(squared=False)
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
         "datetime_attribute": {
-            "future": ["dayofweek", "month"], # , "hour"
-            "past": ["dayofweek", "month"], # , "hour"
+            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
         },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
@@ -518,19 +518,19 @@ def build_fit_nlinear(
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
-    torch_metrics = MeanAbsoluteError()
-    # torch_metrics = MeanSquaredError(squared=False)
+    # torch_metrics = MeanAbsoluteError()
+    torch_metrics = MeanSquaredError(squared=False)
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
         "datetime_attribute": {
-            "future": ["dayofweek", "month"], # , "hour"
-            "past": ["dayofweek", "month"], # , "hour"
+            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
         },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
         "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
