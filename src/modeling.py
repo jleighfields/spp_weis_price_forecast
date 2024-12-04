@@ -120,10 +120,10 @@ def build_fit_tsmixerx(
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
-        "datetime_attribute": {
-            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        },
+        # "datetime_attribute": {
+        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        # },
         "position": {
             "past": ["relative"], 
             "future": ["relative"]
@@ -226,10 +226,10 @@ def build_fit_tide(
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
-        "datetime_attribute": {
-            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        },
+        # "datetime_attribute": {
+        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        # },
         "position": {
             "past": ["relative"], 
             "future": ["relative"]
@@ -333,10 +333,10 @@ def build_fit_tft(
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
-        "datetime_attribute": {
-            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        },
+        # "datetime_attribute": {
+        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        # },
         "position": {
             "past": ["relative"], 
             "future": ["relative"]
@@ -430,10 +430,10 @@ def build_fit_dlinear(
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
-        "datetime_attribute": {
-            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        },
+        # "datetime_attribute": {
+        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        # },
         "position": {
             "past": ["relative"], 
             "future": ["relative"]
@@ -523,10 +523,10 @@ def build_fit_nlinear(
     # torch_metrics = SymmetricMeanAbsolutePercentageError() # don't use...
     
     encoders = {
-        "datetime_attribute": {
-            "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-            "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        },
+        # "datetime_attribute": {
+        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        # },
         "position": {
             "past": ["relative"], 
             "future": ["relative"]
