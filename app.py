@@ -6,11 +6,13 @@ Streamlit interface for SPP Weis LMP forecasting endpoint
 
 # base imports
 import os
+import random
 import pickle
 import logging
 from typing import List
 
 # data
+import numpy as np
 import pandas as pd
 import ibis
 
@@ -20,6 +22,7 @@ import streamlit as st
 # forecasting data
 from darts import TimeSeries, concatenate
 import mlflow
+import torch
 
 # custom modules
 import src.data_engineering as de
@@ -288,12 +291,15 @@ if st.session_state.get_fcast_btn:
         'past_covariates': [past_cov_series.to_json()],
         'future_covariates': [future_cov_series.to_json()],
         'n': n_days*24,
-        'num_samples': 200
+        'num_samples': 400
     }
     df = pd.DataFrame(data)
 
     # Predict on a Pandas DataFrame.
-    df['num_samples'] = 500
+    # TODO: fix reproducibility
+    torch.manual_seed(0)
+    random.seed(0)
+    np.random.seed(0)
     preds_json = st.session_state.loaded_model.predict(df)
     preds = TimeSeries.from_json(preds_json)
 
