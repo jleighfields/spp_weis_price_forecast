@@ -2,6 +2,8 @@
 set up global parameters
 '''
 
+TRAIN_START = '365D'
+
 FORECAST_HORIZON = 24*5
 INPUT_CHUNK_LENGTH = 24*7
 PRECISION = 'float32'
@@ -9,36 +11,36 @@ MODEL_NAME = 'spp_weis'
 
 
 # best tsmixer model params from optuna experiment
-TSMIXER_PARAMS = [{'hidden_size': 120,
-  'ff_size': 34,
-  'num_blocks': 5,
-  'lr': 0.000934,
-  'n_epochs': 9,
-  'dropout': 0.41000000000000003},
- {'hidden_size': 52,
-  'ff_size': 54,
-  'num_blocks': 8,
-  'lr': 0.0008,
-  'n_epochs': 5,
-  'dropout': 0.4},
- {'hidden_size': 108,
-  'ff_size': 116,
+TSMIXER_PARAMS = [{'hidden_size': 48,
+  'ff_size': 94,
   'num_blocks': 3,
-  'lr': 0.000735,
-  'n_epochs': 7,
-  'dropout': 0.48000000000000004},
- {'hidden_size': 38,
-  'ff_size': 92,
+  'lr': 0.000709,
+  'n_epochs': 5,
+  'dropout': 0.43000000000000005},
+ {'hidden_size': 60,
+  'ff_size': 32,
+  'num_blocks': 1,
+  'lr': 0.000956,
+  'n_epochs': 5,
+  'dropout': 0.44},
+ {'hidden_size': 56,
+  'ff_size': 36,
   'num_blocks': 5,
-  'lr': 0.00043299999999999995,
-  'n_epochs': 10,
-  'dropout': 0.41000000000000003},
- {'hidden_size': 98,
-  'ff_size': 38,
-  'num_blocks': 6,
-  'lr': 0.000805,
-  'n_epochs': 9,
-  'dropout': 0.49}]
+  'lr': 0.0009429999999999999,
+  'n_epochs': 7,
+  'dropout': 0.46},
+ {'hidden_size': 54,
+  'ff_size': 84,
+  'num_blocks': 2,
+  'lr': 0.000331,
+  'n_epochs': 14,
+  'dropout': 0.46},
+ {'hidden_size': 124,
+  'ff_size': 34,
+  'num_blocks': 3,
+  'lr': 0.000341,
+  'n_epochs': 11,
+  'dropout': 0.4}]
 
 # best tide model params from optuna experiment
 TIDE_PARAMS = [{'num_encoder_layers': 2,

@@ -121,14 +121,14 @@ def build_fit_tsmixerx(
     
     encoders = {
         # "datetime_attribute": {
-        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "future": ["month"], # "dayofweek", "month", "hour"
+        #     "past": ["month"], # "dayofweek", "month", "hour"
         # },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
-        # "transformer": Scaler(RobustScaler(), global_fit=True)
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
     # common parameters across models
@@ -227,14 +227,14 @@ def build_fit_tide(
     
     encoders = {
         # "datetime_attribute": {
-        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "future": ["month"], # "dayofweek", "month", "hour"
+        #     "past": ["month"], # "dayofweek", "month", "hour"
         # },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
-        # "transformer": Scaler(RobustScaler(), global_fit=True)
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
     # common parameters across models
@@ -334,14 +334,14 @@ def build_fit_tft(
     
     encoders = {
         # "datetime_attribute": {
-        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "future": ["month"], # "dayofweek", "month", "hour"
+        #     "past": ["month"], # "dayofweek", "month", "hour"
         # },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
-        # "transformer": Scaler(RobustScaler(), global_fit=True)
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
     # common parameters across models
@@ -431,14 +431,14 @@ def build_fit_dlinear(
     
     encoders = {
         # "datetime_attribute": {
-        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "future": ["month"], # "dayofweek", "month", "hour"
+        #     "past": ["month"], # "dayofweek", "month", "hour"
         # },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
-        # "transformer": Scaler(RobustScaler(), global_fit=True)
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
     # common parameters across models
@@ -524,14 +524,14 @@ def build_fit_nlinear(
     
     encoders = {
         # "datetime_attribute": {
-        #     "future": ["dayofweek", "month"], # "dayofweek", "month", "hour"
-        #     "past": ["dayofweek", "month"], # "dayofweek", "month", "hour"
+        #     "future": ["month"], # "dayofweek", "month", "hour"
+        #     "past": ["month"], # "dayofweek", "month", "hour"
         # },
-        # "position": {
-        #     "past": ["relative"], 
-        #     "future": ["relative"]
-        # },
-        # "transformer": Scaler(RobustScaler(), global_fit=True)
+        "position": {
+            "past": ["relative"], 
+            "future": ["relative"]
+        },
+        "transformer": Scaler(RobustScaler(), global_fit=True)
     }
 
     # common parameters across models

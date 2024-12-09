@@ -40,6 +40,8 @@ for module_path in module_paths:
 # from src import params
 import parameters
 
+# TRAIN_START = '548D'
+# TRAIN_START = '180D'
 
 #############################################
 # parameters for column names
@@ -87,7 +89,7 @@ def prep_lmp(
 
     if not start_time:
         # get last 1.5 years
-        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
     lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
@@ -138,7 +140,7 @@ def prep_mtrf(
 
     if not start_time:
         # get last 1.5 years
-        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
     mtrf = mtrf.filter(_.timestamp_mst >= start_time)
@@ -168,7 +170,7 @@ def prep_mtlf(
 
     if not start_time:
         # get last 1.5 years
-        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
     mtlf = mtlf.filter(_.timestamp_mst >= start_time)
@@ -198,7 +200,7 @@ def prep_gen_cap(
 
     if not start_time:
         # get last 1.5 years
-        start_time = pd.Timestamp.utcnow() - pd.Timedelta('548D')
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
     gen_cap = gen_cap.filter(_.timestamp_mst >= start_time)
