@@ -105,6 +105,7 @@ def build_fit_tsmixerx(
     batch_size: int=64,
     n_epochs: int=8,
     dropout: float=0.45,
+    activation: str='ELU', #  “ReLU”, “RReLU”, “PReLU”, “ELU”, “Softplus”, “Tanh”, “SELU”, “LeakyReLU”, “Sigmoid”, “GELU”.
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
     model_id: str='ts_mixer',
@@ -141,6 +142,7 @@ def build_fit_tsmixerx(
         'batch_size': batch_size,
         'n_epochs': n_epochs,
         'dropout': dropout,
+        'activation': activation,
         'add_encoders': encoders,
         'likelihood': QuantileRegression(quantiles=quantiles),  # QuantileRegression is set per default
         'optimizer_kwargs': {"lr": lr},
