@@ -105,7 +105,7 @@ def build_fit_tsmixerx(
     batch_size: int=64,
     n_epochs: int=8,
     dropout: float=0.45,
-    activation: str='ELU', #  “ReLU”, “RReLU”, “PReLU”, “ELU”, “Softplus”, “Tanh”, “SELU”, “LeakyReLU”, “Sigmoid”, “GELU”.
+    activation: str='ReLU', #  “ReLU”, “RReLU”, “PReLU”, “ELU”, “Softplus”, “Tanh”, “SELU”, “LeakyReLU”, “Sigmoid”, “GELU”.
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
     model_id: str='ts_mixer',
