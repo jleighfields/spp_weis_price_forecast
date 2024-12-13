@@ -119,40 +119,46 @@ darts_signature = infer_signature(df, ouput_example)
 
 # build pretrained models
 models_tsmixer = []
-# for i, param in enumerate(parameters.TSMIXER_PARAMS):
-#     print(f'\ni: {i} \t' + '*' * 25, flush=True)
-#     model_tsmixer = build_fit_tsmixerx(
-#         series=train_test_all_series,
-#         val_series=test_series,
-#         future_covariates=futr_cov,
-#         past_covariates=past_cov,
-#         **param
-#     )
-#     models_tsmixer += [model_tsmixer]
+if parameters.USE_TSMIXER
+    for i, param in enumerate(parameters.TSMIXER_PARAMS[:parameters.TOP_N]):
+        print(f'\ni: {i} \t' + '*' * 25, flush=True)
+        model_tsmixer = build_fit_tsmixerx(
+            series=train_test_all_series,
+            val_series=test_series,
+            future_covariates=futr_cov,
+            past_covariates=past_cov,
+            **param
+        )
+        models_tsmixer += [model_tsmixer]
+
 
 models_tide = []
-for i, param in enumerate(parameters.TIDE_PARAMS):
-    print(f'\ni: {i} \t' + '*' * 25, flush=True)
-    model_tide = build_fit_tide(
-        series=train_test_all_series,
-        val_series=test_series,
-        future_covariates=futr_cov,
-        past_covariates=past_cov,
-        **param
-    )
-    models_tide += [model_tide]
+if parameters.USE_TIDE
+    for i, param in enumerate(parameters.TIDE_PARAMS[:parameters.TOP_N]):
+        print(f'\ni: {i} \t' + '*' * 25, flush=True)
+        model_tide = build_fit_tide(
+            series=train_test_all_series,
+            val_series=test_series,
+            future_covariates=futr_cov,
+            past_covariates=past_cov,
+            **param
+        )
+        models_tide += [model_tide]
+
 
 models_tft = []
-# for i, param in enumerate(parameters.TFT_PARAMS):
-#     print(f'\ni: {i} \t' + '*' * 25, flush=True)
-#     model_tft = build_fit_tft(
-#         series=train_test_all_series,
-#         val_series=test_series,
-#         future_covariates=futr_cov,
-#         past_covariates=past_cov,
-#         **param
-#     )
-#     models_tft += [model_tft]
+if parameters.USE_TFT
+    for i, param in enumerate(parameters.TFT_PARAMS[:parameters.TOP_N]):
+        print(f'\ni: {i} \t' + '*' * 25, flush=True)
+        model_tft = build_fit_tft(
+            series=train_test_all_series,
+            val_series=test_series,
+            future_covariates=futr_cov,
+            past_covariates=past_cov,
+            **param
+        )
+        models_tft += [model_tft]
+
 
 # Refit and log model with best params
 log.info('log ensemble model')
