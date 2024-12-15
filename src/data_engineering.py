@@ -40,8 +40,6 @@ for module_path in module_paths:
 # from src import params
 import parameters
 
-# TRAIN_START = '548D'
-# TRAIN_START = '180D'
 
 #############################################
 # parameters for column names
@@ -58,6 +56,7 @@ FUTR_COLS = [
 PAST_COLS = [
     'Averaged_Actual', 
     'lmp_diff',
+    # 'lmp_load',
     'lmp_load_net_re',
     # 'daily_max_lmp', 'daily_min_lmp',
     # 'lmp_re',
@@ -270,26 +269,27 @@ def prep_all_df(
         # .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
         .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
         .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
+        .mutate(lmp_load = _.LMP / _.MTLF)
     )
 
-    min_max_load_net_re = (
-        all_df
-        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-        .group_by(['date_mst'])
-        .agg(
-            daily_max_load_net_re=_.load_net_re.max(),
-            daily_min_load_net_re=_.load_net_re.min()
-        )
-    )
+    # min_max_load_net_re = (
+    #     all_df
+    #     .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+    #     .group_by(['date_mst'])
+    #     .agg(
+    #         daily_max_load_net_re=_.load_net_re.max(),
+    #         daily_min_load_net_re=_.load_net_re.min()
+    #     )
+    # )
     
-    all_df = (
-        all_df
-        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-        .join(
-            min_max_load_net_re, ['date_mst'], how='left', 
-        )
-        .drop(s.startswith(("date_mst")))
-    )
+    # all_df = (
+    #     all_df
+    #     .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
+    #     .join(
+    #         min_max_load_net_re, ['date_mst'], how='left', 
+    #     )
+    #     .drop(s.startswith(("date_mst")))
+    # )
 
 
     # convert precision for model training
@@ -308,9 +308,10 @@ def prep_all_df(
         .mutate(solar_diff = _.solar_diff.cast(parameters.PRECISION))
         .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
         .mutate(lmp_load_net_re = _.lmp_load_net_re.cast(parameters.PRECISION))
+        .mutate(lmp_load = _.lmp_load.cast(parameters.PRECISION))
         .mutate(load_net_re_diff = _.load_net_re_diff.cast(parameters.PRECISION))
-        .mutate(daily_max_load_net_re = _.daily_max_load_net_re.cast(parameters.PRECISION))
-        .mutate(daily_min_load_net_re = _.daily_min_load_net_re.cast(parameters.PRECISION))
+        # .mutate(daily_max_load_net_re = _.daily_max_load_net_re.cast(parameters.PRECISION))
+        # .mutate(daily_min_load_net_re = _.daily_min_load_net_re.cast(parameters.PRECISION))
         
     )
 
