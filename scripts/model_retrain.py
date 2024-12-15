@@ -119,7 +119,7 @@ darts_signature = infer_signature(df, ouput_example)
 
 # build pretrained models
 models_tsmixer = []
-if parameters.USE_TSMIXER
+if parameters.USE_TSMIXER:
     for i, param in enumerate(parameters.TSMIXER_PARAMS[:parameters.TOP_N]):
         print(f'\ni: {i} \t' + '*' * 25, flush=True)
         model_tsmixer = build_fit_tsmixerx(
@@ -133,7 +133,7 @@ if parameters.USE_TSMIXER
 
 
 models_tide = []
-if parameters.USE_TIDE
+if parameters.USE_TIDE:
     for i, param in enumerate(parameters.TIDE_PARAMS[:parameters.TOP_N]):
         print(f'\ni: {i} \t' + '*' * 25, flush=True)
         model_tide = build_fit_tide(
@@ -147,7 +147,7 @@ if parameters.USE_TIDE
 
 
 models_tft = []
-if parameters.USE_TFT
+if parameters.USE_TFT:
     for i, param in enumerate(parameters.TFT_PARAMS[:parameters.TOP_N]):
         print(f'\ni: {i} \t' + '*' * 25, flush=True)
         model_tft = build_fit_tft(

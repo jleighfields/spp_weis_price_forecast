@@ -39,3 +39,4 @@ watch -n 1 nvidia-smi
 # start tensorboard
 tensorboard --reload_interval 3 --reload_multifile True --logdir=model_checkpoints/ts_mixer_model
 tensorboard --reload_interval 3 --reload_multifile True --logdir=model_checkpoints/tide_model
+tensorboard --reload_interval 3 --reload_multifile True --logdir=model_checkpoints/tft_model

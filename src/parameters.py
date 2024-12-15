@@ -2,6 +2,10 @@
 set up global parameters
 '''
 
+from sklearn.preprocessing import RobustScaler
+from darts.dataprocessing.transformers import Scaler
+
+
 TRAIN_START = '365D'
 
 FORECAST_HORIZON = 24*5
@@ -14,6 +18,56 @@ USE_TIDE = True
 USE_TFT = False
 
 TOP_N = 5
+
+
+## set of encoders for experiment
+ENCODERS = {}
+
+ENCODERS['rel'] = {
+    "position": {
+        "past": ["relative"], 
+        "future": ["relative"]
+    },
+    "transformer": Scaler(RobustScaler(), global_fit=True)
+    }
+
+ENCODERS['rel_mon'] = {
+            "datetime_attribute": {
+                "future": ["month"], 
+                "past": ["month"], 
+            },
+            "position": {
+                "past": ["relative"], 
+                "future": ["relative"]
+            },
+            "transformer": Scaler(RobustScaler(), global_fit=True)
+        }
+
+ENCODERS['rel_mon_day'] = {
+            "datetime_attribute": {
+                "future": ["month", "dayofweek"], 
+                "past": ["month", "dayofweek"], 
+            },
+            "position": {
+                "past": ["relative"], 
+                "future": ["relative"]
+            },
+            "transformer": Scaler(RobustScaler(), global_fit=True)
+        }
+
+ENCODERS['rel_mon_day_hour'] = {
+            "datetime_attribute": {
+                "future": ["month", "dayofweek", "hour"], 
+                "past": ["month", "dayofweek", "hour"], 
+            },
+            "position": {
+                "past": ["relative"], 
+                "future": ["relative"]
+            },
+            "transformer": Scaler(RobustScaler(), global_fit=True)
+        }
+
+
 
 
 # best tsmixer model params from optuna experiment
@@ -53,52 +107,58 @@ TSMIXER_PARAMS = [{'hidden_size': 104,
   'dropout': 0.44999999999999996,
   'activation': 'ELU'}]
 
+
 # best tide model params from optuna experiment
-TIDE_PARAMS = [{'num_encoder_layers': 1,
-  'decoder_output_dim': 11,
-  'hidden_size': 32,
-  'temporal_width': 2,
-  'temporal_decoder_hidden': 12,
-  'temporal_hidden_size': 6,
-  'lr': 9.400000000000001e-05,
-  'n_epochs': 11,
-  'dropout': 0.4},
- {'num_encoder_layers': 2,
-  'decoder_output_dim': 10,
-  'hidden_size': 14,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 32,
-  'temporal_hidden_size': 18,
-  'lr': 9.3e-05,
-  'n_epochs': 11,
-  'dropout': 0.49},
- {'num_encoder_layers': 2,
-  'decoder_output_dim': 24,
-  'hidden_size': 26,
+TIDE_PARAMS = [{'num_encoder_decoder_layers': 1,
+  'decoder_output_dim': 12,
+  'hidden_size': 28,
   'temporal_width': 0,
-  'temporal_decoder_hidden': 6,
-  'temporal_hidden_size': 30,
-  'lr': 5.6000000000000006e-05,
-  'n_epochs': 7,
-  'dropout': 0.41000000000000003},
- {'num_encoder_layers': 1,
-  'decoder_output_dim': 16,
-  'hidden_size': 18,
+  'temporal_decoder_hidden': 20,
+  'temporal_hidden_size': 16,
+  'lr': 6.4e-05,
+  'n_epochs': 8,
+  'dropout': 0.42000000000000004,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 3,
+  'decoder_output_dim': 6,
+  'hidden_size': 20,
   'temporal_width': 2,
-  'temporal_decoder_hidden': 8,
-  'temporal_hidden_size': 22,
-  'lr': 6.3e-05,
+  'temporal_decoder_hidden': 4,
+  'temporal_hidden_size': 32,
+  'lr': 8.9e-05,
+  'n_epochs': 14,
+  'dropout': 0.5,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 2,
+  'decoder_output_dim': 21,
+  'hidden_size': 18,
+  'temporal_width': 0,
+  'temporal_decoder_hidden': 26,
+  'temporal_hidden_size': 32,
+  'lr': 3.1e-05,
   'n_epochs': 11,
-  'dropout': 0.48000000000000004},
- {'num_encoder_layers': 2,
-  'decoder_output_dim': 10,
-  'hidden_size': 24,
-  'temporal_width': 3,
-  'temporal_decoder_hidden': 12,
-  'temporal_hidden_size': 8,
-  'lr': 5.3e-05,
-  'n_epochs': 11,
-  'dropout': 0.47000000000000003}]
+  'dropout': 0.44,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 1,
+  'decoder_output_dim': 21,
+  'hidden_size': 20,
+  'temporal_width': 1,
+  'temporal_decoder_hidden': 22,
+  'temporal_hidden_size': 6,
+  'lr': 8.7e-05,
+  'n_epochs': 8,
+  'dropout': 0.47000000000000003,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 2,
+  'decoder_output_dim': 24,
+  'hidden_size': 22,
+  'temporal_width': 2,
+  'temporal_decoder_hidden': 24,
+  'temporal_hidden_size': 26,
+  'lr': 7.999999999999999e-05,
+  'n_epochs': 8,
+  'dropout': 0.46,
+  'encoder_key': 'rel'}]
 
 
 # best tide model params from optuna experiment
