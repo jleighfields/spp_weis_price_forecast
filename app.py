@@ -128,8 +128,8 @@ with forcasted_data:
     st.title('SPP Weis Nodal Price Forecast')
     st.write(
         '''
-        **[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** -- 
-        **[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** --
+        **[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** | 
+        **[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** |
         **[SPP Weis generation mix](https://portal.spp.org/pages/weis-generation-mix)**
         ''')
     # st.write('**[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)**')
@@ -291,12 +291,14 @@ if st.session_state.get_fcast_btn:
         'past_covariates': [past_cov_series.to_json()],
         'future_covariates': [future_cov_series.to_json()],
         'n': n_days*24,
-        'num_samples': 400
+        'num_samples': 500
     }
     df = pd.DataFrame(data)
 
     # Predict on a Pandas DataFrame.
     # TODO: fix reproducibility
+    # from lightning.pytorch import seed_everything
+    # seed_everything(0, workers=True)
     torch.manual_seed(0)
     random.seed(0)
     np.random.seed(0)
