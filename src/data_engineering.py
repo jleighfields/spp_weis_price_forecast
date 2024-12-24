@@ -47,7 +47,8 @@ import parameters
 FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     # 're_ratio', 're_diff', 
-    'load_net_re', 'load_net_re_diff', #'load_net_re_diff_diff',
+    'load_net_re', #'load_net_re_diff', #'load_net_re_diff_diff',
+    'load_net_re_diff_lag', 'load_net_re_diff_lead',
     # 'mtlf_diff',
     # 'wind_diff', 'solar_diff'
     # 'daily_max_load_net_re', 'daily_min_load_net_re',
@@ -267,7 +268,8 @@ def prep_all_df(
         .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
         .mutate(load_net_re = ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)) # avoid div/0 errors
         # .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
-        .mutate(load_net_re_diff = _.load_net_re - _.load_net_re.lag(1))
+        .mutate(load_net_re_diff_lag = _.load_net_re - _.load_net_re.lag(1))
+        .mutate(load_net_re_diff_lead = _.load_net_re - _.load_net_re.lead(1))
         .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
         .mutate(lmp_load = _.LMP / _.MTLF)
     )
@@ -309,7 +311,8 @@ def prep_all_df(
         .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
         .mutate(lmp_load_net_re = _.lmp_load_net_re.cast(parameters.PRECISION))
         .mutate(lmp_load = _.lmp_load.cast(parameters.PRECISION))
-        .mutate(load_net_re_diff = _.load_net_re_diff.cast(parameters.PRECISION))
+        .mutate(load_net_re_diff_lag = _.load_net_re_diff_lag.cast(parameters.PRECISION))
+        .mutate(load_net_re_diff_lead = _.load_net_re_diff_lead.cast(parameters.PRECISION))
         # .mutate(daily_max_load_net_re = _.daily_max_load_net_re.cast(parameters.PRECISION))
         # .mutate(daily_min_load_net_re = _.daily_min_load_net_re.cast(parameters.PRECISION))
         
