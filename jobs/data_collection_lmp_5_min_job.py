@@ -40,7 +40,7 @@ try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/data_collection/data_collection_5_min.py")
     s.run("rm ~/spp_weis_price_forecast/data/spp.ddb.wal")
 except Exception as e:
-        log.error("command failed with error: ", e)
+        log.error("command failed with error: %s".format(e))
 
 log.info("Job complete")
 
