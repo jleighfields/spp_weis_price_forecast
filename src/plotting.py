@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
 
-def get_quantile_df(preds: TimeSeries) -> pd.DataFrame:
+def get_quantile_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
     '''
     create a quantile dataframe from the n forecasts
     returned from the endpoint, this will be used to
@@ -50,15 +50,19 @@ def get_quantile_df(preds: TimeSeries) -> pd.DataFrame:
     plot_df = (
         preds.pd_dataframe()
         .reset_index()
+        .rename(columns={'timestamp_mst': 'time'})
         .melt(id_vars='time')
         .rename(columns={'component':'node'})
     )
 
     # remove sample numbers
-    plot_df.node = ['_'.join(n.split('_')[:-1]) for n in plot_df.node]
+    # plot_df.node = ['_'.join(n.split('_')[:-1]) for n in plot_df.node]
+    plot_df['node'] = node_name
+    log.info(plot_df.head())
 
     # get quanitles
-    q_df = plot_df.groupby(['time', 'node']).quantile([0.1, 0.5, 0.9])
+    # q_df = plot_df.groupby(['time', 'node']).quantile([0.1, 0.5, 0.9])
+    q_df = plot_df.drop('variable', axis=1).groupby(['time', 'node']).quantile([0.1, 0.5, 0.9])
 
     # create columns from quantiles
     q_pivot = q_df.reset_index().pivot(columns='level_2', index=['time', 'node'])
@@ -72,7 +76,7 @@ def get_quantile_df(preds: TimeSeries) -> pd.DataFrame:
     return q_pivot
 
 
-def get_mean_df(preds: TimeSeries) -> pd.DataFrame:
+def get_mean_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
     '''
     get the mean forecast from the n forecasts
     returned from the endpoint, this will be used to
@@ -88,15 +92,17 @@ def get_mean_df(preds: TimeSeries) -> pd.DataFrame:
     plot_df = (
         preds.pd_dataframe()
         .reset_index()
+        .rename(columns={'timestamp_mst': 'time'})
         .melt(id_vars='time')
         .rename(columns={'component':'node'})
     )
 
     # remove sample numbers
-    plot_df.node = ['_'.join(n.split('_')[:-1]) for n in plot_df.node]
+    # plot_df.node = ['_'.join(n.split('_')[:-1]) for n in plot_df.node]
+    plot_df['node'] = node_name
 
     # get mean
-    mean_df = plot_df.groupby(['time', 'node']).mean()
+    mean_df = plot_df.drop('variable', axis=1).groupby(['time', 'node']).mean()
     mean_df.rename(columns={'value':'mean_fcast'}, inplace=True)
     return mean_df
 
@@ -124,8 +130,8 @@ def get_plot_df(
     returns: pd.DataFrame - contains the data needed for plotting
     '''
 
-    fcast_df = get_mean_df(preds).merge(
-        get_quantile_df(preds),
+    fcast_df = get_mean_df(preds, node_name).merge(
+        get_quantile_df(preds, node_name),
         left_index=True,
         right_index=True,
     )

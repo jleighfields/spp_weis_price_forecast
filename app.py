@@ -6,6 +6,7 @@ Streamlit interface for SPP Weis LMP forecasting endpoint
 
 # base imports
 import os
+import shutil
 import random
 import pickle
 import logging
@@ -25,10 +26,18 @@ from darts import TimeSeries, concatenate
 import mlflow
 import torch
 
+from darts.models import (
+    TFTModel,
+    TiDEModel,
+    TSMixerModel,
+    NaiveEnsembleModel,
+)
+
 # custom modules
 import src.data_engineering as de
 from src import plotting
 from src import parameters
+
 
 # define log
 logging.basicConfig(level=logging.INFO)
@@ -168,38 +177,53 @@ with forcasted_data:
     if 'loaded_model' not in st.session_state:
         log.info('loading model')
 
-        with st.spinner('Loading model from S3'):
-            # copy mlflow db to s3
+        with st.spinner('Loading models from S3'):
+            # copy models from s3
+            if os.path.isdir('s3_models'):
+                shutil.rmtree('s3_models')
+            os.mkdir('s3_models')
+            
+            log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-            mlflow_db = 'mlruns.db'
             s3_client = boto3.client('s3')
-            s3_client.download_file(AWS_S3_BUCKET, 'model/mlruns.db', 's3_mlruns.db')
 
-            os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///s3_mlruns.db'
-            log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
+            loaded_models = [d['Key'] for d in s3_client.list_objects(Bucket='spp-weis')['Contents'] if 's3_models/' in d['Key']]
+            for lm in loaded_models:
+                log.info(f'downloading: {lm}')
+                s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm)
 
-            # model uri for the above model
-            model_uri = "models:/spp_weis@champion"
+            ts_mixer_ckpts = [f for f in os.listdir('s3_models') if 'ts_mixer' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
+            ts_mixer_forecasting_models = []
+            for m_ckpt in ts_mixer_ckpts:
+                log.info(f'loading model: {m_ckpt}')
+                ts_mixer_forecasting_models += [TSMixerModel.load(f's3_models/{m_ckpt}', map_location=torch.device('cpu'))]
 
-            # Load the model and access the custom metadata
-            loaded_model = mlflow.pyfunc.load_model(model_uri=model_uri)
+            tide_ckpts = [f for f in os.listdir('s3_models') if 'tide_' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
+            tide_forecasting_models = []
+            for m_ckpt in tide_ckpts:
+                log.info(f'loading model: {m_ckpt}')
+                tide_forecasting_models += [TiDEModel.load(f's3_models/{m_ckpt}', map_location=torch.device('cpu'))]
+
+            tft_ckpts = [f for f in os.listdir('s3_models') if 'tft' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
+            tft_forecasting_models = []
+            for m_ckpt in tft_ckpts:
+                log.info(f'loading model: {m_ckpt}')
+                tide_forecasting_models += [TFTModel.load(f's3_models/{m_ckpt}', map_location=torch.device('cpu'))]
+
+            forecasting_models = ts_mixer_forecasting_models + tide_forecasting_models + tft_forecasting_models
+            loaded_model = NaiveEnsembleModel(
+                forecasting_models=forecasting_models, 
+                train_forecasting_models=False
+            )
+            
             log.info(f'loaded_model: {loaded_model}')
             st.session_state['loaded_model'] = loaded_model
 
             # get model training timestamp
-            load_model_dict = loaded_model.metadata.to_dict()
-            from mlflow import MlflowClient
-            client = MlflowClient()
-            local_dir = "./" # existing and accessible DBFS folder
-            run_id = load_model_dict['run_id']
-            artifact_path = 'GlobalForecasting/artifacts/TRAIN_TIMESTAMP.pkl'
-            local_path = client.download_artifacts(run_id, artifact_path, local_dir)
-            with open(artifact_path, 'rb') as handle:
+            with open('s3_models/TRAIN_TIMESTAMP.pkl', 'rb') as handle:
                 TRAIN_TIMESTAMP = pickle.load(handle)
             
             log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
-            os.remove(artifact_path)
-
             st.session_state['TRAIN_TIMESTAMP'] = TRAIN_TIMESTAMP
 
         st.toast('Done loading model')
@@ -309,8 +333,15 @@ if st.session_state.get_fcast_btn:
     torch.manual_seed(0)
     random.seed(0)
     np.random.seed(0)
-    preds_json = st.session_state.loaded_model.predict(df)
-    preds = TimeSeries.from_json(preds_json)
+    # preds_json = st.session_state.loaded_model.predict(df)
+    # preds = TimeSeries.from_json(preds_json)
+    preds = st.session_state.loaded_model.predict(
+        series=node_series,
+        past_covariates=past_cov_series,
+        future_covariates=future_cov_series,
+        n=n_days*24,
+        num_samples=500,
+    )
 
     plot_cov_df = future_cov_series.pd_dataframe()
     plot_cov_df['re_ratio'] = (plot_cov_df.Wind_Forecast_MW + plot_cov_df.Solar_Forecast_MW) / plot_cov_df.MTLF
@@ -331,6 +362,7 @@ if st.session_state.get_fcast_btn:
 
 if 'preds' in st.session_state:
     node_name = st.session_state.node_name
+    log.info(f'node_name: {node_name}, type(node_name): {type(node_name)}')
     fcast_time = st.session_state.fcast_time
 
     st.write(f'### {node_name} forecasts')
@@ -341,7 +373,7 @@ if 'preds' in st.session_state:
 
     log.info('formatting data for plotting')
 
-    q_df = plotting.get_quantile_df(preds)
+    q_df = plotting.get_quantile_df(preds, node_name)
 
     lmp_df = (
         st.session_state.lmp_pd_df
