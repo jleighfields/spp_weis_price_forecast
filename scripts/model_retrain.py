@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import pandas as pd
 import ibis
+import boto3
 
 ibis.options.interactive = True
 
@@ -32,6 +33,9 @@ import logging
 # define log
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # adding module folder to system path
 # needed for running scripts as jobs
@@ -309,7 +313,7 @@ log.info(f'pred: {pred}')
 
 # copy mlflow db to s3
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-key = 'mlruns.db'
-s3_client = boto3.client('s3')
 mlflow_db = 'mlruns.db'
+key = f'model/{mlflow_db}'
+s3_client = boto3.client('s3')
 s3_client.upload_file(mlflow_db, AWS_S3_BUCKET, key)

@@ -696,7 +696,7 @@ def upsert_mtlf(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY mtlf TO 's3://spp-weis/mtlf.parquet';")
+        con_ddb.sql("COPY mtlf TO 's3://spp-weis/data/mtlf.parquet';")
 
 
 def upsert_mtrf(
@@ -765,7 +765,7 @@ def upsert_mtrf(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY mtrf TO 's3://spp-weis/mtrf.parquet';")
+        con_ddb.sql("COPY mtrf TO 's3://spp-weis/data/mtrf.parquet';")
 
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
@@ -840,7 +840,7 @@ def upsert_lmp(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY lmp TO 's3://spp-weis/lmp.parquet';")
+        con_ddb.sql("COPY lmp TO 's3://spp-weis/data/lmp.parquet';")
 
 
 def upsert_gen_cap(

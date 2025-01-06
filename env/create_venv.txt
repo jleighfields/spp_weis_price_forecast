@@ -15,7 +15,7 @@ pip install scikit-learn darts neuralforecast \
 pandas pyarrow seaborn plotly \
 python-dotenv xgboost streamlit shiny \
 jupyterlab jupyterlab-git ipywidgets \
-pytest pylint rsconnect-python
+pytest pylint rsconnect-python boto3
 
 pip install polars duckdb "ibis-framework[duckdb]"
 pip install mlflow
