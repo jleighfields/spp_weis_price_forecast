@@ -10,7 +10,7 @@ streamlit
 boto3
 polars
 duckdb
-ibis-framework
+ibis-framework[duckdb]
 mlflow
 lightning
 lightning-sdk
