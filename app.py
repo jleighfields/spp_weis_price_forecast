@@ -179,9 +179,9 @@ with forcasted_data:
 
         with st.spinner('Loading models from S3'):
             # copy models from s3
-            if os.path.isdir('s3_models'):
-                shutil.rmtree('s3_models')
-            os.mkdir('s3_models')
+            # if os.path.isdir('s3_models'):
+            #     shutil.rmtree('s3_models')
+            # os.mkdir('s3_models')
             
             log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
