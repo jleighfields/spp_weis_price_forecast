@@ -696,7 +696,7 @@ def upsert_mtlf(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY mtlf TO 's3://spp-weis/mtrf.parquet';")
+        con_ddb.sql("COPY mtlf TO 's3://spp-weis/mtlf.parquet';")
 
 
 def upsert_mtrf(
