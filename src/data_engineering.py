@@ -31,6 +31,7 @@ home = os.getenv('HOME')
 module_paths = [
     f'{home}/spp_weis_price_forecast/src',
     f'{home}/Documents/spp_weis_price_forecast/src',
+    '/cloud/project/src'
 ]
 for module_path in module_paths:
     if os.path.isdir(module_path):
