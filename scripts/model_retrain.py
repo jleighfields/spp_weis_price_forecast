@@ -305,3 +305,12 @@ pred = loaded_model.predict(df)
 
 print('\n' + '*' * 40)
 log.info(f'pred: {pred}')
+
+
+# copy mlflow db to s3
+AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+key = 'mlruns.db'
+s3_client = boto3.client('s3')
+mlflow_db = 'mlruns.db'
+all_results.to_parquet(results_path, index=False)
+s3_client.upload_file(mlflow_db, AWS_S3_BUCKET, key)
