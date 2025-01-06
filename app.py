@@ -146,12 +146,13 @@ with forcasted_data:
     if ('all_df_pd' not in st.session_state) or st.session_state.refresh_data:
         log.info('loading data')
 
-        with st.spinner('Loading LMP data...'):
-            con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-            # con = ibis.duckdb.connect(
-            #     "/teamspace/studios/data-collection/spp_weis_price_forecast/data/spp.ddb", 
-            #     read_only=True
-            #     )
+        with st.spinner('Loading LMP data from S3...'):
+            con = ibis.duckdb.connect()
+            con.read_parquet('s3://spp-weis/data/lmp.parquet', 'lmp')
+            con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
+            con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
+            # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
             st.session_state['lmp'] = de.prep_lmp(con)
             st.session_state['lmp_pd_df'] = (
@@ -168,7 +169,6 @@ with forcasted_data:
 
         with st.spinner('Loading model'):
             os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
-            # os.environ['MLFLOW_TRACKING_URI'] = 'file:///teamspace/studios/model-train/spp_weis_price_forecast/mlruns'
             log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
             # model uri for the above model
