@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import ibis
 import boto3
+import torch
 
 ibis.options.interactive = True
 
@@ -30,15 +31,16 @@ warnings.filterwarnings("ignore")
 # logging
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # define log
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-from dotenv import load_dotenv
-load_dotenv()
-
 # adding module folder to system path
 # needed for running scripts as jobs
+os.chdir('..')
 home = os.getenv('HOME')
 module_paths = [
     f'{home}/spp_weis_price_forecast/src',
@@ -60,6 +62,9 @@ from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, build_fit_ti
 # will be loaded from root when deployed
 from darts_wrapper import DartsGlobalModel
 
+# client for uploading model weights
+s3 = boto3.client('s3')
+
 # check parameters
 log.info(f'FORECAST_HORIZON: {parameters.FORECAST_HORIZON}')
 log.info(f'INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}')
@@ -67,9 +72,18 @@ log.info(f'MODEL_NAME: {parameters.MODEL_NAME}')
 
 # connect to database and prepare data
 print('\n' + '*' * 40)
-log.info('preparing data')
-con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+# con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+con = ibis.duckdb.connect()
+log.info('getting lmp data from s3')
+con.read_parquet('s3://spp-weis/data/lmp.parquet', 'lmp')
+log.info('getting mtrf data from s3')
+con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
+log.info('getting mtlf data from s3')
+con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
+log.info('finished getting data from s3')
 
+
+log.info('preparing lmp data')
 lmp = de.prep_lmp(con)
 lmp_df = lmp.to_pandas().rename(
     columns={
@@ -79,6 +93,8 @@ lmp_df = lmp.to_pandas().rename(
     }
 )
 
+
+log.info('preparing covariate data')
 all_df = de.prep_all_df(con)
 all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
@@ -94,32 +110,8 @@ test_series = de.get_series(test_all)
 futr_cov = de.get_futr_cov(all_df_pd)
 past_cov = de.get_past_cov(all_df_pd)
 
-# MLFlow setup
 print('\n' + '*' * 40)
-os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
-log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
-if mlflow.get_experiment_by_name(parameters.MODEL_NAME) is None:
-    _ = mlflow.create_experiment(parameters.MODEL_NAME)
-
-exp = mlflow.get_experiment_by_name(parameters.MODEL_NAME)
-
-# Get model signature
-node_series = train_series[0]
-future_cov_series = futr_cov[0]
-past_cov_series = past_cov[0]
-
-data = {
-    'series': [node_series.to_json()],
-    'past_covariates': [past_cov_series.to_json()],
-    'future_covariates': [future_cov_series.to_json()],
-    'n': parameters.FORECAST_HORIZON,
-    'num_samples': 200
-}
-
-df = pd.DataFrame(data)
-ouput_example = 'the endpoint return json as a string'
-darts_signature = infer_signature(df, ouput_example)
 
 # build pretrained models
 models_tsmixer = []
@@ -138,7 +130,7 @@ if parameters.USE_TSMIXER:
 
 models_tide = []
 if parameters.USE_TIDE:
-    for i, param in enumerate(parameters.TIDE_PARAMS[:parameters.TOP_N]):
+    for i, param in enumerate(parameters.TIDE_PARAMS):
         print(f'\ni: {i} \t' + '*' * 25, flush=True)
         model_tide = build_fit_tide(
             series=train_test_all_series,
@@ -148,7 +140,6 @@ if parameters.USE_TIDE:
             **param
         )
         models_tide += [model_tide]
-
 
 models_tft = []
 if parameters.USE_TFT:
@@ -164,156 +155,48 @@ if parameters.USE_TFT:
         models_tft += [model_tft]
 
 
-# Refit and log model with best params
-log.info('log ensemble model')
-
-# supress training logging
-# logging.disable(logging.WARNING)
-with mlflow.start_run(experiment_id=exp.experiment_id) as run:
-
-    MODEL_TYPE = 'naive_ens'
-
-    all_models = models_tsmixer + models_tide + models_tft
-    # fit model with best params from study
-    model = NaiveEnsembleModel(
-        forecasting_models=all_models, 
-        train_forecasting_models=False
-    )
-
-    model.MODEL_TYPE = MODEL_TYPE
-    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
-    
-    log.info(f'run.info: \n{run.info}')
-    artifact_path = "model_artifacts"
-    
-    metrics = {}
-    model_params = model.model_params
-    
-    # final model back test on validation data
-    acc = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=49,
-            metric=[mae, rmse, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-    mean_acc = np.mean(acc, axis=0)
-    log.info(f'FINAL ACC: mae - {mean_acc[0]} | rmse - {mean_acc[1]} | ci_err - {mean_acc[2]}')
-    acc_df = pd.DataFrame(
-        mean_acc.reshape(1,-1),
-        columns=['mae', 'rmse', 'ci_error']
-    )
-
-    # add and log metrics
-    metrics['final_mae'] = acc_df.mae[0]
-    metrics['final_rmse'] = acc_df.rmse[0]
-    metrics['final_ci_error'] = acc_df.ci_error[0]
-    mlflow.log_metrics(metrics)
-
-    # set up path to save model
-    model_path = '/'.join([artifact_path, model.MODEL_TYPE])
-    model_path = '/'.join([artifact_path, 'ens_models'])
-
-    shutil.rmtree(artifact_path, ignore_errors=True)
-    os.makedirs(model_path)
-
-    # log params
-    mlflow.log_params(model_params)
-
-    # save model files (model, model.ckpt) 
-    # and load them to artifacts when logging the model
-    # model.save(model_path)
-    
-    for i, m in enumerate(all_models):
-        m.save(f'{model_path}/{m.MODEL_TYPE}_{i}')
-
-    # save MODEL_TYPE to artifacts
-    # this will be used to load the model from the artifacts
-    model_type_path = '/'.join([artifact_path, 'MODEL_TYPE.pkl'])
-    with open(model_type_path, 'wb') as handle:
-        pickle.dump(model.MODEL_TYPE, handle)
-
-    model_timestamp = '/'.join([artifact_path, 'TRAIN_TIMESTAMP.pkl'])
-    with open(model_timestamp, 'wb') as handle:
-        pickle.dump(model.TRAIN_TIMESTAMP, handle)
-    
-    # map model artififacts in dictionary
-    artifacts = {f:f'{artifact_path}/{f}' for f in os.listdir('model_artifacts')}
-    artifacts['model'] = model_path
-    
-    # log model
-    # https://www.mlflow.org/docs/latest/tutorials-and-examples/tutorial.html#pip-requirements-example
-    mlflow.pyfunc.log_model(
-        artifact_path='GlobalForecasting',
-        code_path=['src/darts_wrapper.py'],
-        signature=darts_signature,
-        artifacts=artifacts,
-        python_model=DartsGlobalModel(), 
-        pip_requirements=["-r notebooks/model_training/requirements.txt"],
-        registered_model_name=parameters.MODEL_NAME,
-    )
+# create directory to store artifacts
+if os.path.isdir('saved_models'):
+    shutil.rmtree('saved_models')
+os.mkdir('saved_models')
 
 
-logging.basicConfig(level=logging.INFO)
+model_timestamp = '/'.join(['saved_models', 'TRAIN_TIMESTAMP.pkl'])
+with open(model_timestamp, 'wb') as handle:
+    pickle.dump(pd.Timestamp.utcnow(), handle)
 
-# test predictions on latest run
-print('\n' + '*' * 40)
-log.info('loading model from mlflow for testing')
-client = MlflowClient()
+for i, m in enumerate(models_tide):
+    m.save(f'saved_models/tide_{i}.pt')
 
+for i, m in enumerate(models_tsmixer):
+    m.save(f'saved_models/tsmixer_{i}.pt')
 
-def get_latest_registered_model_version(model_name=parameters.MODEL_NAME):
-    filter_string = f"name='{model_name}'"
-    results = client.search_registered_models(filter_string=filter_string)
-    return results[0].latest_versions[0].version
-
-
-client.set_registered_model_alias(parameters.MODEL_NAME, "champion", get_latest_registered_model_version())
-
-# model uri for the above model
-model_uri = f"models:/{parameters.MODEL_NAME}@champion"
-
-# Load the model and access the custom metadata
-loaded_model = mlflow.pyfunc.load_model(model_uri=model_uri)
-
-log.info('test getting predictions')
-plot_ind = 3
-plot_series = all_series[plot_ind]
-
-plot_end_time = plot_series.end_time() - pd.Timedelta(f'{parameters.INPUT_CHUNK_LENGTH + 1}h')
-log.info(f'plot_end_time: {plot_end_time}')
-
-plot_node_name = plot_series.static_covariates.unique_id.LMP
-node_series = plot_series.drop_after(plot_end_time)
-log.info(f'plot_end_time: {plot_end_time}')
-log.info(f'node_series.end_time(): {node_series.end_time()}')
-future_cov_series = futr_cov[0]
-past_cov_series = past_cov[0]
-
-data = {
-    'series': [node_series.to_json()],
-    'past_covariates': [past_cov_series.to_json()],
-    'future_covariates': [future_cov_series.to_json()],
-    'n': 5,
-    'num_samples': 2
-}
-df = pd.DataFrame(data)
-
-df['num_samples'] = 2
-pred = loaded_model.predict(df)
-
-print('\n' + '*' * 40)
-log.info(f'pred: {pred}')
+for i, m in enumerate(models_tft):
+    m.save(f'saved_models/tft_{i}.pt')
 
 
-# copy mlflow db to s3
-AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-mlflow_db = 'mlruns.db'
-key = f'model/{mlflow_db}'
-s3_client = boto3.client('s3')
-s3_client.upload_file(mlflow_db, AWS_S3_BUCKET, key)
+ckpt_uploads = [f for f in os.listdir('saved_models') if '.pt' in f or '.ckpt' in f or 'TRAIN_TIMESTAMP.pkl' in f]
+log.info(f'ckpt_uploads: {ckpt_uploads}')
+
+
+# upload artifacts
+for ckpt in ckpt_uploads:
+    log.info(f'uploading: {ckpt}')
+    s3.upload_file(f'saved_models/{ckpt}', 'spp-weis', f's3_models/{ckpt}')
+
+
+loaded_models = [d['Key'] for d in s3.list_objects(Bucket='spp-weis')['Contents'] if 's3_models/' in d['Key']]
+log.info(f'loaded_models: {loaded_models}')
+
+
+models_to_delete = [l for l in loaded_models if l.split('/')[-1] not in ckpt_uploads]
+log.info(f'models_to_delete: {models_to_delete}')
+
+
+for del_model in models_to_delete:
+    log.info(f'removing: {del_model}')
+    s3.delete_object(Bucket='spp-weis', Key=del_model)
+
+
+log.info('finished retraining')
+
