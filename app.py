@@ -15,6 +15,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 import ibis
+import boto3
 
 # user interface
 import streamlit as st
@@ -167,8 +168,14 @@ with forcasted_data:
     if 'loaded_model' not in st.session_state:
         log.info('loading model')
 
-        with st.spinner('Loading model'):
-            os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///mlruns.db'
+        with st.spinner('Loading model from S3'):
+            # copy mlflow db to s3
+            AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+            mlflow_db = 'mlruns.db'
+            s3_client = boto3.client('s3')
+            s3_client.download_file(AWS_S3_BUCKET, 'model/mlruns.db', 's3_mlruns.db')
+
+            os.environ['MLFLOW_TRACKING_URI'] = 'sqlite:///s3_mlruns.db'
             log.info(f'mlflow.get_tracking_uri(): {mlflow.get_tracking_uri()}')
 
             # model uri for the above model
