@@ -71,7 +71,6 @@ home = os.getenv('HOME')
 module_paths = [
     f'{home}/spp_weis_price_forecast/src',
     f'{home}/Documents/spp_weis_price_forecast/src',
-    '/cloud/project/src'
 ]
 for module_path in module_paths:
     if os.path.isdir(module_path):
@@ -111,6 +110,7 @@ def build_fit_tsmixerx(
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
     model_id: str='ts_mixer',
+    log_tensorboard=False,
 ):
 
     MODEL_TYPE = "ts_mixer_model"
@@ -144,7 +144,7 @@ def build_fit_tsmixerx(
         'work_dir': work_dir,
         'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
-        'log_tensorboard': True,
+        'log_tensorboard': log_tensorboard,
     }
 
     # throughout training we'll monitor the validation loss for early stopping
@@ -155,7 +155,9 @@ def build_fit_tsmixerx(
     #     callbacks = [early_stopper] + callbacks
 
     # pl_trainer_kwargs = {"callbacks": callbacks}
-    # model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
+    # if pl_trainer_kwargs:
+    #     model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
+        
     log.info(f'model_params: \n{log_pretty(model_params)}')
     
     model = TSMixerModel(**model_params)
@@ -205,6 +207,7 @@ def build_fit_tide(
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
     model_id: str='tide',
+    log_tensorboard=False,
 ):
 
     MODEL_TYPE = "tide_model"
@@ -243,7 +246,7 @@ def build_fit_tide(
         'work_dir': work_dir,
         'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
-        'log_tensorboard': True,
+        'log_tensorboard': log_tensorboard,
     }
 
     # throughout training we'll monitor the validation loss for early stopping
@@ -254,8 +257,9 @@ def build_fit_tide(
     #     callbacks = [early_stopper] + callbacks
 
     # pl_trainer_kwargs = {"callbacks": callbacks}
-    # model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
-    log.info(f'model_params: \n{log_pretty(model_params)}')
+    # if pl_trainer_kwargs:
+    #     model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
+    # log.info(f'model_params: \n{log_pretty(model_params)}')
     
     model = TiDEModel(**model_params)
 
@@ -302,6 +306,7 @@ def build_fit_tft(
     force_reset: bool=True, # reset model if already exists
     callbacks=None,
     model_id: str='tft',
+    log_tensorboard=False,
 ):
     MODEL_TYPE = "tft_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
@@ -335,7 +340,7 @@ def build_fit_tft(
         'work_dir': work_dir,
         'model_name': model_id, # used for checkpoint saves
         'force_reset': force_reset, # reset model if already exists
-        'log_tensorboard': True,
+        'log_tensorboard': log_tensorboard,
     }
     
 
