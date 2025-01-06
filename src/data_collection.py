@@ -693,6 +693,11 @@ def upsert_mtlf(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
+        # copy to s3
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+        con_ddb.sql("COPY mtlf TO 's3://spp-weis/mtrf.parquet';")
+
 
 def upsert_mtrf(
         mtrf_upsert: pd.DataFrame,
@@ -756,6 +761,11 @@ def upsert_mtrf(
         rows_updated = update_count - insert_count
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
+
+        # copy to s3
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+        con_ddb.sql("COPY mtrf TO 's3://spp-weis/mtrf.parquet';")
 
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
@@ -827,7 +837,10 @@ def upsert_lmp(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
-        # con_ddb.sql("COPY lmp TO '~/lmp.parquet' (FORMAT PARQUET);")
+        # copy to s3
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+        con_ddb.sql("COPY lmp TO 's3://spp-weis/lmp.parquet';")
 
 
 def upsert_gen_cap(

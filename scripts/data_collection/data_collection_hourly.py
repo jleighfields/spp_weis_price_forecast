@@ -7,10 +7,14 @@ https://marketplace.spp.org/groups/operational-data-weis
 import sys
 import os
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 
 # define log
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
+
+log.info(f"bucket: {os.environ['AWS_S3_BUCKET']}")
 
 # adding module folder to system path
 # needed for running scripts as jobs
