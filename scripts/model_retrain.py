@@ -14,8 +14,6 @@ from darts.metrics import mae, rmse
 from darts.models import (
     TFTModel,
     TiDEModel,
-    DLinearModel,
-    NLinearModel,
     TSMixerModel,
     NaiveEnsembleModel,
 )
@@ -94,7 +92,7 @@ lmp_df = lmp.to_pandas().rename(
 
 
 log.info('preparing covariate data')
-all_df = de.prep_all_df(con)
+# all_df = de.prep_all_df(con)
 all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
 

@@ -156,13 +156,14 @@ with forcasted_data:
     if ('all_df_pd' not in st.session_state) or st.session_state.refresh_data:
         log.info('loading data')
 
-        with st.spinner('Loading LMP data from S3...'):
+        with st.spinner('Connecting to data in S3...'):
             con = ibis.duckdb.connect()
             con.read_parquet('s3://spp-weis/data/lmp.parquet', 'lmp')
             con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
             con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
             # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
 
+        with st.spinner('Preparing data...'):
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
             st.session_state['lmp'] = de.prep_lmp(con)
             st.session_state['lmp_pd_df'] = (
@@ -172,7 +173,7 @@ with forcasted_data:
             )
             con.disconnect()
 
-        st.toast('Done loading data')
+        st.toast('Done loading and preparing data')
 
     if 'loaded_model' not in st.session_state:
         log.info('loading model')
@@ -182,7 +183,7 @@ with forcasted_data:
             # if os.path.isdir('s3_models'):
             #     shutil.rmtree('s3_models')
             # os.mkdir('s3_models')
-            
+
             log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
             s3_client = boto3.client('s3')
@@ -212,21 +213,21 @@ with forcasted_data:
 
             forecasting_models = ts_mixer_forecasting_models + tide_forecasting_models + tft_forecasting_models
             loaded_model = NaiveEnsembleModel(
-                forecasting_models=forecasting_models, 
+                forecasting_models=forecasting_models,
                 train_forecasting_models=False
             )
-            
+
             log.info(f'loaded_model: {loaded_model}')
             st.session_state['loaded_model'] = loaded_model
 
             # get model training timestamp
             with open('s3_models/TRAIN_TIMESTAMP.pkl', 'rb') as handle:
                 TRAIN_TIMESTAMP = pickle.load(handle)
-            
+
             log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
             st.session_state['TRAIN_TIMESTAMP'] = TRAIN_TIMESTAMP
 
-        st.toast('Done loading model')
+        st.toast('Done loading models')
 
 
 ###############################################################
@@ -278,7 +279,7 @@ with st.sidebar:
     st.markdown('Data is updated every 4-6 hours')
     st.markdown('Model last trained:')
     st.markdown(f'**{st.session_state.TRAIN_TIMESTAMP}**')
-    
+
 
 log.info(f'st.session_state.submitted1: {st.session_state.get_fcast_btn}')
 
