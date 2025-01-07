@@ -40,7 +40,6 @@ log = logging.getLogger(__name__)
 
 # adding module folder to system path
 # needed for running scripts as jobs
-os.chdir('..')
 home = os.getenv('HOME')
 module_paths = [
     f'{home}/spp_weis_price_forecast/src',
