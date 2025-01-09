@@ -55,17 +55,17 @@ ENCODERS['rel_mon_day'] = {
             "transformer": Scaler(RobustScaler(), global_fit=True)
         }
 
-ENCODERS['rel_mon_day_hour'] = {
-            "datetime_attribute": {
-                "future": ["month", "dayofweek", "hour"], 
-                "past": ["month", "dayofweek", "hour"], 
-            },
-            "position": {
-                "past": ["relative"], 
-                "future": ["relative"]
-            },
-            "transformer": Scaler(RobustScaler(), global_fit=True)
-        }
+# ENCODERS['rel_mon_day_hour'] = {
+#             "datetime_attribute": {
+#                 "future": ["month", "dayofweek", "hour"], 
+#                 "past": ["month", "dayofweek", "hour"], 
+#             },
+#             "position": {
+#                 "past": ["relative"], 
+#                 "future": ["relative"]
+#             },
+#             "transformer": Scaler(RobustScaler(), global_fit=True)
+#         }
 
 
 
@@ -109,56 +109,56 @@ TSMIXER_PARAMS = [{'hidden_size': 104,
 
 
 # best tide model params from optuna experiment
-TIDE_PARAMS = [{'num_encoder_decoder_layers': 2,
-  'decoder_output_dim': 10,
-  'hidden_size': 16,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 16,
-  'temporal_hidden_size': 28,
-  'lr': 6.6e-05,
-  'n_epochs': 9,
-  'dropout': 0.49,
-  'encoder_key': 'rel'},
- {'num_encoder_decoder_layers': 2,
-  'decoder_output_dim': 14,
-  'hidden_size': 23,
-  'temporal_width': 2,
+TIDE_PARAMS = [{'num_encoder_decoder_layers': 3,
+  'decoder_output_dim': 18,
+  'hidden_size': 30,
+  'temporal_width': 0,
   'temporal_decoder_hidden': 14,
-  'temporal_hidden_size': 28,
-  'lr': 5.9e-05,
-  'n_epochs': 12,
-  'dropout': 0.38,
-  'encoder_key': 'rel_mon_day'},
- {'num_encoder_decoder_layers': 2,
-  'decoder_output_dim': 14,
-  'hidden_size': 25,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 19,
-  'temporal_hidden_size': 28,
-  'lr': 4.1e-05,
-  'n_epochs': 12,
-  'dropout': 0.42,
-  'encoder_key': 'rel'},
- {'num_encoder_decoder_layers': 1,
-  'decoder_output_dim': 10,
-  'hidden_size': 32,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 32,
-  'temporal_hidden_size': 31,
-  'lr': 3.1e-05,
-  'n_epochs': 13,
-  'dropout': 0.47,
+  'temporal_hidden_size': 30,
+  'lr': 4.7e-05,
+  'n_epochs': 18,
+  'dropout': 0.35,
   'encoder_key': 'rel_mon'},
- {'num_encoder_decoder_layers': 2,
-  'decoder_output_dim': 10,
-  'hidden_size': 26,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 12,
-  'temporal_hidden_size': 32,
-  'lr': 6.6e-05,
-  'n_epochs': 13,
+ {'num_encoder_decoder_layers': 3,
+  'decoder_output_dim': 28,
+  'hidden_size': 30,
+  'temporal_width': 2,
+  'temporal_decoder_hidden': 30,
+  'temporal_hidden_size': 30,
+  'lr': 2.6000000000000002e-05,
+  'n_epochs': 18,
   'dropout': 0.39999999999999997,
-  'encoder_key': 'rel_mon'}]
+  'encoder_key': 'rel_mon'},
+ {'num_encoder_decoder_layers': 1,
+  'decoder_output_dim': 15,
+  'hidden_size': 25,
+  'temporal_width': 2,
+  'temporal_decoder_hidden': 13,
+  'temporal_hidden_size': 10,
+  'lr': 2.9999999999999997e-05,
+  'n_epochs': 18,
+  'dropout': 0.37,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 2,
+  'decoder_output_dim': 20,
+  'hidden_size': 28,
+  'temporal_width': 1,
+  'temporal_decoder_hidden': 30,
+  'temporal_hidden_size': 25,
+  'lr': 6.8e-05,
+  'n_epochs': 17,
+  'dropout': 0.39999999999999997,
+  'encoder_key': 'rel'},
+ {'num_encoder_decoder_layers': 2,
+  'decoder_output_dim': 32,
+  'hidden_size': 16,
+  'temporal_width': 0,
+  'temporal_decoder_hidden': 15,
+  'temporal_hidden_size': 28,
+  'lr': 3.2e-05,
+  'n_epochs': 12,
+  'dropout': 0.35,
+  'encoder_key': 'rel'}]
 
 
 # best tide model params from optuna experiment

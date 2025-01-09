@@ -259,7 +259,7 @@ def build_fit_tide(
     # pl_trainer_kwargs = {"callbacks": callbacks}
     # if pl_trainer_kwargs:
     #     model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
-    # log.info(f'model_params: \n{log_pretty(model_params)}')
+    log.info(f'model_params: \n{log_pretty(model_params)}')
     
     model = TiDEModel(**model_params)
 

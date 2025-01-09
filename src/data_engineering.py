@@ -49,7 +49,8 @@ FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     # 're_ratio', 're_diff', 
     'load_net_re', #'load_net_re_diff', #'load_net_re_diff_diff',
-    'load_net_re_diff_lag', 'load_net_re_diff_lead',
+    'load_net_re_diff_lag', 
+    # 'load_net_re_diff_lead',
     # 'mtlf_diff',
     # 'wind_diff', 'solar_diff'
     # 'daily_max_load_net_re', 'daily_min_load_net_re',
