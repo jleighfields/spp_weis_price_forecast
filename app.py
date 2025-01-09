@@ -190,6 +190,7 @@ with forcasted_data:
 
             bucket_contents = s3_client.list_objects(Bucket='spp-weis')['Contents']
             loaded_models = [d['Key'] for d in bucket_contents if 's3_models/' in d['Key']]
+            log.info(f'loaded_models: {loaded_models}')
             for lm in loaded_models:
                 log.info(f'downloading: {lm}')
                 s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm)
