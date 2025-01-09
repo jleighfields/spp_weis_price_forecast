@@ -184,6 +184,14 @@ with forcasted_data:
             #     shutil.rmtree('s3_models')
             # os.mkdir('s3_models')
 
+            # remove old model files
+            files_to_remove = [
+                f for f in os.listdir('.') if f.endswith('.pt') or f.endswith('.ckpt') or f.endswith('.pkl')
+            ]
+            for f in files_to_remove:
+                log.info(f'removing: {f}')
+                os.remove(f)
+
             log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
             s3_client = boto3.client('s3')
