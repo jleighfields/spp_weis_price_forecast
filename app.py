@@ -193,7 +193,7 @@ with forcasted_data:
             log.info(f'loaded_models: {loaded_models}')
             for lm in loaded_models:
                 log.info(f'downloading: {lm}')
-                s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm)
+                s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm.replace('s3_models/', ''))
 
             ts_mixer_ckpts = [f for f in os.listdir('s3_models') if 'ts_mixer' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
             ts_mixer_forecasting_models = []

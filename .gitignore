@@ -11,6 +11,9 @@
 *secrets.toml
 s3_models/*
 saved_models/*
+*.pt
+*.ckpt
+*.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
