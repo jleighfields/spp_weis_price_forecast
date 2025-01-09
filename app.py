@@ -188,7 +188,8 @@ with forcasted_data:
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
             s3_client = boto3.client('s3')
 
-            loaded_models = [d['Key'] for d in s3_client.list_objects(Bucket='spp-weis')['Contents'] if 's3_models/' in d['Key']]
+            bucket_contents = s3_client.list_objects(Bucket='spp-weis')['Contents']
+            loaded_models = [d['Key'] for d in bucket_contents if 's3_models/' in d['Key']]
             for lm in loaded_models:
                 log.info(f'downloading: {lm}')
                 s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm)
