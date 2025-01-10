@@ -127,7 +127,7 @@ if parameters.USE_TSMIXER:
 
 models_tide = []
 if parameters.USE_TIDE:
-    for i, param in enumerate(parameters.TIDE_PARAMS):
+    for i, param in enumerate(parameters.TIDE_PARAMS[:parameters.TOP_N]):
         print(f'\ni: {i} \t' + '*' * 25, flush=True)
         model_tide = build_fit_tide(
             series=train_test_all_series,

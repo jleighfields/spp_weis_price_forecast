@@ -13,8 +13,8 @@ INPUT_CHUNK_LENGTH = 24*7
 PRECISION = 'float32'
 MODEL_NAME = 'spp_weis'
 
-USE_TSMIXER = False
-USE_TIDE = True
+USE_TSMIXER = True
+USE_TIDE = False
 USE_TFT = False
 
 TOP_N = 5
@@ -71,41 +71,46 @@ ENCODERS['rel_mon_day'] = {
 
 
 # best tsmixer model params from optuna experiment
-TSMIXER_PARAMS = [{'hidden_size': 104,
-  'ff_size': 18,
-  'num_blocks': 8,
-  'lr': 8.9e-05,
-  'n_epochs': 7,
+TSMIXER_PARAMS = [{'hidden_size': 42,
+  'ff_size': 204,
+  'num_blocks': 12,
+  'lr': 6.7e-05,
+  'n_epochs': 10,
+  'dropout': 0.41000000000000003,
+  'activation': 'ELU',
+  'encoder_key': 'rel_mon'},
+ {'hidden_size': 212,
+  'ff_size': 182,
+  'num_blocks': 9,
+  'lr': 3.9999999999999996e-05,
+  'n_epochs': 10,
+  'dropout': 0.46,
+  'activation': 'ELU',
+  'encoder_key': 'rel_mon'},
+ {'hidden_size': 50,
+  'ff_size': 208,
+  'num_blocks': 12,
+  'lr': 5.6e-05,
+  'n_epochs': 9,
+  'dropout': 0.5,
+  'activation': 'SELU',
+  'encoder_key': 'rel_mon'},
+ {'hidden_size': 166,
+  'ff_size': 232,
+  'num_blocks': 9,
+  'lr': 8.8e-05,
+  'n_epochs': 4,
   'dropout': 0.49,
-  'activation': 'ELU'},
- {'hidden_size': 66,
-  'ff_size': 18,
-  'num_blocks': 8,
-  'lr': 5.9000000000000004e-05,
-  'n_epochs': 8,
-  'dropout': 0.43,
-  'activation': 'ELU'},
- {'hidden_size': 112,
-  'ff_size': 18,
-  'num_blocks': 8,
-  'lr': 5.9000000000000004e-05,
-  'n_epochs': 8,
-  'dropout': 0.43,
-  'activation': 'ELU'},
- {'hidden_size': 124,
-  'ff_size': 56,
-  'num_blocks': 6,
-  'lr': 7.1e-05,
+  'activation': 'ELU',
+  'encoder_key': 'rel_mon_day'},
+ {'hidden_size': 170,
+  'ff_size': 232,
+  'num_blocks': 9,
+  'lr': 3.9999999999999996e-05,
   'n_epochs': 7,
-  'dropout': 0.44999999999999996,
-  'activation': 'ELU'},
- {'hidden_size': 124,
-  'ff_size': 88,
-  'num_blocks': 6,
-  'lr': 9.2e-05,
-  'n_epochs': 5,
-  'dropout': 0.44999999999999996,
-  'activation': 'ELU'}]
+  'dropout': 0.46,
+  'activation': 'ELU',
+  'encoder_key': 'rel_mon_day'}]
 
 
 # best tide model params from optuna experiment

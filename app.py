@@ -203,11 +203,11 @@ with forcasted_data:
                 log.info(f'downloading: {lm}')
                 s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm.replace('s3_models/', ''))
 
-            ts_mixer_ckpts = [f for f in os.listdir('.') if 'ts_mixer' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
-            ts_mixer_forecasting_models = []
-            for m_ckpt in ts_mixer_ckpts:
+            tsmixer_ckpts = [f for f in os.listdir('.') if 'tsmixer' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
+            tsmixer_forecasting_models = []
+            for m_ckpt in tsmixer_ckpts:
                 log.info(f'loading model: {m_ckpt}')
-                ts_mixer_forecasting_models += [TSMixerModel.load(f'{m_ckpt}', map_location=torch.device('cpu'))]
+                tsmixer_forecasting_models += [TSMixerModel.load(f'{m_ckpt}', map_location=torch.device('cpu'))]
 
             tide_ckpts = [f for f in os.listdir('.') if 'tide_' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
             tide_forecasting_models = []
@@ -221,7 +221,7 @@ with forcasted_data:
                 log.info(f'loading model: {m_ckpt}')
                 tide_forecasting_models += [TFTModel.load(f'{m_ckpt}', map_location=torch.device('cpu'))]
 
-            forecasting_models = ts_mixer_forecasting_models + tide_forecasting_models + tft_forecasting_models
+            forecasting_models = tsmixer_forecasting_models + tide_forecasting_models + tft_forecasting_models
             loaded_model = NaiveEnsembleModel(
                 forecasting_models=forecasting_models,
                 train_forecasting_models=False
