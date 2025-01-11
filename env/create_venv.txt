@@ -27,7 +27,7 @@ pip install tensorboard
 pip install papermill
 pip install lightning-sdk
 
-# do a pip freeze, it saves requirements that will cause deploying apps to fail
+# don't do a pip freeze, it saves requirements that will cause deploying apps to fail
 # since the systems are so different from training and hosting
 # pip freeze > requirements.txt
 

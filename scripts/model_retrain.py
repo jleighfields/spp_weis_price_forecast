@@ -172,6 +172,52 @@ for i, m in enumerate(models_tft):
     m.save(f'saved_models/tft_{i}.pt')
 
 
+# test models
+forecasting_models = models_tide + models_tsmixer + models_tft
+print('\n' + '*' * 40)
+log.info('loading model from checkpoints')
+loaded_model = NaiveEnsembleModel(
+        forecasting_models=forecasting_models, 
+        train_forecasting_models=False
+    )
+
+log.info('test getting predictions')
+plot_ind = 3
+plot_series = all_series[plot_ind]
+
+plot_end_time = plot_series.end_time() - pd.Timedelta(f'{parameters.INPUT_CHUNK_LENGTH + 1}h')
+log.info(f'plot_end_time: {plot_end_time}')
+
+plot_node_name = plot_series.static_covariates.unique_id.LMP
+node_series = plot_series.drop_after(plot_end_time)
+log.info(f'plot_end_time: {plot_end_time}')
+log.info(f'node_series.end_time(): {node_series.end_time()}')
+future_cov_series = futr_cov[0]
+past_cov_series = past_cov[0]
+
+data = {
+    'series': [node_series.to_json()],
+    'past_covariates': [past_cov_series.to_json()],
+    'future_covariates': [future_cov_series.to_json()],
+    'n': 5,
+    'num_samples': 2
+}
+df = pd.DataFrame(data)
+
+df['num_samples'] = 2
+pred=loaded_model.predict(
+    series=node_series,
+    past_covariates=past_cov_series,
+    future_covariates=future_cov_series,
+    n=5,
+    num_samples=2,
+)
+
+print('\n' + '*' * 40)
+log.info(f'pred: {pred}')
+
+
+# upload models
 ckpt_uploads = [f for f in os.listdir('saved_models') if '.pt' in f or '.ckpt' in f or 'TRAIN_TIMESTAMP.pkl' in f]
 log.info(f'ckpt_uploads: {ckpt_uploads}')
 
