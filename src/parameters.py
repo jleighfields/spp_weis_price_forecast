@@ -15,9 +15,9 @@ MODEL_NAME = 'spp_weis'
 
 USE_TSMIXER = False
 USE_TIDE = True
-USE_TFT = False
+USE_TFT = True
 
-TOP_N = 5
+TOP_N = 2
 
 
 ## set of encoders for experiment
@@ -124,26 +124,6 @@ TIDE_PARAMS = [{'num_encoder_decoder_layers': 4,
   'n_epochs': 18,
   'dropout': 0.48,
   'encoder_key': 'rel_mon'},
- {'num_encoder_decoder_layers': 4,
-  'decoder_output_dim': 27,
-  'hidden_size': 13,
-  'temporal_width': 2,
-  'temporal_decoder_hidden': 4,
-  'temporal_hidden_size': 7,
-  'lr': 4.9e-05,
-  'n_epochs': 18,
-  'dropout': 0.48,
-  'encoder_key': 'rel_mon'},
- {'num_encoder_decoder_layers': 4,
-  'decoder_output_dim': 30,
-  'hidden_size': 6,
-  'temporal_width': 1,
-  'temporal_decoder_hidden': 15,
-  'temporal_hidden_size': 4,
-  'lr': 4.7000000000000004e-05,
-  'n_epochs': 11,
-  'dropout': 0.5,
-  'encoder_key': 'rel_mon_day'},
  {'num_encoder_decoder_layers': 2,
   'decoder_output_dim': 17,
   'hidden_size': 10,
@@ -154,16 +134,36 @@ TIDE_PARAMS = [{'num_encoder_decoder_layers': 4,
   'n_epochs': 11,
   'dropout': 0.44999999999999996,
   'encoder_key': 'rel_mon'},
- {'num_encoder_decoder_layers': 7,
-  'decoder_output_dim': 20,
+ {'num_encoder_decoder_layers': 4,
+  'decoder_output_dim': 12,
+  'hidden_size': 16,
+  'temporal_width': 1,
+  'temporal_decoder_hidden': 20,
+  'temporal_hidden_size': 15,
+  'lr': 6.9e-05,
+  'n_epochs': 17,
+  'dropout': 0.48,
+  'encoder_key': 'rel_mon'},
+ {'num_encoder_decoder_layers': 1,
+  'decoder_output_dim': 5,
   'hidden_size': 4,
   'temporal_width': 1,
-  'temporal_decoder_hidden': 19,
-  'temporal_hidden_size': 15,
-  'lr': 5.1e-05,
-  'n_epochs': 10,
-  'dropout': 0.45999999999999996,
-  'encoder_key': 'rel'}]
+  'temporal_decoder_hidden': 23,
+  'temporal_hidden_size': 14,
+  'lr': 8.6e-05,
+  'n_epochs': 16,
+  'dropout': 0.43999999999999995,
+  'encoder_key': 'rel_mon_day'},
+ {'num_encoder_decoder_layers': 1,
+  'decoder_output_dim': 16,
+  'hidden_size': 12,
+  'temporal_width': 1,
+  'temporal_decoder_hidden': 7,
+  'temporal_hidden_size': 4,
+  'lr': 4.2000000000000004e-05,
+  'n_epochs': 16,
+  'dropout': 0.44999999999999996,
+  'encoder_key': 'rel_mon_day'}]
 
 
 # best tide model params from optuna experiment
