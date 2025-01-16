@@ -29,7 +29,7 @@ time.sleep(60)
 # s.auto_shutdown_time = 10 * 60  # the time is in seconds for granular control
 
 i = 0
-while str(s.status) != 'Status.Running':
+while str(s.status) != 'Running':
     log.info(f'status: {s.status} - count: {i}')
     i+=1
     if i > 30:
