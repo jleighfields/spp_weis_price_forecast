@@ -18,7 +18,7 @@ log.info("starting Studio...")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'Machine.CPU':
+if str(s.machine) != 'CPU':
     s.switch_machine(machine=Machine.CPU)
 
 # give some time for environment to be created
@@ -37,8 +37,13 @@ while str(s.status) != 'Status.Running':
     time.sleep(30)
 
 try:
-    s.run("cd ~/spp_weis_price_forecast && python scripts/data_collection/data_collection_hourly.py")
     s.run("rm ~/spp_weis_price_forecast/data/spp.ddb.wal")
+except:
+    pass
+
+try:
+    s.run("cd ~/spp_weis_price_forecast && python scripts/data_collection/data_collection_hourly.py")
+
 except Exception as e:
         log.error("command failed with error: %s".format(e))
 
