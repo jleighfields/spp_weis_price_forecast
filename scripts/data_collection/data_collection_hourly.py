@@ -44,6 +44,9 @@ dc.collect_upsert_mtlf(n_periods=24)
 log.info('GETTING MTRF')
 dc.collect_upsert_mtrf(n_periods=24)
 
+log.info('GETTING weather')
+dc.upsert_weather()
+
 log.info('FINISHED')
 
 
