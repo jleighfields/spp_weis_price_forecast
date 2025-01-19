@@ -158,10 +158,12 @@ with forcasted_data:
 
         with st.spinner('Connecting to data in S3...'):
             con = ibis.duckdb.connect()
+            log.info('getting lmp data from s3')
             con.read_parquet('s3://spp-weis/data/lmp.parquet', 'lmp')
             con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
             con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
-            # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+            con.read_parquet('s3://spp-weis/data/weather.parquet', 'weather')
+            log.info('finished getting data from s3')
 
         with st.spinner('Preparing data...'):
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))

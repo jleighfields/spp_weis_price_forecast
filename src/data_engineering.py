@@ -50,6 +50,7 @@ FUTR_COLS = [
     # 're_ratio', 're_diff', 
     'load_net_re', #'load_net_re_diff', #'load_net_re_diff_diff',
     'load_net_re_diff_lag', 
+    'temperature',
     # 'load_net_re_diff_lead',
     # 'mtlf_diff',
     # 'wind_diff', 'solar_diff'
@@ -225,6 +226,35 @@ def prep_gen_cap(
     return gen_cap
 
 
+def prep_weather(
+        con: ibis.duckdb.connect,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+):
+    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+    weather = con.table('weather')
+    drop_cols = ['timestamp', ]
+
+    if not start_time:
+        # get last 1.5 years
+        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
+
+    # TODO: handle checks for start_time < end_time
+    weather = weather.filter(_.timestamp_mst >= start_time)
+
+    if end_time:
+        weather = weather.filter(_.timestamp_mst <= end_time)
+
+    weather = (
+        weather
+        .mutate(temperature=_.temperature.cast(parameters.PRECISION))
+        .drop(drop_cols)
+        .order_by(['timestamp_mst'])
+    )
+
+    return weather
+
+
 def prep_all_df(
         con: ibis.duckdb.connect,
         start_time: Optional[str] = None,
@@ -234,14 +264,16 @@ def prep_all_df(
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
     # gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
+    weather = prep_weather(con, start_time=start_time, end_time=end_time)
+    
 
     # join into single dataset
     all_df = (
         mtlf
         .left_join(mtrf, 'timestamp_mst')
         .select(~s.contains("_right"))  # remove 'dt_right'
-        # .left_join(gen_cap, 'timestamp_mst')
-        # .select(~s.contains("_right"))  # remove 'dt_right'
+        .left_join(weather, 'timestamp_mst')
+        .select(~s.contains("_right"))  # remove 'dt_right'
     )
 
     uid_df = ibis.memtable({'unique_id': lmp.unique_id.to_pandas().unique()})
