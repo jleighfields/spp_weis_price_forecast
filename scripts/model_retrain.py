@@ -77,6 +77,8 @@ log.info('getting mtrf data from s3')
 con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
 log.info('getting mtlf data from s3')
 con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
+log.info('getting weather data from s3')
+con.read_parquet('s3://spp-weis/data/weather.parquet', 'weather')
 log.info('finished getting data from s3')
 
 

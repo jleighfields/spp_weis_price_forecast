@@ -14,6 +14,7 @@ saved_models/*
 *.pt
 *.ckpt
 *.pkl
+*polars_testing/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
