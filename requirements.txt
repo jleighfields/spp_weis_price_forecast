@@ -1,6 +1,6 @@
-torch
+torch<2.6
 scikit-learn
-darts
+darts==0.31.0
 pandas
 pyarrow
 seaborn
