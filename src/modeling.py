@@ -103,6 +103,8 @@ def build_fit_tsmixerx(
     input_chunk_length: int=parameters.INPUT_CHUNK_LENGTH,
     lr: float=8e-4,
     batch_size: int=64,
+    # use_layer_norm: bool=True,
+    use_reversible_instance_norm: bool=True,
     n_epochs: int=8,
     dropout: float=0.45,
     encoder_key: str='rel',
@@ -131,6 +133,8 @@ def build_fit_tsmixerx(
         'input_chunk_length': input_chunk_length,
         'output_chunk_length': forecast_horizon,
         'batch_size': batch_size,
+        # 'use_layer_norm': use_layer_norm,
+        'use_reversible_instance_norm': use_reversible_instance_norm,
         'n_epochs': n_epochs,
         'dropout': dropout,
         'activation': activation,
@@ -307,6 +311,7 @@ def build_fit_tft(
     input_chunk_length: int=parameters.INPUT_CHUNK_LENGTH,
     lr: float=1.0e-3,
     batch_size: int=64,
+    use_reversible_instance_norm: bool=True,
     n_epochs: int=3,
     encoder_key: str='rel',
     force_reset: bool=True, # reset model if already exists
@@ -335,6 +340,7 @@ def build_fit_tft(
         'input_chunk_length': input_chunk_length,
         'output_chunk_length': forecast_horizon,
         'batch_size': batch_size,
+        'use_reversible_instance_norm': use_reversible_instance_norm,
         'n_epochs': n_epochs,
         'add_encoders': parameters.ENCODERS[encoder_key],
         'likelihood': QuantileRegression(quantiles=quantiles),  # QuantileRegression is set per default

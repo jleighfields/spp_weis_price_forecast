@@ -69,18 +69,7 @@ log.info(f'MODEL_NAME: {parameters.MODEL_NAME}')
 
 # connect to database and prepare data
 print('\n' + '*' * 40)
-# con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-con = ibis.duckdb.connect()
-log.info('getting lmp data from s3')
-con.read_parquet('s3://spp-weis/data/lmp.parquet', 'lmp')
-log.info('getting mtrf data from s3')
-con.read_parquet('s3://spp-weis/data/mtrf.parquet', 'mtrf')
-log.info('getting mtlf data from s3')
-con.read_parquet('s3://spp-weis/data/mtlf.parquet', 'mtlf')
-log.info('getting weather data from s3')
-con.read_parquet('s3://spp-weis/data/weather.parquet', 'weather')
-log.info('finished getting data from s3')
-
+con = de.create_database()
 
 log.info('preparing lmp data')
 lmp = de.prep_lmp(con)

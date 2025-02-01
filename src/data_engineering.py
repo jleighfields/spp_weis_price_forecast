@@ -5,9 +5,10 @@ Data engineering functions to prepare data for model training and forecasting
 # base imports
 import os
 import sys
-from typing import Optional
+from typing import Optional, List
 
 # data processing
+import boto3
 import pandas as pd
 import ibis
 import ibis.selectors as s
@@ -48,39 +49,66 @@ import parameters
 FUTR_COLS = [
     'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
     're_ratio', 're_diff', 
-    'load_net_re', #'load_net_re_diff', #'load_net_re_diff_diff',
-    'load_net_re_diff_lag', 
-    # 'load_net_re_x_diff',
+    'load_net_re', 
+    'load_net_re_diff', 
+    'load_net_re_diff_rolling_2', 
+    'load_net_re_diff_rolling_3', 
+    'load_net_re_diff_rolling_4', 
+    'load_net_re_diff_rolling_6', 
     'temperature',
-    # 'load_net_re_diff_lead',
-    # 'mtlf_diff',
-    # 'wind_diff', 'solar_diff'
-    # 'daily_max_load_net_re', 'daily_min_load_net_re',
-]  
+]
 
 PAST_COLS = [
     'Averaged_Actual', 
     'lmp_diff',
-    # 'lmp_load',
+    'lmp_diff_rolling_2',
+    'lmp_diff_rolling_3',
+    'lmp_diff_rolling_4',
+    'lmp_diff_rolling_6', 
     'lmp_load_net_re',
-    # 'daily_max_lmp', 'daily_min_lmp',
-    # 'lmp_re',
-    # 'Coal', 'Hydro', 'Natural_Gas', 
-    # 'Nuclear', 'Solar', 'Wind',
     ]
 
 Y = ['LMP']
 IDS = ['unique_id']
 
 
+
+#############################################
+# create database
+#############################################
+def create_database(
+    datasets: List[str]=['lmp', 'mtrf', 'mtlf', 'weather']
+) -> ibis.duckdb.connect:
+    
+    # client for getting parquets
+    s3 = boto3.client('s3')
+
+    os.makedirs('data', exist_ok=True)
+    # create file paths for data
+    file_paths = [f'data/{ds}.parquet' for ds in datasets]
+    
+    for fp in file_paths:
+        log.info(f'getting: {fp} from s3')
+        s3.download_file(Bucket='spp-weis', Key=fp, Filename=fp)
+
+    con = ibis.duckdb.connect()
+
+    for i, ds in enumerate(datasets):
+        log.info(f'loading: {ds}')
+        con.read_parquet(file_paths[i], ds)
+
+    return con
+
+
 #############################################
 # data prep
 #############################################
 def prep_lmp(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-        loc_filter: str = 'PSCO_',
+    con: ibis.duckdb.connect,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    loc_filter: str = 'PSCO_',
+    clip_outliers: bool = False,
 ):
     # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
     lmp = con.table('lmp')
@@ -98,36 +126,30 @@ def prep_lmp(
     # TODO: handle checks for start_time < end_time
     lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
 
+    
+    if clip_outliers:
+        clipped_lwr = lmp.LMP.quantile(0.0025)
+        clipped_upr = lmp.LMP.quantile(0.9975)
+        lmp = (
+            lmp
+            .mutate(LMP = ibis.ifelse(_.LMP < clipped_upr, _.LMP, clipped_upr))
+            .mutate(LMP = ibis.ifelse(_.LMP > clipped_lwr, _.LMP, clipped_lwr))
+        )
+
     if end_time:
         lmp = lmp.filter(_.timestamp_mst_HE <= end_time)
 
     lmp = (
         lmp
         .mutate(unique_id=_.Settlement_Location_Name)
+        .filter(~_.unique_id.contains("_ARPA")) # is missing?
+        .drop_null(['unique_id'])
         .mutate(timestamp_mst=_.timestamp_mst_HE)
         .mutate(LMP=_.LMP.cast(parameters.PRECISION))
         .drop(drop_cols)
+        .group_by(['unique_id'])
         .order_by(['unique_id', 'timestamp_mst'])
-    )
-
-    min_max_lmp = (
-        lmp
-        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-        .group_by(['unique_id', 'date_mst'])
-        .agg(
-            daily_max_lmp=_.LMP.max(),
-            daily_min_lmp=_.LMP.min()
-        )
-    )
-
-    lmp = (
-        lmp
-        .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-        .join(
-            min_max_lmp, ['unique_id', 'date_mst'], how='left', 
-        )
-        .drop(s.startswith(("date_mst")))
-        .order_by(['unique_id', 'timestamp_mst'])
+        .mutate(lmp_diff = (_.LMP - _.LMP.lag(1)).cast(parameters.PRECISION))
     )
 
     return lmp
@@ -257,11 +279,12 @@ def prep_weather(
 
 
 def prep_all_df(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
+    con: ibis.duckdb.connect,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    clip_outliers: bool = False,
 ):
-    lmp = prep_lmp(con, start_time=start_time, end_time=end_time)
+    lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
     # gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
@@ -294,65 +317,27 @@ def prep_all_df(
         all_df
         .drop_null(['unique_id'])
         .group_by(['unique_id'])
-        .mutate(re_ratio = (_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF)
-        .mutate(re_diff = _.re_ratio - _.re_ratio.lag(1))
-        .mutate(lmp_diff = _.LMP - _.LMP.lag(1))
-        .mutate(mtlf_diff = _.MTLF - _.MTLF.lag(1))
-        .mutate(wind_diff = _.Wind_Forecast_MW - _.Wind_Forecast_MW.lag(1))
-        .mutate(solar_diff = _.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1))
-        .mutate(load_net_re = _.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW)
-        .mutate(load_net_re = ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)) # avoid div/0 errors
-        # .mutate(load_net_re = _.load_net_re.abs().ln() * _.load_net_re.sign()) # test log
-        .mutate(load_net_re_diff_lag = _.load_net_re - _.load_net_re.lag(1))
-        .mutate(load_net_re_x_diff = _.load_net_re * _.load_net_re_diff_lag)
-        .mutate(lmp_load_net_re = _.LMP / _.load_net_re)
-        .mutate(lmp_load = _.LMP / _.MTLF)
+        .order_by(['unique_id', 'timestamp_mst'])
+        .mutate(lmp_diff = (_.LMP - _.LMP.lag(1)).cast(parameters.PRECISION))
+        .mutate(re_ratio = ((_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF).cast(parameters.PRECISION))
+        .mutate(re_diff = (_.re_ratio - _.re_ratio.lag(1)).cast(parameters.PRECISION))
+        .mutate(mtlf_diff = (_.MTLF - _.MTLF.lag(1)).cast(parameters.PRECISION))
+        .mutate(wind_diff = (_.Wind_Forecast_MW - _.Wind_Forecast_MW.lag(1)).cast(parameters.PRECISION))
+        .mutate(solar_diff = (_.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1)).cast(parameters.PRECISION))
+        .mutate(load_net_re = (_.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW).cast(parameters.PRECISION))
+        .mutate(load_net_re = (ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)).cast(parameters.PRECISION)) # avoid div/0 errors
+        .mutate(load_net_re_diff = (_.load_net_re - _.load_net_re.lag(1)).cast(parameters.PRECISION))
+        .mutate(lmp_load_net_re = (_.LMP / _.load_net_re).cast(parameters.PRECISION))
     )
 
-    # min_max_load_net_re = (
-    #     all_df
-    #     .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-    #     .group_by(['date_mst'])
-    #     .agg(
-    #         daily_max_load_net_re=_.load_net_re.max(),
-    #         daily_min_load_net_re=_.load_net_re.min()
-    #     )
-    # )
-    
-    # all_df = (
-    #     all_df
-    #     .mutate(date_mst = _.timestamp_mst.truncate("D").cast('Date'))
-    #     .join(
-    #         min_max_load_net_re, ['date_mst'], how='left', 
-    #     )
-    #     .drop(s.startswith(("date_mst")))
-    # )
 
-
-    # convert precision for model training
-    all_df = (
-        all_df
-        .mutate(MTLF = _.MTLF.cast(parameters.PRECISION))
-        .mutate(Averaged_Actual = _.Averaged_Actual.cast(parameters.PRECISION))
-        .mutate(Wind_Forecast_MW = _.Wind_Forecast_MW.cast(parameters.PRECISION))
-        .mutate(Solar_Forecast_MW = _.Solar_Forecast_MW.cast(parameters.PRECISION))
-        .mutate(LMP = _.LMP.cast(parameters.PRECISION))
-        .mutate(re_ratio = _.re_ratio.cast(parameters.PRECISION))
-        .mutate(re_diff = _.re_diff.cast(parameters.PRECISION))
-        .mutate(lmp_diff = _.lmp_diff.cast(parameters.PRECISION))
-        .mutate(mtlf_diff = _.mtlf_diff.cast(parameters.PRECISION))
-        .mutate(wind_diff = _.wind_diff.cast(parameters.PRECISION))
-        .mutate(solar_diff = _.solar_diff.cast(parameters.PRECISION))
-        .mutate(load_net_re = _.load_net_re.cast(parameters.PRECISION))
-        .mutate(lmp_load_net_re = _.lmp_load_net_re.cast(parameters.PRECISION))
-        .mutate(lmp_load = _.lmp_load.cast(parameters.PRECISION))
-        .mutate(load_net_re_diff_lag = _.load_net_re_diff_lag.cast(parameters.PRECISION))
-        .mutate(load_net_re_x_diff = _.load_net_re_x_diff.cast(parameters.PRECISION))
-        # .mutate(daily_max_load_net_re = _.daily_max_load_net_re.cast(parameters.PRECISION))
-        # .mutate(daily_min_load_net_re = _.daily_min_load_net_re.cast(parameters.PRECISION))
-        
-    )
-
+    for i in [2,3,4,6]:
+        win = ibis.window(preceding=i, following=0, group_by=all_df.unique_id, order_by=all_df.timestamp_mst)
+        all_df = (
+            all_df
+            .mutate(all_df.lmp_diff.sum().over(win).cast(parameters.PRECISION).name(f'lmp_diff_rolling_{i}'))
+            .mutate(all_df.load_net_re_diff.sum().over(win).cast(parameters.PRECISION).name(f'load_net_re_diff_rolling_{i}'))
+        )
     
 
     return all_df
@@ -366,11 +351,12 @@ def all_df_to_pandas(all_df):
 
 
 def get_train_test_all(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
+    con: ibis.duckdb.connect,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    clip_outliers: bool = False,
 ):
-    lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time)
+    lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     lmp_all = lmp_all.to_pandas()
     lmp_all.set_index('timestamp_mst', inplace=True)
 
