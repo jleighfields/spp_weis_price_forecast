@@ -30,7 +30,7 @@ if str(s.machine) != 'Machine.L4':
 # wait for studio to be running
 log.info(f'status: {s.status}')
 i = 0
-while str(s.status) != 'Status.Running':
+while str(s.status) != 'Running':
     
     i+=1
     if i > 30:
