@@ -17,7 +17,8 @@ load_dotenv()  # load environment variables from .env
 log.info("starting Studio...")
 # s = Studio(name="model-train", teamspace="spp-weis", user="jleighfields-yst2q")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
-s.start()
+if str(s.status) != 'Running':
+    s.start()
 
 
 # switch machine for training
