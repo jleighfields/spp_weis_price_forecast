@@ -23,7 +23,7 @@ if str(s.status) != 'Running':
 
 # switch machine for training
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'Machine.L4':
+if str(s.machine) != 'L4':
     log.info('switching to Machine.L4')
     s.switch_machine(machine=Machine.L4)
 
