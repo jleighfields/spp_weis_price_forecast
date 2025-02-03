@@ -331,7 +331,7 @@ def prep_all_df(
     )
 
 
-    for i in [2,3,4,6]:
+    for i in [2,3,4,5,6]:
         win = ibis.window(preceding=i, following=0, group_by=all_df.unique_id, order_by=all_df.timestamp_mst)
         all_df = (
             all_df
