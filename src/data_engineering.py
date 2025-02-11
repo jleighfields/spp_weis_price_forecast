@@ -91,10 +91,13 @@ def create_database(
         log.info(f'getting: {fp} from s3')
         s3.download_file(Bucket='spp-weis', Key=fp, Filename=fp)
 
+    log.info(f'os.listdir(data): {os.listdir("data")}')
+
     con = ibis.duckdb.connect()
 
     for i, ds in enumerate(datasets):
         log.info(f'loading: {ds}')
+        log.info(f'file_paths[i]: {file_paths[i]}')
         con.read_parquet(file_paths[i], ds)
 
     return con

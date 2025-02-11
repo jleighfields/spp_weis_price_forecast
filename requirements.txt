@@ -7,10 +7,10 @@ seaborn
 plotly
 python-dotenv
 streamlit
-boto3
+boto3==1.35.92
 polars
 duckdb
-ibis-framework[duckdb]
+ibis-framework[duckdb]==9.4.0
 mlflow==2.16.0
 lightning
 lightning-sdk
