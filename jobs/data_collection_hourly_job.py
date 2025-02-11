@@ -18,7 +18,7 @@ log.info("starting Studio...")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'CPU':
+if str(s.machine) != 'cpu-4':
     s.switch_machine(machine=Machine.CPU)
 
 # give some time for environment to be created
