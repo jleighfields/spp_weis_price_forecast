@@ -95,6 +95,7 @@ def create_database(
 
     for i, ds in enumerate(datasets):
         log.info(f'loading: {ds}')
+        log.info(f'file_paths[i]: {file_paths[i]}')
         con.read_parquet(file_paths[i], ds)
 
     return con

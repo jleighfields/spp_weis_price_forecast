@@ -7,7 +7,7 @@ seaborn
 plotly
 python-dotenv
 streamlit
-boto3
+boto3==1.35.92
 polars
 duckdb
 ibis-framework[duckdb]
