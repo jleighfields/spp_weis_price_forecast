@@ -9,8 +9,8 @@ python-dotenv
 streamlit
 boto3==1.35.92
 polars
-duckdb==1.0.0
-ibis-framework[duckdb]
+duckdb
+ibis-framework[duckdb]==9.4.0
 mlflow==2.16.0
 lightning
 lightning-sdk
