@@ -38,6 +38,8 @@ import src.data_engineering as de
 from src import plotting
 from src import parameters
 
+# max absolute value for LMPs in given to forecast
+MAX_LMP = 200.0
 
 # define log
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +72,8 @@ def get_price_nodes(lmp_df: pd.DataFrame) -> List[str]:
             LMP names
     returns: List[str] of LMP names
     '''
-    price_node_list = lmp_df.unique_id.unique().tolist()
+    price_node_list = np.sort(lmp_df.unique_id.unique())
+    log.info(f'price_node_list: {price_node_list}')
 
     return price_node_list
 
@@ -318,7 +321,11 @@ if st.session_state.get_fcast_btn:
     plot_cov_df = st.session_state.all_df_pd[idx]
 
     # prepare data for getting predictions
-    plot_series = de.get_series(price_df)[0]
+    trimmed_price_df = price_df.copy()
+    trimmed_price_df.loc[trimmed_price_df.LMP > MAX_LMP, 'LMP'] = MAX_LMP
+    trimmed_price_df.loc[trimmed_price_df.LMP < -MAX_LMP, 'LMP'] = -MAX_LMP
+    log.info(f'max trimmed lmp: {trimmed_price_df.LMP.max()}')
+    plot_series = de.get_series(trimmed_price_df)[0]
     future_cov_series = de.get_futr_cov(plot_cov_df)[0]
     past_cov_series = de.get_past_cov(plot_cov_df)[0]
     node_series = plot_series
