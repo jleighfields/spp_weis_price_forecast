@@ -15,7 +15,6 @@ from typing import List
 # data
 import numpy as np
 import pandas as pd
-import ibis
 import boto3
 
 # user interface
