@@ -1,7 +1,7 @@
 # Install the Lightning SDK
 # pip install lightning-sdk
 
-from lightning_sdk import Machine, Studio, JobsPlugin, MultiMachineTrainingPlugin
+from lightning_sdk import Machine, Studio, Status
 from dotenv import load_dotenv
 import time
 
@@ -24,17 +24,18 @@ if str(s.status) != 'Running':
 
 # switch machine for training
 log.info(f's.machine: {s.machine}')
-if str(s.machine) != 'L4':
+if s.machine != Machine.L4:
     log.info('switching to Machine.L4')
     s.switch_machine(machine=Machine.L4)
+    # give some time for environment to be created
+    time.sleep(30)
 
 
 # wait for studio to be running
 log.info(f'status: {s.status}')
 i = 0
-while str(s.status) != 'Running':
-    
-    i+=1
+while s.status != Status.Running:
+    i += 1
     if i > 30:
         break
     time.sleep(30)

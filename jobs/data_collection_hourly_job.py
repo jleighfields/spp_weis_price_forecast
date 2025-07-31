@@ -1,7 +1,7 @@
 # Install the Lightning SDK
 # pip install lightning-sdk
 
-from lightning_sdk import Machine, Studio, JobsPlugin, MultiMachineTrainingPlugin
+from lightning_sdk import Machine, Studio, Status
 from dotenv import load_dotenv
 import time
 
@@ -19,23 +19,19 @@ s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2
 s.start()
 log.info(f'{s.machine = }, {s.status = }')
 
-if str(s.status) != 'Running':
-    s.start()
-
-if str(s.machine) != 'cpu-4':
+if s.machine != Machine.CPU:
     s.switch_machine(machine=Machine.CPU)
-
-# give some time for environment to be created
-time.sleep(60)
+    # give some time for environment to be created
+    time.sleep(30)
 
 # ensure it's turned on and a Studio will wait for 10 minutes before shutting down.
 # s.auto_shutdown = True
 # s.auto_shutdown_time = 10 * 60  # the time is in seconds for granular control
 
 i = 0
-while str(s.status) != 'Running':
+while s.status != Status.Running:
     log.info(f'status: {s.status} - count: {i}')
-    i+=1
+    i += 1
     if i > 30:
         break
     time.sleep(30)
