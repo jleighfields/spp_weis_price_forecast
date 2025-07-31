@@ -18,7 +18,12 @@ load_dotenv()  # take environment variables from .env.
 log.info("starting Studio...")
 s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2q")
 s.start()
-log.info(f's.machine: {s.machine}')
+log.info(f'{s.machine = }, {s.status = }')
+
+if str(s.status) != 'Running':
+    s.start()
+
+
 if str(s.machine) != 'cpu-4':
     s.switch_machine(machine=Machine.CPU)
 
