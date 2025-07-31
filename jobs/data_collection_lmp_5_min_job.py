@@ -19,7 +19,8 @@ s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2
 s.start()
 log.info(f'{s.machine = }, {s.status = }')
 
-if s.machine != Machine.CPU:
+log.info(f'{str(s.machine) = }, {str(Machine.CPU) = }')
+if str(s.machine) != str(Machine.CPU):
     s.switch_machine(machine=Machine.CPU)
     # give some time for environment to be created
     time.sleep(30)
@@ -43,6 +44,7 @@ except:
 
 try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/data_collection/data_collection_5_min.py")
+    log.info('ran job')
 except Exception as e:
         log.error("command failed with error: %s".format(e))
 

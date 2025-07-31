@@ -20,7 +20,8 @@ s = Studio(name="data-collection", teamspace="spp-weis", user="jleighfields-yst2
 s.start()
 log.info(f'{s.machine = }, {s.status = }')
 
-if s.machine != Machine.CPU:
+log.info(f'{str(s.machine) = }, {str(Machine.CPU) = }')
+if str(s.machine) != str(Machine.CPU):
     s.switch_machine(machine=Machine.CPU)
     # give some time for environment to be created
     time.sleep(30)
