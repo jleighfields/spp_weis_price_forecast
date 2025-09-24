@@ -25,10 +25,6 @@ if str(s.machine) != str(Machine.CPU):
     # give some time for environment to be created
     time.sleep(30)
 
-# ensure it's turned on and a Studio will wait for 10 minutes before shutting down.
-# s.auto_shutdown = True
-# s.auto_shutdown_time = 10 * 60  # the time is in seconds for granular control
-
 i = 0
 while s.status != Status.Running:
     log.info(f'status: {s.status} - count: {i}')
