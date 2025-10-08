@@ -278,15 +278,17 @@ def plotly_forecast(
     acc_data = plotly_data[['mean_fcast', 'LMP_HOURLY']].dropna(axis=0)
     if acc_data.shape[0] > 0:
         err = np.round(mae(acc_data.LMP_HOURLY, acc_data.mean_fcast), 2)
+        bias = np.round(np.mean(acc_data.mean_fcast - acc_data.LMP_HOURLY), 2)
     else:
         err = '-'
+        bias = '-'
 
     ci_idx = (~plotly_data.mean_fcast.isna()) & (~plotly_data.LMP_HOURLY.isna())
     plotly_data['ci_error'] = (plotly_data.LMP_HOURLY < plotly_data[0.1]) | (plotly_data.LMP_HOURLY > plotly_data[0.9])
     ci_error = plotly_data.ci_error[ci_idx].mean()
 
     # create title
-    title_text = f'MAE forecast error: ${err} - CI coverage: {1-ci_error:0.3f}'
+    title_text = f'MAE forecast error: ${err} - Bias: ${bias} - CI coverage: {1-ci_error:0.3f}'
     log.info(f'node_name: {node_name}')
     log.info(f'title_text: {title_text}')
     if node_name:
