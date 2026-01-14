@@ -16,36 +16,23 @@ python-dotenv \
 "ibis-framework[duckdb]==9.4.0" \
 "mlflow==2.16.0" \
 lightning lightning-sdk \
-jupyterlab
+jupyterlab optuna-integration[pytorch_lightning] \
+optuna-dashboard
 
-pip install torch torchvision torchaudio
-
-pip install scikit-learn darts neuralforecast \
-pandas pyarrow seaborn plotly \
-python-dotenv xgboost streamlit shiny \
-jupyterlab jupyterlab-git ipywidgets \
-pytest pylint rsconnect-python boto3
-
-pip install polars duckdb "ibis-framework[duckdb]"
-pip install mlflow
-pip install optuna-integration[pytorch_lightning]
-pip install lightning
-pip install optuna-dashboard
-pip install jupyterlab jupyterlab-optuna
-pip install tensorboard
-pip install papermill
-pip install lightning-sdk
 
 # don't do a pip freeze, it saves requirements that will cause deploying apps to fail
 # since the systems are so different from training and hosting
 # pip freeze > requirements.txt
 
+
 jupyter kernelspec uninstall spp_weis -y
 ipython kernel install --name=spp_weis --user
+
 
 # restart gpu
 alias gpu_reset="sudo rmmod nvidia_uvm ; sudo modprobe nvidia_uvm"
 watch -n 1 nvidia-smi
+
 
 # start tensorboard
 tensorboard --reload_interval 3 --reload_multifile True --logdir=model_checkpoints/ts_mixer_model
