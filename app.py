@@ -54,8 +54,8 @@ st.set_page_config(
 ###################################################
 # get sql warehouse connection
 ###################################################
-# from dotenv import load_dotenv
-# load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 
 
 ###############################################################
