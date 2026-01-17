@@ -10,9 +10,8 @@ from typing import Optional, List
 # data processing
 import boto3
 import pandas as pd
-import ibis
-import ibis.selectors as s
-from ibis import _
+import duckdb
+import polars as pl
 from darts.dataprocessing.transformers import MissingValuesFiller
 from darts import TimeSeries
 
@@ -47,24 +46,24 @@ import parameters
 # parameters for column names
 #############################################
 FUTR_COLS = [
-    'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 
-    're_ratio', 're_diff', 
-    'load_net_re', 
-    'load_net_re_diff', 
-    'load_net_re_diff_rolling_2', 
-    'load_net_re_diff_rolling_3', 
-    'load_net_re_diff_rolling_4', 
-    'load_net_re_diff_rolling_6', 
+    'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW',
+    're_ratio', 're_diff',
+    'load_net_re',
+    'load_net_re_diff',
+    'load_net_re_diff_rolling_2',
+    'load_net_re_diff_rolling_3',
+    'load_net_re_diff_rolling_4',
+    'load_net_re_diff_rolling_6',
     'temperature',
 ]
 
 PAST_COLS = [
-    'Averaged_Actual', 
+    'Averaged_Actual',
     'lmp_diff',
     'lmp_diff_rolling_2',
     'lmp_diff_rolling_3',
     'lmp_diff_rolling_4',
-    'lmp_diff_rolling_6', 
+    'lmp_diff_rolling_6',
     'lmp_load_net_re',
     ]
 
@@ -72,33 +71,32 @@ Y = ['LMP']
 IDS = ['unique_id']
 
 
-
 #############################################
 # create database
 #############################################
 def create_database(
     datasets: List[str]=['lmp', 'mtrf', 'mtlf', 'weather']
-) -> ibis.duckdb.connect:
-    
+) -> duckdb.DuckDBPyConnection:
+
     # client for getting parquets
     s3 = boto3.client('s3')
 
     os.makedirs('data', exist_ok=True)
     # create file paths for data
     file_paths = [f'data/{ds}.parquet' for ds in datasets]
-    
+
     for fp in file_paths:
         log.info(f'getting: {fp} from s3')
         s3.download_file(Bucket='spp-weis', Key=fp, Filename=fp)
 
     log.info(f'os.listdir(data): {os.listdir("data")}')
 
-    con = ibis.duckdb.connect()
+    con = duckdb.connect()
 
     for i, ds in enumerate(datasets):
         log.info(f'loading: {ds}')
         log.info(f'file_paths[i]: {file_paths[i]}')
-        con.read_parquet(file_paths[i], ds)
+        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM '{file_paths[i]}'")
 
     return con
 
@@ -107,15 +105,17 @@ def create_database(
 # data prep
 #############################################
 def prep_lmp(
-    con: ibis.duckdb.connect,
+    con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     loc_filter: str = 'PSCO_',
     clip_outliers: bool = False,
-):
-    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-    lmp = con.table('lmp')
-    lmp = lmp.filter(_.Settlement_Location_Name.contains(loc_filter))
+) -> pl.DataFrame:
+    lmp = con.execute("SELECT * FROM lmp").pl()
+
+    # filter by location
+    lmp = lmp.filter(pl.col("Settlement_Location_Name").str.contains(loc_filter))
+
     drop_cols = [
         'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
         'Settlement_Location_Name', 'PNODE_Name',
@@ -127,44 +127,44 @@ def prep_lmp(
         start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
-    lmp = lmp.filter(_.timestamp_mst_HE >= start_time)
+    lmp = lmp.filter(pl.col("timestamp_mst_HE") >= start_time)
 
-    
     if clip_outliers:
-        clipped_lwr = lmp.LMP.quantile(0.0025)
-        clipped_upr = lmp.LMP.quantile(0.9975)
-        lmp = (
-            lmp
-            .mutate(LMP = ibis.ifelse(_.LMP < clipped_upr, _.LMP, clipped_upr))
-            .mutate(LMP = ibis.ifelse(_.LMP > clipped_lwr, _.LMP, clipped_lwr))
+        clipped_lwr = lmp.select(pl.col("LMP").quantile(0.0025)).item()
+        clipped_upr = lmp.select(pl.col("LMP").quantile(0.9975)).item()
+        lmp = lmp.with_columns(
+            pl.when(pl.col("LMP") > clipped_upr).then(clipped_upr)
+            .when(pl.col("LMP") < clipped_lwr).then(clipped_lwr)
+            .otherwise(pl.col("LMP")).alias("LMP")
         )
 
     if end_time:
-        lmp = lmp.filter(_.timestamp_mst_HE <= end_time)
+        lmp = lmp.filter(pl.col("timestamp_mst_HE") <= end_time)
 
     lmp = (
         lmp
-        .mutate(unique_id=_.Settlement_Location_Name)
-        .filter(~_.unique_id.contains("_ARPA")) # is missing?
-        .drop_null(['unique_id'])
-        .mutate(timestamp_mst=_.timestamp_mst_HE)
-        .mutate(LMP=_.LMP.cast(parameters.PRECISION))
-        .drop(drop_cols)
-        .group_by(['unique_id'])
-        .order_by(['unique_id', 'timestamp_mst'])
-        .mutate(lmp_diff = (_.LMP - _.LMP.lag(1)).cast(parameters.PRECISION))
+        .with_columns(pl.col("Settlement_Location_Name").alias("unique_id"))
+        .filter(~pl.col("unique_id").str.contains("_ARPA"))
+        .drop_nulls(subset=["unique_id"])
+        .with_columns(pl.col("timestamp_mst_HE").alias("timestamp_mst"))
+        .with_columns(pl.col("LMP").cast(pl.Float32))
+        .drop([c for c in drop_cols if c in lmp.columns], strict=False)
+        .sort(["unique_id", "timestamp_mst"])
+        .with_columns(
+            (pl.col("LMP") - pl.col("LMP").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("lmp_diff")
+        )
     )
 
     return lmp
 
 
 def prep_mtrf(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-):
-    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-    mtrf = con.table('mtrf')
+    con: duckdb.DuckDBPyConnection,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> pl.DataFrame:
+    mtrf = con.execute("SELECT * FROM mtrf").pl()
     drop_cols = ['Interval', 'GMTIntervalEnd']
 
     if not start_time:
@@ -172,181 +172,224 @@ def prep_mtrf(
         start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
-    mtrf = mtrf.filter(_.timestamp_mst >= start_time)
+    mtrf = mtrf.filter(pl.col("timestamp_mst") >= start_time)
 
     if end_time:
-        mtrf = mtrf.filter(_.timestamp_mst <= end_time)
+        mtrf = mtrf.filter(pl.col("timestamp_mst") <= end_time)
 
     mtrf = (
         mtrf
-        .mutate(Wind_Forecast_MW=_.Wind_Forecast_MW.cast(parameters.PRECISION))
-        .mutate(Solar_Forecast_MW=_.Solar_Forecast_MW.cast(parameters.PRECISION))
-        .drop(drop_cols)
-        .order_by(['timestamp_mst'])
+        .with_columns(pl.col("Wind_Forecast_MW").cast(pl.Float32))
+        .with_columns(pl.col("Solar_Forecast_MW").cast(pl.Float32))
+        .drop([c for c in drop_cols if c in mtrf.columns], strict=False)
+        .sort("timestamp_mst")
     )
 
     return mtrf
 
 
 def prep_mtlf(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-):
-    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-    mtlf = con.table('mtlf')
-    drop_cols = ['Interval', 'GMTIntervalEnd', ]
+    con: duckdb.DuckDBPyConnection,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> pl.DataFrame:
+    mtlf = con.execute("SELECT * FROM mtlf").pl()
+    drop_cols = ['Interval', 'GMTIntervalEnd']
 
     if not start_time:
         # get last 1.5 years
         start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
-    mtlf = mtlf.filter(_.timestamp_mst >= start_time)
+    mtlf = mtlf.filter(pl.col("timestamp_mst") >= start_time)
 
     if end_time:
-        mtlf = mtlf.filter(_.timestamp_mst <= end_time)
+        mtlf = mtlf.filter(pl.col("timestamp_mst") <= end_time)
 
     mtlf = (
         mtlf
-        .mutate(MTLF=_.MTLF.cast(parameters.PRECISION))
-        .mutate(Averaged_Actual=_.Averaged_Actual.cast(parameters.PRECISION))
-        .drop(drop_cols)
-        .order_by(['timestamp_mst'])
+        .with_columns(pl.col("MTLF").cast(pl.Float32))
+        .with_columns(pl.col("Averaged_Actual").cast(pl.Float32))
+        .drop([c for c in drop_cols if c in mtlf.columns], strict=False)
+        .sort("timestamp_mst")
     )
 
     return mtlf
 
 
 def prep_gen_cap(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-):
-    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-    gen_cap = con.table('gen_cap')
-    drop_cols = ['GMTIntervalEnd', ]
+    con: duckdb.DuckDBPyConnection,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> pl.DataFrame:
+    gen_cap = con.execute("SELECT * FROM gen_cap").pl()
+    drop_cols = ['GMTIntervalEnd', 'Coal_Market', 'Coal_Self']
 
     if not start_time:
         # get last 1.5 years
         start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
-    gen_cap = gen_cap.filter(_.timestamp_mst >= start_time)
+    gen_cap = gen_cap.filter(pl.col("timestamp_mst") >= start_time)
 
     if end_time:
-        gen_cap = gen_cap.filter(_.timestamp_mst <= end_time)
+        gen_cap = gen_cap.filter(pl.col("timestamp_mst") <= end_time)
 
     gen_cap = (
         gen_cap
-        .mutate(Coal=(_.Coal_Market + _.Coal_Self).cast(parameters.PRECISION))
-        .mutate(Hydro=_.Hydro.cast(parameters.PRECISION))
-        .mutate(Natural_Gas=_.Natural_Gas.cast(parameters.PRECISION))
-        .mutate(Nuclear=_.Nuclear.cast(parameters.PRECISION))
-        .mutate(Solar=_.Solar.cast(parameters.PRECISION))
-        .mutate(Wind=_.Wind.cast(parameters.PRECISION))
-        .drop(drop_cols + ['Coal_Market', 'Coal_Self'])
-        .order_by(['timestamp_mst'])
+        .with_columns((pl.col("Coal_Market") + pl.col("Coal_Self")).cast(pl.Float32).alias("Coal"))
+        .with_columns(pl.col("Hydro").cast(pl.Float32))
+        .with_columns(pl.col("Natural_Gas").cast(pl.Float32))
+        .with_columns(pl.col("Nuclear").cast(pl.Float32))
+        .with_columns(pl.col("Solar").cast(pl.Float32))
+        .with_columns(pl.col("Wind").cast(pl.Float32))
+        .drop([c for c in drop_cols if c in gen_cap.columns], strict=False)
+        .sort("timestamp_mst")
     )
 
     return gen_cap
 
 
 def prep_weather(
-        con: ibis.duckdb.connect,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
-):
-    # con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
-    weather = con.table('weather')
-    drop_cols = ['timestamp', ]
+    con: duckdb.DuckDBPyConnection,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> pl.DataFrame:
+    weather = con.execute("SELECT * FROM weather").pl()
+    drop_cols = ['timestamp']
 
     if not start_time:
         # get last 1.5 years
         start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
-    weather = weather.filter(_.timestamp_mst >= start_time)
+    weather = weather.filter(pl.col("timestamp_mst") >= start_time)
 
     if end_time:
-        weather = weather.filter(_.timestamp_mst <= end_time)
+        weather = weather.filter(pl.col("timestamp_mst") <= end_time)
 
     weather = (
         weather
-        .mutate(temperature=_.temperature.cast(parameters.PRECISION))
-        .drop(drop_cols)
-        .order_by(['timestamp_mst'])
+        .with_columns(pl.col("temperature").cast(pl.Float32))
+        .drop([c for c in drop_cols if c in weather.columns], strict=False)
+        .sort("timestamp_mst")
     )
 
     return weather
 
 
 def prep_all_df(
-    con: ibis.duckdb.connect,
+    con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     clip_outliers: bool = False,
-):
+) -> pl.DataFrame:
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
-    # gen_cap = prep_gen_cap(con, start_time=start_time, end_time=end_time)
     weather = prep_weather(con, start_time=start_time, end_time=end_time)
-    
 
     # join into single dataset
     all_df = (
         mtlf
-        .left_join(mtrf, 'timestamp_mst')
-        .select(~s.contains("_right"))  # remove 'dt_right'
-        .left_join(weather, 'timestamp_mst')
-        .select(~s.contains("_right"))  # remove 'dt_right'
+        .join(mtrf, on="timestamp_mst", how="left")
+        .join(weather, on="timestamp_mst", how="left", suffix="_weather")
     )
+    # remove duplicate columns from joins
+    all_df = all_df.select([c for c in all_df.columns if not c.endswith("_right")])
 
-    uid_df = ibis.memtable({'unique_id': lmp.unique_id.to_pandas().unique()})
-    ids_df = all_df[['timestamp_mst']].cross_join(uid_df)
+    # create cross join of timestamps with unique_ids
+    unique_ids = lmp.select("unique_id").unique()
+    timestamps = all_df.select("timestamp_mst")
+    ids_df = timestamps.join(unique_ids, how="cross")
 
     all_df = (
-        all_df.left_join(ids_df, 'timestamp_mst')
-        .select(~s.contains("_right"))
-        .left_join(lmp, ['unique_id', 'timestamp_mst'])
-        .select(~s.contains("_right"))
-        .filter(_.timestamp_mst >= '2023-05-15')  # some bad data early on...
-        .order_by(['unique_id', 'timestamp_mst'])
+        all_df
+        .join(ids_df, on="timestamp_mst", how="left")
+        .join(lmp, on=["unique_id", "timestamp_mst"], how="left", suffix="_lmp")
+    )
+    # remove duplicate columns from joins
+    all_df = all_df.select([c for c in all_df.columns if not c.endswith("_right") and not c.endswith("_lmp")])
+
+    # filter and sort
+    all_df = (
+        all_df
+        .filter(pl.col("timestamp_mst") >= pd.Timestamp("2023-05-15"))  # some bad data early on...
+        .sort(["unique_id", "timestamp_mst"])
+        .drop_nulls(subset=["unique_id"])
     )
 
     # engineer features
     all_df = (
         all_df
-        .drop_null(['unique_id'])
-        .group_by(['unique_id'])
-        .order_by(['unique_id', 'timestamp_mst'])
-        .mutate(lmp_diff = (_.LMP - _.LMP.lag(1)).cast(parameters.PRECISION))
-        .mutate(re_ratio = ((_.Wind_Forecast_MW + _.Solar_Forecast_MW) / _.MTLF).cast(parameters.PRECISION))
-        .mutate(re_diff = (_.re_ratio - _.re_ratio.lag(1)).cast(parameters.PRECISION))
-        .mutate(mtlf_diff = (_.MTLF - _.MTLF.lag(1)).cast(parameters.PRECISION))
-        .mutate(wind_diff = (_.Wind_Forecast_MW - _.Wind_Forecast_MW.lag(1)).cast(parameters.PRECISION))
-        .mutate(solar_diff = (_.Solar_Forecast_MW - _.Solar_Forecast_MW.lag(1)).cast(parameters.PRECISION))
-        .mutate(load_net_re = (_.MTLF - _.Wind_Forecast_MW - _.Solar_Forecast_MW).cast(parameters.PRECISION))
-        .mutate(load_net_re = (ibis.ifelse(_.load_net_re.abs() < 1.0, 1.0, _.load_net_re)).cast(parameters.PRECISION)) # avoid div/0 errors
-        .mutate(load_net_re_diff = (_.load_net_re - _.load_net_re.lag(1)).cast(parameters.PRECISION))
-        .mutate(lmp_load_net_re = (_.LMP / _.load_net_re).cast(parameters.PRECISION))
+        .with_columns(
+            (pl.col("LMP") - pl.col("LMP").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("lmp_diff")
+        )
+        .with_columns(
+            ((pl.col("Wind_Forecast_MW") + pl.col("Solar_Forecast_MW")) / pl.col("MTLF"))
+            .cast(pl.Float32).alias("re_ratio")
+        )
+        .with_columns(
+            (pl.col("re_ratio") - pl.col("re_ratio").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("re_diff")
+        )
+        .with_columns(
+            (pl.col("MTLF") - pl.col("MTLF").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("mtlf_diff")
+        )
+        .with_columns(
+            (pl.col("Wind_Forecast_MW") - pl.col("Wind_Forecast_MW").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("wind_diff")
+        )
+        .with_columns(
+            (pl.col("Solar_Forecast_MW") - pl.col("Solar_Forecast_MW").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("solar_diff")
+        )
+        .with_columns(
+            (pl.col("MTLF") - pl.col("Wind_Forecast_MW") - pl.col("Solar_Forecast_MW"))
+            .cast(pl.Float32).alias("load_net_re")
+        )
+        .with_columns(
+            pl.when(pl.col("load_net_re").abs() < 1.0)
+            .then(1.0)
+            .otherwise(pl.col("load_net_re"))
+            .cast(pl.Float32).alias("load_net_re")  # avoid div/0 errors
+        )
+        .with_columns(
+            (pl.col("load_net_re") - pl.col("load_net_re").shift(1).over("unique_id"))
+            .cast(pl.Float32).alias("load_net_re_diff")
+        )
+        .with_columns(
+            (pl.col("LMP") / pl.col("load_net_re"))
+            .cast(pl.Float32).alias("lmp_load_net_re")
+        )
     )
 
-
-    for i in [2,3,4,5,6]:
-        win = ibis.window(preceding=i, following=0, group_by=all_df.unique_id, order_by=all_df.timestamp_mst)
+    # rolling window aggregations
+    for i in [2, 3, 4, 5, 6]:
         all_df = (
             all_df
-            .mutate(all_df.lmp_diff.sum().over(win).cast(parameters.PRECISION).name(f'lmp_diff_rolling_{i}'))
-            .mutate(all_df.load_net_re_diff.sum().over(win).cast(parameters.PRECISION).name(f'load_net_re_diff_rolling_{i}'))
+            .with_columns(
+                pl.col("lmp_diff")
+                .rolling_sum(window_size=i + 1)
+                .over("unique_id")
+                .cast(pl.Float32)
+                .alias(f"lmp_diff_rolling_{i}")
+            )
+            .with_columns(
+                pl.col("load_net_re_diff")
+                .rolling_sum(window_size=i + 1)
+                .over("unique_id")
+                .cast(pl.Float32)
+                .alias(f"load_net_re_diff_rolling_{i}")
+            )
         )
-    
 
     return all_df
 
 
-def all_df_to_pandas(all_df):
+def all_df_to_pandas(all_df: pl.DataFrame):
     all_df_pd = all_df.to_pandas()
     all_df_pd.set_index('timestamp_mst', inplace=True)
     all_df_pd = all_df_pd[IDS + Y + PAST_COLS + FUTR_COLS]
@@ -354,7 +397,7 @@ def all_df_to_pandas(all_df):
 
 
 def get_train_test_all(
-    con: ibis.duckdb.connect,
+    con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     clip_outliers: bool = False,

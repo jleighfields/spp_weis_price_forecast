@@ -4,11 +4,8 @@ import pickle
 import sys
 import numpy as np
 import pandas as pd
-import ibis
 import boto3
 import torch
-
-ibis.options.interactive = True
 
 from darts.metrics import mae, rmse
 from darts.models import (
