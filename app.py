@@ -171,7 +171,7 @@ with forcasted_data:
                 .to_pandas()
                 .set_index('timestamp_mst')
             )
-            con.disconnect()
+            con.close()
 
         st.toast('Done loading and preparing data')
 

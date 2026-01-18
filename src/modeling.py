@@ -117,6 +117,7 @@ def build_fit_tsmixerx(
 
     MODEL_TYPE = "ts_mixer_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
+    os.makedirs(work_dir, exist_ok=True)
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
@@ -220,6 +221,7 @@ def build_fit_tide(
 
     MODEL_TYPE = "tide_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
+    os.makedirs(work_dir, exist_ok=True)
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
@@ -321,7 +323,7 @@ def build_fit_tft(
 ):
     MODEL_TYPE = "tft_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
-    
+    os.makedirs(work_dir, exist_ok=True)
     quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...

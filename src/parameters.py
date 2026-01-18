@@ -8,6 +8,8 @@ from darts.dataprocessing.transformers import Scaler
 
 TRAIN_START = '365D'
 
+IDS_TO_REMOVE = ['PSCO_PSCO_PSCO_CORE']
+
 FORECAST_HORIZON = 24*5
 INPUT_CHUNK_LENGTH = 24*7
 PRECISION = 'float32'

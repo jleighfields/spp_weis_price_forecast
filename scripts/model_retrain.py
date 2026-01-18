@@ -80,12 +80,11 @@ lmp_df = lmp.to_pandas().rename(
 
 
 log.info('preparing covariate data')
-# all_df = de.prep_all_df(con)
 all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
 
 lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(con)
-con.disconnect()
+con.close()
 
 all_series = de.get_series(lmp_all)
 train_test_all_series = de.get_series(train_test_all)
@@ -125,6 +124,7 @@ if parameters.USE_TIDE:
             **param
         )
         models_tide += [model_tide]
+
 
 models_tft = []
 if parameters.USE_TFT:
