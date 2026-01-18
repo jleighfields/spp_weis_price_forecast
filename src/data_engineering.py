@@ -287,13 +287,13 @@ def prep_all_df(
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
-    weather = prep_weather(con, start_time=start_time, end_time=end_time)
+    # weather = prep_weather(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
     all_df = (
         mtlf
         .join(mtrf, on="timestamp_mst", how="left")
-        .join(weather, on="timestamp_mst", how="left", suffix="_weather")
+        # .join(weather, on="timestamp_mst", how="left", suffix="_weather")
     )
     # remove duplicate columns from joins
     all_df = all_df.select([c for c in all_df.columns if not c.endswith("_right")])
