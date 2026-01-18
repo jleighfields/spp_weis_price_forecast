@@ -7,6 +7,8 @@ Also get daily generation capacity files
 import sys
 import os
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 
 # define log
 logging.basicConfig(level=logging.INFO)

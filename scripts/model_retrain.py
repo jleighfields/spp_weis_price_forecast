@@ -4,6 +4,8 @@ import pickle
 import sys
 import pandas as pd
 import boto3
+from dotenv import load_dotenv
+load_dotenv()
 
 from darts.models import (
     NaiveEnsembleModel,

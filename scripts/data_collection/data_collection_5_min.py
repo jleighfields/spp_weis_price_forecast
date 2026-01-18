@@ -5,6 +5,8 @@ Gather 5 minute lmp files from SPP Weis: https://marketplace.spp.org/groups/oper
 import sys
 import os
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 
 # define log
 logging.basicConfig(level=logging.INFO)
