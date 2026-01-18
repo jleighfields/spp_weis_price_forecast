@@ -1,6 +1,20 @@
-'''
-Data engineering functions to prepare data for model training and forecasting
-'''
+"""
+Data engineering module for SPP WEIS price forecasting.
+
+This module provides functions to prepare data for model training and forecasting
+using polars for data manipulation and duckdb for database operations. It handles:
+
+- Loading data from S3 parquet files into DuckDB
+- Preparing LMP, MTLF, MTRF, generation capacity, and weather data
+- Feature engineering (rolling windows, ratios, differencing)
+- Creating time series objects for Darts forecasting models
+
+Dependencies:
+    - polars: DataFrame operations and transformations
+    - duckdb: In-memory database for data storage and querying
+    - darts: Time series creation and missing value handling
+    - boto3: S3 access for data retrieval
+"""
 
 # base imports
 import os
@@ -77,7 +91,21 @@ IDS = ['unique_id']
 def create_database(
     datasets: List[str]=['lmp', 'mtrf', 'mtlf', 'weather']
 ) -> duckdb.DuckDBPyConnection:
+    """
+    Create an in-memory DuckDB database from S3 parquet files.
 
+    Downloads parquet files from S3 bucket 'spp-weis' and loads them
+    into a DuckDB in-memory database as tables.
+
+    Args:
+        datasets: List of dataset names to load. Each name corresponds
+            to a parquet file in S3 (e.g., 'lmp' -> 'data/lmp.parquet').
+            Defaults to ['lmp', 'mtrf', 'mtlf', 'weather'].
+
+    Returns:
+        duckdb.DuckDBPyConnection: Connection to in-memory DuckDB database
+            with tables created for each dataset.
+    """
     # client for getting parquets
     s3 = boto3.client('s3')
 
@@ -111,6 +139,26 @@ def prep_lmp(
     loc_filter: str = 'PSCO_',
     clip_outliers: bool = False,
 ) -> pl.DataFrame:
+    """
+    Prepare LMP (Locational Marginal Price) data from DuckDB.
+
+    Filters, transforms, and engineers features for LMP price data including
+    location filtering, time range filtering, outlier clipping, and price
+    differencing calculations.
+
+    Args:
+        con: DuckDB connection with 'lmp' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START
+            parameter (default ~1.5 years ago).
+        end_time: End of time range filter. If None, no upper bound.
+        loc_filter: String pattern to filter Settlement_Location_Name.
+            Defaults to 'PSCO_' for Public Service of Colorado nodes.
+        clip_outliers: If True, clip LMP values to 0.25% and 99.75% quantiles.
+
+    Returns:
+        pl.DataFrame: Processed LMP data with columns including 'unique_id',
+            'timestamp_mst', 'LMP', and 'lmp_diff' (price change from previous hour).
+    """
     lmp = con.execute("SELECT * FROM lmp").pl()
 
     # filter by location
@@ -164,6 +212,21 @@ def prep_mtrf(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ) -> pl.DataFrame:
+    """
+    Prepare MTRF (Mid-Term Resource Forecast) data from DuckDB.
+
+    Processes renewable generation forecast data including wind and solar
+    capacity forecasts.
+
+    Args:
+        con: DuckDB connection with 'mtrf' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+
+    Returns:
+        pl.DataFrame: Processed MTRF data with 'timestamp_mst',
+            'Wind_Forecast_MW', and 'Solar_Forecast_MW' columns.
+    """
     mtrf = con.execute("SELECT * FROM mtrf").pl()
     drop_cols = ['Interval', 'GMTIntervalEnd']
 
@@ -193,6 +256,20 @@ def prep_mtlf(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ) -> pl.DataFrame:
+    """
+    Prepare MTLF (Mid-Term Load Forecast) data from DuckDB.
+
+    Processes load forecast data including forecasted and actual load values.
+
+    Args:
+        con: DuckDB connection with 'mtlf' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+
+    Returns:
+        pl.DataFrame: Processed MTLF data with 'timestamp_mst', 'MTLF',
+            and 'Averaged_Actual' columns.
+    """
     mtlf = con.execute("SELECT * FROM mtlf").pl()
     drop_cols = ['Interval', 'GMTIntervalEnd']
 
@@ -222,6 +299,21 @@ def prep_gen_cap(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ) -> pl.DataFrame:
+    """
+    Prepare generation capacity data from DuckDB.
+
+    Processes generation capacity data by fuel type, combining coal market
+    and self-scheduled into a single Coal column.
+
+    Args:
+        con: DuckDB connection with 'gen_cap' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+
+    Returns:
+        pl.DataFrame: Processed generation capacity data with 'timestamp_mst',
+            'Coal', 'Hydro', 'Natural_Gas', 'Nuclear', 'Solar', and 'Wind'.
+    """
     gen_cap = con.execute("SELECT * FROM gen_cap").pl()
     drop_cols = ['GMTIntervalEnd', 'Coal_Market', 'Coal_Self']
 
@@ -255,6 +347,20 @@ def prep_weather(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ) -> pl.DataFrame:
+    """
+    Prepare weather data from DuckDB.
+
+    Processes weather data including temperature readings.
+
+    Args:
+        con: DuckDB connection with 'weather' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+
+    Returns:
+        pl.DataFrame: Processed weather data with 'timestamp_mst' and
+            'temperature' columns.
+    """
     weather = con.execute("SELECT * FROM weather").pl()
     drop_cols = ['timestamp']
 
@@ -284,6 +390,25 @@ def prep_all_df(
     end_time: Optional[str] = None,
     clip_outliers: bool = False,
 ) -> pl.DataFrame:
+    """
+    Prepare combined dataset with all features for modeling.
+
+    Joins LMP, MTLF, and MTRF data and engineers additional features including:
+    - Renewable energy ratios and differences
+    - Load net of renewable generation
+    - Rolling window aggregations for price and load differences
+
+    Args:
+        con: DuckDB connection with required tables loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+        clip_outliers: If True, clip LMP values to quantile bounds.
+
+    Returns:
+        pl.DataFrame: Combined dataset with all features ready for modeling,
+            including engineered features like 're_ratio', 'load_net_re',
+            and rolling window aggregations.
+    """
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
@@ -389,7 +514,20 @@ def prep_all_df(
     return all_df
 
 
-def all_df_to_pandas(all_df: pl.DataFrame):
+def all_df_to_pandas(all_df: pl.DataFrame) -> pd.DataFrame:
+    """
+    Convert polars DataFrame to pandas with proper indexing and column selection.
+
+    Converts the combined feature DataFrame to pandas format, sets the timestamp
+    index, selects relevant columns, and removes excluded node IDs.
+
+    Args:
+        all_df: Polars DataFrame from prep_all_df().
+
+    Returns:
+        pd.DataFrame: Pandas DataFrame with 'timestamp_mst' as index and
+            columns for IDS, Y (target), PAST_COLS, and FUTR_COLS.
+    """
     all_df_pd = all_df.to_pandas()
     all_df_pd.set_index('timestamp_mst', inplace=True)
     all_df_pd = all_df_pd[IDS + Y + PAST_COLS + FUTR_COLS]
@@ -403,7 +541,26 @@ def get_train_test_all(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     clip_outliers: bool = False,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Split LMP data into train, test, and combined datasets.
+
+    Creates temporal train/test splits based on INPUT_CHUNK_LENGTH parameter,
+    with a buffer at the end for price revisions.
+
+    Args:
+        con: DuckDB connection with 'lmp' table loaded.
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+        clip_outliers: If True, clip LMP values to quantile bounds.
+
+    Returns:
+        Tuple of (lmp_all, train_all, test_all, train_test_all) pandas DataFrames:
+            - lmp_all: Full filtered LMP dataset
+            - train_all: Training data (up to split point)
+            - test_all: Test data (after split point)
+            - train_test_all: Combined train and test data
+    """
     lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
     lmp_all = lmp_all.to_pandas()
     lmp_all.set_index('timestamp_mst', inplace=True)
@@ -435,13 +592,36 @@ def get_train_test_all(
     return lmp_all, train_all, test_all, train_test_all
 
 
-def fill_missing(series):
+def fill_missing(series: List[TimeSeries]) -> None:
+    """
+    Fill missing values in a list of TimeSeries objects in-place.
+
+    Uses Darts MissingValuesFiller transformer to interpolate missing values
+    for each series in the list.
+
+    Args:
+        series: List of Darts TimeSeries objects to fill. Modified in-place.
+    """
     for i in range(len(series)):
         transformer = MissingValuesFiller()
         series[i] = transformer.transform(series[i])
 
 
-def get_series(lmp_all):
+def get_series(lmp_all: pd.DataFrame) -> List[TimeSeries]:
+    """
+    Create target TimeSeries objects from LMP price data.
+
+    Converts pandas DataFrame to list of Darts TimeSeries objects grouped
+    by unique_id (price node), with missing dates filled.
+
+    Args:
+        lmp_all: Pandas DataFrame with 'unique_id' and LMP target column,
+            indexed by timestamp.
+
+    Returns:
+        List[TimeSeries]: List of Darts TimeSeries objects, one per price node,
+            with missing values filled.
+    """
     all_series = TimeSeries.from_group_dataframe(
         lmp_all,
         group_cols=IDS,
@@ -454,7 +634,20 @@ def get_series(lmp_all):
     return all_series
 
 
-def get_futr_cov(all_df_pd):
+def get_futr_cov(all_df_pd: pd.DataFrame) -> List[TimeSeries]:
+    """
+    Create future covariate TimeSeries objects for forecasting.
+
+    Converts pandas DataFrame to list of Darts TimeSeries objects for
+    features known in the future (forecasts like MTLF, wind, solar).
+
+    Args:
+        all_df_pd: Pandas DataFrame from all_df_to_pandas() with FUTR_COLS.
+
+    Returns:
+        List[TimeSeries]: List of Darts TimeSeries for future covariates,
+            one per price node, with missing values filled.
+    """
     futr_cov = TimeSeries.from_group_dataframe(
         all_df_pd,
         group_cols=IDS,
@@ -466,7 +659,20 @@ def get_futr_cov(all_df_pd):
     return futr_cov
 
 
-def get_past_cov(all_df_pd):
+def get_past_cov(all_df_pd: pd.DataFrame) -> List[TimeSeries]:
+    """
+    Create past covariate TimeSeries objects for forecasting.
+
+    Converts pandas DataFrame to list of Darts TimeSeries objects for
+    features only known historically (actual prices, actuals).
+
+    Args:
+        all_df_pd: Pandas DataFrame from all_df_to_pandas() with PAST_COLS.
+
+    Returns:
+        List[TimeSeries]: List of Darts TimeSeries for past covariates,
+            one per price node, with missing values filled.
+    """
     past_cov = TimeSeries.from_group_dataframe(
         all_df_pd,
         group_cols=IDS,

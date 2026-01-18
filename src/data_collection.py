@@ -1,7 +1,25 @@
-'''
-Functions for ETL for gathering data from SPP
-and loading to databricks
-'''
+"""
+Data collection module for SPP WEIS price forecasting.
+
+This module provides ETL functions for gathering data from SPP (Southwest Power Pool)
+and loading it into a DuckDB database with S3 backup. Data types collected include:
+
+- MTLF: Mid-Term Load Forecast (hourly load forecasts and actuals)
+- MTRF: Mid-Term Resource Forecast (wind and solar generation forecasts)
+- LMP: Locational Marginal Prices (5-minute and hourly aggregated prices)
+- Generation Capacity: Hourly generation by fuel type
+
+Key features:
+    - Parallel data collection using joblib for efficiency
+    - Upsert operations to handle incremental updates and backfills
+    - Automatic S3 parquet export for data persistence
+
+Dependencies:
+    - pandas: Data manipulation
+    - duckdb: Local database storage
+    - requests: HTTP requests to SPP portal
+    - joblib: Parallel processing
+"""
 # pylint: disable=C0103,W1203,W1201
 
 # base imports
@@ -168,7 +186,19 @@ def get_time_components(
         log.error(f'error parsing: {time_stamp}')
         return None
     
-def add_timestamp_mst(df: pd.DataFrame):
+def add_timestamp_mst(df: pd.DataFrame) -> None:
+    """
+    Add MST timestamp column derived from GMT interval end time.
+
+    Converts the GMTIntervalEnd column from UTC to Mountain Standard Time
+    and adds it as a new 'timestamp_mst' column.
+
+    Args:
+        df: DataFrame with 'GMTIntervalEnd' datetime column.
+
+    Returns:
+        None - column is added in place.
+    """
     df['timestamp_mst'] = (
         df.GMTIntervalEnd.dt.tz_localize("UTC")
         .dt.tz_convert('MST')

@@ -1,6 +1,20 @@
-'''
-plotting utilities for app
-'''
+"""
+Plotting utilities for the SPP WEIS LMP forecasting Streamlit app.
+
+This module provides functions to create visualizations of LMP price forecasts,
+including:
+
+- Quantile-based confidence intervals from probabilistic forecasts
+- Mean forecast extraction and plotting
+- Interactive Plotly and static Matplotlib visualizations
+- Forecast accuracy metrics display (MAE, bias, CI coverage)
+
+Dependencies:
+    - matplotlib: Static plot generation
+    - plotly: Interactive plot generation
+    - darts: TimeSeries data handling
+    - sklearn: Error metric calculations
+"""
 
 # pylint: disable=W0621,C0103,W1203,R1735
 
@@ -34,17 +48,21 @@ warnings.filterwarnings("ignore")
 
 
 def get_quantile_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
-    '''
-    create a quantile dataframe from the n forecasts
-    returned from the endpoint, this will be used to
-    plot confidence intervals
-    args:
-        preds: TimeSeries - TimeSeries object created from
-            endpoint response in json format that will have
-            a number (n) of simulations based on the api call,
-            i.e. preds = TimeSeries.from_json(endpoint_response)
-    returns: pd.DataFrame
-    '''
+    """
+    Create a quantile DataFrame from forecast predictions.
+
+    Extracts 10th, 50th, and 90th percentiles from probabilistic forecast
+    samples to create confidence interval bounds for plotting.
+
+    Args:
+        preds: TimeSeries object containing forecast samples, typically
+            created from endpoint response or model predictions.
+        node_name: Price node identifier to label the output.
+
+    Returns:
+        pd.DataFrame: Pivoted DataFrame with columns [0.1, 0.5, 0.9] representing
+            quantiles, indexed by (time, node).
+    """
 
     # get dataframe from preds TimeSeries
     plot_df = (
@@ -77,17 +95,20 @@ def get_quantile_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
 
 
 def get_mean_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
-    '''
-    get the mean forecast from the n forecasts
-    returned from the endpoint, this will be used to
-    plot the expected forecast
-    args:
-        preds: TimeSeries - TimeSeries object created from
-            endpoint response in json format that will have
-            a number (n) of simulations based on the api call,
-            i.e. preds = TimeSeries.from_json(endpoint_response)
-    returns: pd.DataFrame
-    '''
+    """
+    Extract mean forecast from probabilistic predictions.
+
+    Computes the mean across forecast samples to get the expected
+    point forecast for plotting.
+
+    Args:
+        preds: TimeSeries object containing forecast samples, typically
+            created from endpoint response or model predictions.
+        node_name: Price node identifier to label the output.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'mean_fcast' column, indexed by (time, node).
+    """
 
     plot_df = (
         preds.pd_dataframe()
@@ -113,22 +134,24 @@ def get_plot_df(
         prices_df: pd.DataFrame,
         node_name: str,
     ) -> pd.DataFrame:
-    '''
-    get the mean forecast and quantiles from the n forecasts
-    returned from the endpoint, this will be used to
-    plot the expected forecast
-    args:
-        preds: TimeSeries - TimeSeries object created from
-            endpoint response in json format that will have
-            a number (n) of simulations based on the api call,
-            i.e. preds = TimeSeries.from_json(endpoint_response)
-        plot_cov_df: pd.DataFrame - contains all the covariates used
-            in the forecast, returned from the get_forecast() function
-            in the app.py file
-        prices_df: pd.DataFrame - hourly lmp prices
-        node_name: str - name of the node used to filter prices_df
-    returns: pd.DataFrame - contains the data needed for plotting
-    '''
+    """
+    Combine forecast predictions with covariates and actual prices.
+
+    Merges mean forecast, quantiles, covariates, and actual LMP prices
+    into a single DataFrame ready for visualization.
+
+    Args:
+        preds: TimeSeries object containing forecast samples.
+        plot_cov_df: DataFrame with covariates used in the forecast,
+            returned from get_forecast() in app.py.
+        prices_df: DataFrame with hourly LMP prices containing 'node'
+            and 'time' columns.
+        node_name: Price node identifier to filter prices_df.
+
+    Returns:
+        pd.DataFrame: Combined DataFrame with columns for forecast,
+            quantiles, covariates, and actual prices, sorted by time.
+    """
 
     fcast_df = get_mean_df(preds, node_name).merge(
         get_quantile_df(preds, node_name),
@@ -154,19 +177,24 @@ def get_plot_df(
 
 def get_plot_idx(
         plot_df: pd.DataFrame,
-        lookback: str='7D'
+        lookback: str = '7D'
     ) -> pd.Series:
-    '''
-    get the boolean series used to filter the plotting data to
-    the forecast horizon and lookback period
-    args:
-        plot_df: pd.DataFrame - contains the data needed for plotting,
-            returned from get_plot_df()
-        lookback: str - string formatted for pd.Timedelta to create
-            lookback period
-    returns: pd.Series - boolean series used to filter plot_df for
-        the timeframe to plot
-    '''
+    """
+    Get boolean index for filtering plot data to display window.
+
+    Creates a boolean Series to filter data from lookback period before
+    the first forecast through the last forecast timestamp.
+
+    Args:
+        plot_df: DataFrame from get_plot_df() containing 'time' and
+            'mean_fcast' columns.
+        lookback: Timedelta-compatible string for lookback period
+            (e.g., '7D' for 7 days, '24H' for 24 hours).
+
+    Returns:
+        pd.Series: Boolean series where True indicates rows within the
+            display window.
+    """
 
     min_fcast_time = plot_df.time[~plot_df.mean_fcast.isna()].min() - pd.Timedelta(lookback)
     max_fcast_time = plot_df.time[~plot_df.mean_fcast.isna()].max()
@@ -176,22 +204,25 @@ def get_plot_idx(
 
 def plot_fcast(
         plot_df: pd.DataFrame,
-        node_name: str=None,
-        lookback: str='7D',
-        show_plot: bool=False
+        node_name: str = None,
+        lookback: str = '7D',
+        show_plot: bool = False
     ) -> mpl.figure.Figure:
+    """
+    Create a matplotlib figure displaying forecast with confidence interval.
 
-    '''
-    create a matplotlib figure to display in the app
-    args:
-        plot_df: pd.DataFrame - contains the data needed for plotting,
-            returned from get_plot_df()
-        node_name: str - inserted in plot title if not None
-        lookback: str - string formatted for pd.Timedelta to create
-            lookback period
-        show_plot: bool - whether to display plot
-    returns: mpl.figure.Figure - matplotlib figure
-    '''
+    Generates a two-panel figure: top panel shows actual vs forecast prices
+    with 80% confidence band, bottom panel shows net load (load minus renewables).
+
+    Args:
+        plot_df: DataFrame from get_plot_df() with forecast and actual data.
+        node_name: Price node name for plot title. If None, omitted from title.
+        lookback: Timedelta-compatible string for historical data display.
+        show_plot: If True, calls plt.show() to display the figure.
+
+    Returns:
+        mpl.figure.Figure: Matplotlib figure with forecast visualization.
+    """
 
     fig, (ax1, ax2) = plt.subplots(2)
 
@@ -236,24 +267,30 @@ def plot_fcast(
 
 def plotly_forecast(
         plot_df: pd.DataFrame,
-        node_name: str=None,
-        lookback: str='7D',
-        show_fig=False,
-        is_job=False
+        node_name: str = None,
+        lookback: str = '7D',
+        show_fig: bool = False,
+        is_job: bool = False
     ) -> plotly.graph_objs._figure.Figure:
-    '''
-    create a plotly figure to display in the app and in the job notebook.
-    if is_job is True, that plot is used in the job and does not show the plot for ratio.
-    args:
-        plot_df: pd.DataFrame - contains the data needed for plotting,
-            returned from get_plot_df()
-        node_name: str - inserted in plot title if not None
-        lookback: str - string formatted for pd.Timedelta to create
-            lookback period
-        show_fig: bool - whether to display plot
-        is_job: bool - whether the plot is for jobs or the app
-    returns: plotly.graph_objs._figure.Figure - plotly figure
-    '''
+    """
+    Create an interactive Plotly figure for forecast visualization.
+
+    Generates an interactive figure with actual prices, forecast, and
+    confidence interval. Includes accuracy metrics (MAE, bias, CI coverage)
+    in the title. When is_job=False, includes a secondary panel for net load.
+
+    Args:
+        plot_df: DataFrame from get_plot_df() with forecast and actual data.
+        node_name: Price node name for plot title. If None, omitted from title.
+        lookback: Timedelta-compatible string for historical data display.
+        show_fig: If True, calls fig.show() to display the figure.
+        is_job: If True, creates single-panel plot for batch jobs.
+            If False, creates two-panel plot with net load for app display.
+
+    Returns:
+        plotly.graph_objs._figure.Figure: Interactive Plotly figure with
+            hover tooltips and optional range slider.
+    """
 
     # start_time = plot_df[~plot_df.mean_fcast.isna()].time.min() - pd.Timedelta(lookback)
     # end_time = plot_df[~plot_df.mean_fcast.isna()].time.max()
