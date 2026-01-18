@@ -11,11 +11,6 @@ from typing import List, Optional
 import requests
 from io import StringIO
 
-import ibis
-import ibis.selectors as s
-from ibis import _
-ibis.options.interactive = True
-
 from sklearn.preprocessing import RobustScaler
 
 from darts import TimeSeries, concatenate

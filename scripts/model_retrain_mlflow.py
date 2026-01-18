@@ -9,10 +9,8 @@ import pickle
 import sys
 import numpy as np
 import pandas as pd
-import ibis
+import duckdb
 import boto3
-
-ibis.options.interactive = True
 
 from darts.metrics import mae, rmse
 from darts.models import (
@@ -73,7 +71,7 @@ log.info(f'MODEL_NAME: {parameters.MODEL_NAME}')
 # connect to database and prepare data
 print('\n' + '*' * 40)
 log.info('preparing data')
-con = ibis.duckdb.connect("data/spp.ddb", read_only=True)
+con = duckdb.connect("data/spp.ddb", read_only=True)
 
 lmp = de.prep_lmp(con)
 lmp_df = lmp.to_pandas().rename(
@@ -89,7 +87,7 @@ all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
 all_df_pd.info()
 
 lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(con)
-con.disconnect()
+con.close()
 
 all_series = de.get_series(lmp_all)
 train_test_all_series = de.get_series(train_test_all)
