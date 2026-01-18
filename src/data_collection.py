@@ -7,7 +7,6 @@ and loading to databricks
 # base imports
 import os
 from io import StringIO
-import datetime
 from typing import List, Union, Callable
 import tqdm
 
@@ -165,7 +164,7 @@ def get_time_components(
         tc['timestamp'] = time_stamp_ct
         return tc
 
-    except:
+    except Exception:
         log.error(f'error parsing: {time_stamp}')
         return None
     

@@ -14,11 +14,6 @@ import boto3
 
 from darts.metrics import mae, rmse
 from darts.models import (
-    TFTModel,
-    TiDEModel,
-    DLinearModel,
-    NLinearModel,
-    TSMixerModel,
     NaiveEnsembleModel,
 )
 
@@ -58,7 +53,7 @@ log.info(f'os.listdir(): {os.listdir()}')
 # from module path
 import data_engineering as de
 import parameters
-from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, build_fit_tide, log_pretty
+from modeling import get_ci_err, build_fit_tsmixerx, build_fit_tft, build_fit_tide
 
 # will be loaded from root when deployed
 from darts_wrapper import DartsGlobalModel

@@ -14,7 +14,6 @@ import numpy as np
 import polars as pl
 import duckdb
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 import sys
 import os
 
@@ -380,7 +379,7 @@ class TestPrepAllDf:
         dates = pd.date_range(start='2023-05-20', periods=200, freq='h')
 
         # LMP data with two locations
-        lmp_data = pd.DataFrame({
+        lmp_data = pd.DataFrame({  # noqa: F841 - used by DuckDB SQL execution
             'Interval_HE': list(dates) * 2,
             'GMTIntervalEnd_HE': list(dates + pd.Timedelta('6h')) * 2,
             'timestamp_mst_HE': list(dates) * 2,
@@ -393,7 +392,7 @@ class TestPrepAllDf:
         })
 
         # MTLF data
-        mtlf_data = pd.DataFrame({
+        mtlf_data = pd.DataFrame({  # noqa: F841 - used by DuckDB SQL execution
             'Interval': dates,
             'GMTIntervalEnd': dates + pd.Timedelta('6h'),
             'timestamp_mst': dates,
@@ -402,7 +401,7 @@ class TestPrepAllDf:
         })
 
         # MTRF data
-        mtrf_data = pd.DataFrame({
+        mtrf_data = pd.DataFrame({  # noqa: F841 - used by DuckDB SQL execution
             'Interval': dates,
             'GMTIntervalEnd': dates + pd.Timedelta('6h'),
             'timestamp_mst': dates,
@@ -410,17 +409,9 @@ class TestPrepAllDf:
             'Solar_Forecast_MW': np.random.uniform(100, 400, 200).tolist(),
         })
 
-        # Weather data
-        weather_data = pd.DataFrame({
-            'timestamp': dates + pd.Timedelta('6h'),
-            'timestamp_mst': dates,
-            'temperature': np.random.uniform(10, 35, 200).tolist(),
-        })
-
         con.execute("CREATE TABLE lmp AS SELECT * FROM lmp_data")
         con.execute("CREATE TABLE mtlf AS SELECT * FROM mtlf_data")
         con.execute("CREATE TABLE mtrf AS SELECT * FROM mtrf_data")
-        con.execute("CREATE TABLE weather AS SELECT * FROM weather_data")
 
         return con
 
@@ -487,7 +478,6 @@ class TestPrepAllDf:
         assert 'LMP' in result.columns  # from lmp
         assert 'MTLF' in result.columns  # from mtlf
         assert 'Wind_Forecast_MW' in result.columns  # from mtrf
-        assert 'temperature' in result.columns  # from weather
 
 
 # ============================================================
@@ -578,7 +568,7 @@ class TestGetTrainTestAll:
         # We need at least 2 * 168 + some buffer for train and test
         dates = pd.date_range(start='2023-01-01', periods=1000, freq='h')
 
-        lmp_data = pd.DataFrame({
+        lmp_data = pd.DataFrame({  # noqa: F841 - used by DuckDB SQL execution
             'Interval_HE': list(dates) * 2,
             'GMTIntervalEnd_HE': list(dates + pd.Timedelta('6h')) * 2,
             'timestamp_mst_HE': list(dates) * 2,

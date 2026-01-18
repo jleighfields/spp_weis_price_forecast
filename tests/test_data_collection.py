@@ -10,9 +10,7 @@ Tests cover:
 
 import pytest
 import pandas as pd
-import numpy as np
 from unittest.mock import patch, MagicMock
-from io import StringIO
 import sys
 import os
 

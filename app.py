@@ -6,7 +6,6 @@ Streamlit interface for SPP Weis LMP forecasting endpoint
 
 # base imports
 import os
-import shutil
 import random
 import pickle
 import logging
@@ -21,8 +20,6 @@ import boto3
 import streamlit as st
 
 # forecasting data
-from darts import TimeSeries, concatenate
-import mlflow
 import torch
 
 from darts.models import (
@@ -35,7 +32,6 @@ from darts.models import (
 # custom modules
 import src.data_engineering as de
 from src import plotting
-from src import parameters
 
 # max absolute value for LMPs in given to forecast
 MAX_LMP = 200.0

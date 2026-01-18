@@ -46,7 +46,7 @@ while s.status != Status.Running:
 log.info('start training')
 try:
     s.run("cd ~/spp_weis_price_forecast && python scripts/model_retrain.py")
-except:
+except Exception:
     pass
 finally:
     log.info('switching to CPU machine')

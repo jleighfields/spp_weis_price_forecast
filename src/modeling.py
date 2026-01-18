@@ -1,54 +1,25 @@
 import os
-import shutil
-import pickle
-import random
 import sys
 import numpy as np
 import pandas as pd
-import duckdb
-from typing import List, Optional
+from typing import List
 
-import requests
-from io import StringIO
 
-from sklearn.preprocessing import RobustScaler
-
-from darts import TimeSeries, concatenate
-from darts.dataprocessing.transformers import (
-    Scaler,
-    MissingValuesFiller,
-    Mapper,
-    InvertibleMapper,
-)
-from darts.dataprocessing import Pipeline
-from darts.metrics import mape, smape, mae, ope, rmse
-from darts.utils.statistics import check_seasonality, plot_acf
-from darts.datasets import AirPassengersDataset, IceCreamHeaterDataset
-from darts.utils.timeseries_generation import datetime_attribute_timeseries
-from darts.utils.likelihood_models import QuantileRegression, GumbelLikelihood, GaussianLikelihood
 
 from darts import TimeSeries
-from darts.utils.timeseries_generation import (
-    gaussian_timeseries,
-    linear_timeseries,
-    sine_timeseries,
-)
+from darts.utils.likelihood_models import QuantileRegression
+
 from darts.models import (
     TFTModel,
     TiDEModel,
-    DLinearModel,
-    NLinearModel,
     TSMixerModel
 )
 
 
 from torchmetrics import (
-    SymmetricMeanAbsolutePercentageError, 
-    MeanAbsoluteError, 
     MeanSquaredError,
 )
 
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import warnings
 warnings.filterwarnings("ignore")
