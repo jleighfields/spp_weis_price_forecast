@@ -760,9 +760,19 @@ class TestCreateDatabase:
 
             mock_s3.download_file = mock_download
 
+            # Mock S3 bucket contents listing to return expected parquet file keys
+            mock_obj = MagicMock()
+            mock_bucket_contents = []
+            for ds in ['lmp', 'mtrf', 'mtlf', 'weather']:
+                obj = MagicMock()
+                obj.key = f'data/{ds}.parquet'
+                mock_bucket_contents.append(obj)
+
             with patch('data_engineering.boto3.client', return_value=mock_s3):
                 with patch('data_engineering.os.makedirs'):
-                    con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf', 'weather'])
+                    with patch('data_engineering.utils.list_folder_contents_resource', return_value=mock_bucket_contents):
+                        with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
+                            con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf', 'weather'])
 
             assert isinstance(con, duckdb.DuckDBPyConnection)
             con.close()
