@@ -51,6 +51,7 @@ DUCKDB_PATH = None
 paths = [
     '~/spp_weis_price_forecast/data/',
     '~/Documents/github/spp_weis_price_forecast/data/',
+    '/Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/data/',
 ]
 
 for p in paths:
