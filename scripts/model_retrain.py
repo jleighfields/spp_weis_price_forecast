@@ -44,6 +44,7 @@ log.info(f'os.listdir(): {os.listdir()}')
 # from module path
 import data_engineering as de
 import parameters
+import utils
 from modeling import build_fit_tsmixerx, build_fit_tft, build_fit_tide
 
 # will be loaded from root when deployed
@@ -203,22 +204,24 @@ log.info(f'ckpt_uploads: {ckpt_uploads}')
 
 
 # upload artifacts
+AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
 for ckpt in ckpt_uploads:
     log.info(f'uploading: {ckpt}')
-    s3.upload_file(f'saved_models/{ckpt}', 'spp-weis', f's3_models/{ckpt}')
+    s3.upload_file(f'saved_models/{ckpt}', AWS_S3_BUCKET, AWS_S3_FOLDER+f'S3_models/{ckpt}')
 
 
-loaded_models = [d['Key'] for d in s3.list_objects(Bucket='spp-weis')['Contents'] if 's3_models/' in d['Key']]
+loaded_models = utils.get_loaded_models()
 log.info(f'loaded_models: {loaded_models}')
 
 
-models_to_delete = [l for l in loaded_models if l.split('/')[-1] not in ckpt_uploads]
+models_to_delete = [lm for lm in loaded_models if lm.split('/')[-1] not in ckpt_uploads]
 log.info(f'models_to_delete: {models_to_delete}')
 
 
 for del_model in models_to_delete:
     log.info(f'removing: {del_model}')
-    s3.delete_object(Bucket='spp-weis', Key=del_model)
+    s3.delete_object(Bucket=AWS_S3_BUCKET, Key=del_model)
 
 
 log.info('finished retraining')

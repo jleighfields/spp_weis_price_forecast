@@ -31,6 +31,7 @@ from darts.models import (
 
 # custom modules
 import src.data_engineering as de
+from src import utils
 from src import plotting
 
 # max absolute value for LMPs in given to forecast
@@ -190,14 +191,14 @@ with forcasted_data:
 
             log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+            # AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
             s3_client = boto3.client('s3')
+            loaded_models = utils.get_loaded_models()
 
-            bucket_contents = s3_client.list_objects(Bucket='spp-weis')['Contents']
-            loaded_models = [d['Key'] for d in bucket_contents if 's3_models/' in d['Key']]
             log.info(f'loaded_models: {loaded_models}')
             for lm in loaded_models:
                 log.info(f'downloading: {lm}')
-                s3_client.download_file(Bucket='spp-weis', Key=lm, Filename=lm.replace('s3_models/', ''))
+                s3_client.download_file(Bucket=AWS_S3_BUCKET, Key=lm, Filename=lm.split('/')[-1])
 
             tsmixer_ckpts = [f for f in os.listdir('.') if 'tsmixer' in f and '.pt' in f and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f]
             tsmixer_forecasting_models = []

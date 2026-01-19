@@ -52,8 +52,8 @@ for module_path in module_paths:
         log.info('adding module path')
         sys.path.insert(0, module_path)
 
-# from src import params
 import parameters
+import utils  # AWS S3 utility functions for bucket operations
 
 
 #############################################
@@ -94,8 +94,9 @@ def create_database(
     """
     Create an in-memory DuckDB database from S3 parquet files.
 
-    Downloads parquet files from S3 bucket 'spp-weis' and loads them
-    into a DuckDB in-memory database as tables.
+    Downloads parquet files from the configured S3 bucket/folder and loads them
+    into a DuckDB in-memory database as tables. The function dynamically discovers
+    available parquet files in S3 and matches them to requested datasets.
 
     Args:
         datasets: List of dataset names to load. Each name corresponds
@@ -105,17 +106,30 @@ def create_database(
     Returns:
         duckdb.DuckDBPyConnection: Connection to in-memory DuckDB database
             with tables created for each dataset.
+
+    Environment Variables:
+        AWS_S3_BUCKET: S3 bucket containing the parquet files.
+        AWS_S3_FOLDER: Folder prefix within the bucket where data is stored.
     """
     # client for getting parquets
     s3 = boto3.client('s3')
+    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+
+    # List all objects in the S3 folder and filter for parquet files
+    bucket_contents = utils.list_folder_contents_resource(AWS_S3_BUCKET, AWS_S3_FOLDER)
+    parquet_files = [d.key for d in bucket_contents if '.parquet' in d.key]
 
     os.makedirs('data', exist_ok=True)
     # create file paths for data
     file_paths = [f'data/{ds}.parquet' for ds in datasets]
-
+    # TODO: add error handling
     for fp in file_paths:
-        log.info(f'getting: {fp} from s3')
-        s3.download_file(Bucket='spp-weis', Key=fp, Filename=fp)
+        # Match local file path pattern to S3 key (handles folder prefix differences)
+        key = [pf for pf in parquet_files if fp in pf]
+        assert len(key) > 0, f'{key = }'
+        log.info(f'getting: {key[0]} from s3')
+        s3.download_file(Bucket=AWS_S3_BUCKET, Key=key[0], Filename=fp)
 
     log.info(f'os.listdir(data): {os.listdir("data")}')
 

@@ -68,6 +68,10 @@ assert DUCKDB_PATH
 DUCKDB_PATH += 'spp.ddb'
 log.info(f'{os.path.isfile(DUCKDB_PATH) = }')
 
+# AWS S3 configuration - allows deployment to different environments
+# by configuring bucket and folder prefix via environment variables
+AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
 
 ###########################################################
 # HELPER FUNCTIONS
@@ -766,7 +770,7 @@ def get_range_data_gen_cap(
 #         # copy to s3
 #         con_ddb.sql("INSTALL httpfs;")
 #         con_ddb.sql("LOAD httpfs;")
-#         con_ddb.sql("COPY weather TO 's3://spp-weis/data/weather.parquet';")
+#         con_ddb.sql(f"COPY weather TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/weather.parquet';")
 
 
 def upsert_mtlf(
@@ -774,15 +778,23 @@ def upsert_mtlf(
         backfill: bool=False,
 ) -> None:
     """
-    Function to upsert new/backfilled MTLF data into duckdb database.
+    Upsert new/backfilled MTLF (Mid-Term Load Forecast) data into DuckDB and sync to S3.
+
+    Inserts new records or updates existing records in the local DuckDB database,
+    then exports the complete table to S3 as a parquet file for downstream consumption.
+
     Args:
-        mtlf_upsert: pd.DataFrame - dataframe to upsert to MTLF table in database.
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
+        mtlf_upsert: DataFrame to upsert to MTLF table in database.
+        backfill: If True, removes rows with missing values before upsert. This
+            removes rows where average actual is missing because the time period
+            is forecasted, preventing overwriting actual values with forecasted values.
+
     Returns:
-        None - new data is upserted to table
+        None - new data is upserted to table and synced to S3.
+
+    Environment Variables:
+        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_FOLDER: Folder prefix within the bucket.
     """
 
     # remove missing values if backfilling
@@ -836,7 +848,7 @@ def upsert_mtlf(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY mtlf TO 's3://spp-weis/data/mtlf.parquet';")
+        con_ddb.sql(f"COPY mtlf TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtlf.parquet';")
 
 
 def upsert_mtrf(
@@ -844,15 +856,23 @@ def upsert_mtrf(
         backfill: bool=False,
 ) -> None:
     """
-    Function to upsert new/backfilled MTRF data into duckdb database.
+    Upsert new/backfilled MTRF (Mid-Term Resource Forecast) data into DuckDB and sync to S3.
+
+    Inserts new records or updates existing records in the local DuckDB database,
+    then exports the complete table to S3 as a parquet file for downstream consumption.
+
     Args:
-        mtrf_upsert: pd.DataFrame - dataframe to upsert to MTRF table in database.
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
+        mtrf_upsert: DataFrame to upsert to MTRF table in database.
+        backfill: If True, removes rows with missing values before upsert. This
+            removes rows where average actual is missing because the time period
+            is forecasted, preventing overwriting actual values with forecasted values.
+
     Returns:
-        None - new data is upserted to table
+        None - new data is upserted to table and synced to S3.
+
+    Environment Variables:
+        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_FOLDER: Folder prefix within the bucket.
     """
     # remove missing values if backfilling
     if backfill:
@@ -905,22 +925,32 @@ def upsert_mtrf(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY mtrf TO 's3://spp-weis/data/mtrf.parquet';")
+        con_ddb.sql(f"COPY mtrf TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtrf.parquet';")
 
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
     backfill: bool=False, #NOOP
 ) -> None:
     """
-    Function to upsert new/backfilled LMP data into duckdb database.
-    NOTE: no backfill parameter is used (as opposed to MTLF and MTLF data) since
-    the prices aren't forecasted we don't need to worry about overwriting actuals
-    with forecasts.
+    Upsert new/backfilled LMP (Locational Marginal Price) data into DuckDB and sync to S3.
+
+    Inserts new records or updates existing records in the local DuckDB database,
+    then exports the complete table to S3 as a parquet file for downstream consumption.
+
+    Note:
+        The backfill parameter is not used (unlike MTLF and MTRF) since prices
+        aren't forecasted, so there's no concern about overwriting actuals with forecasts.
+
     Args:
-        lmp_upsert: pd.DataFrame - dataframe to upsert to LMP table in database.
-        backfill: bool=False - not used included for compatibility with collect_upsert_data()
+        lmp_upsert: DataFrame to upsert to LMP table in database.
+        backfill: Not used; included for compatibility with collect_upsert_data().
+
     Returns:
-        None - new data is upserted to table
+        None - new data is upserted to table and synced to S3.
+
+    Environment Variables:
+        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_FOLDER: Folder prefix within the bucket.
     """
     # remove any duplicated primary keys
     idx = lmp_upsert[['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']].duplicated()
@@ -980,7 +1010,7 @@ def upsert_lmp(
         # copy to s3
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql("COPY lmp TO 's3://spp-weis/data/lmp.parquet';")
+        con_ddb.sql(f"COPY lmp TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/lmp.parquet';")
 
 
 def upsert_gen_cap(
