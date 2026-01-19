@@ -49,22 +49,23 @@ log.info(f'N_JOBS: {N_JOBS}')
 # set duckdb path
 DUCKDB_PATH = None
 paths = [
-    '~/spp_weis_price_forecast/data/spp.ddb',
-    '~/Documents/github/spp_weis_price_forecast/data/spp.ddb',
+    '~/spp_weis_price_forecast/data/',
+    '~/Documents/github/spp_weis_price_forecast/data/',
 ]
 
 for p in paths:
     log.info(f'{p = } - {os.path.isfile(p) = }')
     # Expand the tilde to the absolute home path
     expanded_path = os.path.expanduser(p)
-    if os.path.isfile(expanded_path):
+    if os.path.isdir(expanded_path):
         DUCKDB_PATH = expanded_path
         log.info(f'setting DUCKDB_PATH = {p}')
         break
 
 assert DUCKDB_PATH
 
-os.path.isfile('/home/justinfields/Documents/github/spp_weis_price_forecast/data/spp.ddb')
+DUCKDB_PATH += 'spp.ddb'
+log.info(f'{os.path.isfile(DUCKDB_PATH) = }')
 
 
 ###########################################################
