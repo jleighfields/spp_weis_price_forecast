@@ -584,8 +584,10 @@ class TestUpsertMtlf:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        with patch('data_collection.duckdb.connect', return_value=mock_con):
-            dc.upsert_mtlf(df)
+        # Mock get_parquet_files to return empty list (no existing file)
+        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+            with patch('data_collection.duckdb.connect', return_value=mock_con):
+                dc.upsert_mtlf(df)
 
         # Verify CREATE TABLE was called
         calls = [str(call) for call in mock_con.sql.call_args_list]
@@ -608,9 +610,11 @@ class TestUpsertMtlf:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        with patch('data_collection.duckdb.connect', return_value=mock_con):
-            # Should not raise error - null row will be dropped
-            dc.upsert_mtlf(df.copy(), backfill=True)
+        # Mock get_parquet_files to return empty list (no existing file)
+        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+            with patch('data_collection.duckdb.connect', return_value=mock_con):
+                # Should not raise error - null row will be dropped
+                dc.upsert_mtlf(df.copy(), backfill=True)
 
 
 class TestUpsertLmp:
@@ -637,9 +641,11 @@ class TestUpsertLmp:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        with patch('data_collection.duckdb.connect', return_value=mock_con):
-            # Should not raise - duplicates will be removed
-            dc.upsert_lmp(df)
+        # Mock get_parquet_files to return empty list (no existing file)
+        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+            with patch('data_collection.duckdb.connect', return_value=mock_con):
+                # Should not raise - duplicates will be removed
+                dc.upsert_lmp(df)
 
 
 # ============================================================

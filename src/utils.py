@@ -74,3 +74,25 @@ def get_loaded_models() -> List[str]:
     log.info(f'loaded_models: {loaded_models}')
 
     return loaded_models
+
+def get_parquet_files() -> List[str]:
+    """
+    Retrieves a list of parquet file paths from the configured S3 bucket.
+
+    Scans the configured S3 bucket/folder for all parquet files and returns
+    their S3 keys. Used by upsert functions to check if existing data files
+    are available before performing upsert operations.
+
+    Environment Variables:
+        AWS_S3_BUCKET: The S3 bucket name containing data files.
+        AWS_S3_FOLDER: The folder prefix within the bucket.
+
+    Returns:
+        List[str]: S3 keys (paths) for all parquet files found in the configured location.
+    """
+    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+    bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, AWS_S3_FOLDER)
+    parquet_files = [d.key for d in bucket_contents if '.parquet' in d.key]
+
+    return parquet_files

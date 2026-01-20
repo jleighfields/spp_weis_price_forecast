@@ -738,41 +738,29 @@ class TestCreateDatabase:
     """Tests for create_database function."""
 
     def test_creates_duckdb_connection(self):
-        """Test that function returns a DuckDB connection."""
+        """Test that function returns a DuckDB connection and creates tables from S3."""
         import data_engineering as de
 
-        mock_s3 = MagicMock()
+        # Mock get_parquet_files to return file keys
+        mock_parquet_files = [f'data/{ds}.parquet' for ds in ['lmp', 'mtrf', 'mtlf']]
 
-        # Create temporary parquet files for testing
-        import tempfile
+        # Create a mock connection
+        mock_con = MagicMock(spec=duckdb.DuckDBPyConnection)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create sample parquet files
-            for ds in ['lmp', 'mtrf', 'mtlf', 'weather']:
-                df = pd.DataFrame({'col1': [1, 2, 3], 'col2': ['a', 'b', 'c']})
-                df.to_parquet(os.path.join(tmpdir, f'{ds}.parquet'))
+        with patch('data_engineering.duckdb.connect', return_value=mock_con):
+            with patch('data_engineering.utils.get_parquet_files', return_value=mock_parquet_files):
+                with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
+                    con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf'])
 
-            # Mock S3 to copy local files instead of downloading
-            def mock_download(Bucket, Key, Filename):
-                import shutil
-                src = os.path.join(tmpdir, os.path.basename(Key))
-                shutil.copy(src, Filename)
+        # Verify connection was returned
+        assert con == mock_con
 
-            mock_s3.download_file = mock_download
+        # Verify httpfs was installed and loaded
+        mock_con.sql.assert_any_call("INSTALL httpfs;")
+        mock_con.sql.assert_any_call("LOAD httpfs;")
 
-            # Mock S3 bucket contents listing to return expected parquet file keys
-            mock_obj = MagicMock()
-            mock_bucket_contents = []
-            for ds in ['lmp', 'mtrf', 'mtlf', 'weather']:
-                obj = MagicMock()
-                obj.key = f'data/{ds}.parquet'
-                mock_bucket_contents.append(obj)
-
-            with patch('data_engineering.boto3.client', return_value=mock_s3):
-                with patch('data_engineering.os.makedirs'):
-                    with patch('data_engineering.utils.list_folder_contents_resource', return_value=mock_bucket_contents):
-                        with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
-                            con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf', 'weather'])
-
-            assert isinstance(con, duckdb.DuckDBPyConnection)
-            con.close()
+        # Verify execute was called for each dataset with S3 read_parquet
+        execute_calls = [str(call) for call in mock_con.execute.call_args_list]
+        assert any('lmp' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)
+        assert any('mtrf' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)
+        assert any('mtlf' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)

@@ -24,6 +24,7 @@ Dependencies:
 
 # base imports
 import os
+import sys
 from io import StringIO
 from typing import List, Union, Callable
 import tqdm
@@ -45,6 +46,22 @@ core_count = cpu_count()
 N_JOBS = max(1, core_count - 1)
 log.info(f'number of cores available: {core_count}')
 log.info(f'N_JOBS: {N_JOBS}')
+
+# adding module folder to system path
+# needed for running scripts as jobs
+home = os.getenv('HOME')
+module_paths = [
+    f'{home}/spp_weis_price_forecast/src',
+    f'{home}/Documents/github/spp_weis_price_forecast/src',
+    '/cloud/project/src'
+]
+for module_path in module_paths:
+    if os.path.isdir(module_path):
+        log.info('adding module path')
+        sys.path.insert(0, module_path)
+        
+import utils
+
 
 # set duckdb path
 DUCKDB_PATH = None
@@ -778,22 +795,24 @@ def upsert_mtlf(
         backfill: bool=False,
 ) -> None:
     """
-    Upsert new/backfilled MTLF (Mid-Term Load Forecast) data into DuckDB and sync to S3.
+    Upsert new/backfilled MTLF (Mid-Term Load Forecast) data to S3 parquet via DuckDB.
 
-    Inserts new records or updates existing records in the local DuckDB database,
-    then exports the complete table to S3 as a parquet file for downstream consumption.
+    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
+    deletes conflicting rows by primary key (GMTIntervalEnd), inserts new records,
+    then writes the updated table back to S3 as a parquet file.
 
     Args:
-        mtlf_upsert: DataFrame to upsert to MTLF table in database.
+        mtlf_upsert: DataFrame to upsert to MTLF table. Must contain columns:
+            Interval, GMTIntervalEnd, timestamp_mst, MTLF, Averaged_Actual.
         backfill: If True, removes rows with missing values before upsert. This
             removes rows where average actual is missing because the time period
             is forecasted, preventing overwriting actual values with forecasted values.
 
     Returns:
-        None - new data is upserted to table and synced to S3.
+        None - data is upserted to S3 parquet file.
 
     Environment Variables:
-        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket.
     """
 
@@ -812,30 +831,50 @@ def upsert_mtlf(
     log.info(f'mtlf_upsert.timestamp_mst.min(): {mtlf_upsert.timestamp_mst.min()}')
     log.info(f'mtlf_upsert.timestamp_mst.max(): {mtlf_upsert.timestamp_mst.max()}')
 
-    # upsert with duckdb
-    with duckdb.connect(DUCKDB_PATH) as con_ddb:
-        create_mtlf = '''
-        CREATE TABLE IF NOT EXISTS mtlf (
-             Interval TIMESTAMP,
-             GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-             timestamp_mst TIMESTAMP,
-             MTLF INTEGER, 
-             Averaged_Actual DOUBLE
-             );
-        '''
-        con_ddb.sql(create_mtlf)
+    parquet_files = utils.get_parquet_files()
+    mtlf_file = [pf for pf in parquet_files if 'mtlf.parquet' in pf]
 
+    # upsert with duckdb
+    with duckdb.connect() as con_ddb:
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+
+        if len(mtlf_file) == 0:
+            create_mtlf = '''
+            CREATE TABLE IF NOT EXISTS mtlf (
+                Interval TIMESTAMP,
+                GMTIntervalEnd TIMESTAMP PRIMARY KEY,
+                timestamp_mst TIMESTAMP,
+                MTLF INTEGER, 
+                Averaged_Actual DOUBLE
+                );
+            '''
+        else:
+            create_mtlf = f'''
+            CREATE TABLE mtlf AS
+            SELECT *
+            FROM read_parquet('s3://{AWS_S3_BUCKET}/{mtlf_file[0]}');
+            '''
+
+        con_ddb.sql(create_mtlf)
+            
         res = con_ddb.sql('select count(*) from mtlf')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
+        log.info('delete conflicts')
+        mtlf_delete_conflicts = '''
+        -- Delete conflicting rows
+        DELETE FROM mtlf
+        WHERE GMTIntervalEnd IN (SELECT GMTIntervalEnd FROM mtlf_upsert);
+        '''
+        con_ddb.sql(mtlf_delete_conflicts)
+
+        log.info('inserting data')
         mtlf_insert_update = '''
         INSERT INTO mtlf
             SELECT * FROM mtlf_upsert
-            ON CONFLICT DO UPDATE SET MTLF = EXCLUDED.MTLF, 
-            Averaged_Actual = EXCLUDED.Averaged_Actual;
         '''
-
         con_ddb.sql(mtlf_insert_update)
 
         res = con_ddb.sql('select count(*) from mtlf')
@@ -845,33 +884,30 @@ def upsert_mtlf(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
-        # copy to s3
-        con_ddb.sql("INSTALL httpfs;")
-        con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql(f"COPY mtlf TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtlf.parquet';")
-
 
 def upsert_mtrf(
         mtrf_upsert: pd.DataFrame,
         backfill: bool=False,
 ) -> None:
     """
-    Upsert new/backfilled MTRF (Mid-Term Resource Forecast) data into DuckDB and sync to S3.
+    Upsert new/backfilled MTRF (Mid-Term Resource Forecast) data to S3 parquet via DuckDB.
 
-    Inserts new records or updates existing records in the local DuckDB database,
-    then exports the complete table to S3 as a parquet file for downstream consumption.
+    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
+    deletes conflicting rows by primary key (GMTIntervalEnd), inserts new records,
+    then writes the updated table back to S3 as a parquet file.
 
     Args:
-        mtrf_upsert: DataFrame to upsert to MTRF table in database.
+        mtrf_upsert: DataFrame to upsert to MTRF table. Must contain columns:
+            Interval, GMTIntervalEnd, timestamp_mst, Wind_Forecast_MW, Solar_Forecast_MW.
         backfill: If True, removes rows with missing values before upsert. This
-            removes rows where average actual is missing because the time period
-            is forecasted, preventing overwriting actual values with forecasted values.
+            removes rows where forecast values are missing, preventing overwriting
+            actual values with incomplete data.
 
     Returns:
-        None - new data is upserted to table and synced to S3.
+        None - data is upserted to S3 parquet file.
 
     Environment Variables:
-        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket.
     """
     # remove missing values if backfilling
@@ -889,30 +925,50 @@ def upsert_mtrf(
     log.info(f'mtrf_upsert.timestamp_mst.min(): {mtrf_upsert.timestamp_mst.min()}')
     log.info(f'mtrf_upsert.timestamp_mst.max(): {mtrf_upsert.timestamp_mst.max()}')
 
+    parquet_files = utils.get_parquet_files()
+    mtrf_file = [pf for pf in parquet_files if 'mtrf.parquet' in pf]
+
     # upsert with duckdb
-    with duckdb.connect(DUCKDB_PATH) as con_ddb:
-        create_mtrf = '''
-        CREATE TABLE IF NOT EXISTS mtrf (
-             Interval TIMESTAMP,
-             GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-             timestamp_mst TIMESTAMP,
-             Wind_Forecast_MW DOUBLE, 
-             Solar_Forecast_MW DOUBLE
-             );
-        '''
+    with duckdb.connect() as con_ddb:
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+
+        if len(mtrf_file) == 0:
+            create_mtrf = '''
+            CREATE TABLE IF NOT EXISTS mtrf (
+                Interval TIMESTAMP,
+                GMTIntervalEnd TIMESTAMP PRIMARY KEY,
+                timestamp_mst TIMESTAMP,
+                Wind_Forecast_MW DOUBLE,
+                Solar_Forecast_MW DOUBLE
+                );
+            '''
+        else:
+            create_mtrf = f'''
+            CREATE TABLE mtrf AS
+            SELECT *
+            FROM read_parquet('s3://{AWS_S3_BUCKET}/{mtrf_file[0]}');
+            '''
+
         con_ddb.sql(create_mtrf)
 
         res = con_ddb.sql('select count(*) from mtrf')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
+        log.info('delete conflicts')
+        mtrf_delete_conflicts = '''
+        -- Delete conflicting rows
+        DELETE FROM mtrf
+        WHERE GMTIntervalEnd IN (SELECT GMTIntervalEnd FROM mtrf_upsert);
+        '''
+        con_ddb.sql(mtrf_delete_conflicts)
+
+        log.info('inserting data')
         mtrf_insert_update = '''
         INSERT INTO mtrf
             SELECT * FROM mtrf_upsert
-            ON CONFLICT DO UPDATE SET Wind_Forecast_MW = EXCLUDED.Wind_Forecast_MW, 
-            Solar_Forecast_MW = EXCLUDED.Solar_Forecast_MW;
         '''
-
         con_ddb.sql(mtrf_insert_update)
 
         res = con_ddb.sql('select count(*) from mtrf')
@@ -922,34 +978,33 @@ def upsert_mtrf(
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
-        # copy to s3
-        con_ddb.sql("INSTALL httpfs;")
-        con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql(f"COPY mtrf TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtrf.parquet';")
-
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
     backfill: bool=False, #NOOP
 ) -> None:
     """
-    Upsert new/backfilled LMP (Locational Marginal Price) data into DuckDB and sync to S3.
+    Upsert new/backfilled LMP (Locational Marginal Price) data to S3 parquet via DuckDB.
 
-    Inserts new records or updates existing records in the local DuckDB database,
-    then exports the complete table to S3 as a parquet file for downstream consumption.
+    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
+    deletes conflicting rows by composite primary key (GMTIntervalEnd_HE,
+    Settlement_Location_Name, PNODE_Name), inserts new records, then writes the
+    updated table back to S3 as a parquet file.
 
     Note:
         The backfill parameter is not used (unlike MTLF and MTRF) since prices
         aren't forecasted, so there's no concern about overwriting actuals with forecasts.
 
     Args:
-        lmp_upsert: DataFrame to upsert to LMP table in database.
+        lmp_upsert: DataFrame to upsert to LMP table. Must contain columns:
+            Interval_HE, GMTIntervalEnd_HE, timestamp_mst_HE, Settlement_Location_Name,
+            PNODE_Name, LMP, MLC, MCC, MEC.
         backfill: Not used; included for compatibility with collect_upsert_data().
 
     Returns:
-        None - new data is upserted to table and synced to S3.
+        None - data is upserted to S3 parquet file.
 
     Environment Variables:
-        AWS_S3_BUCKET: Target S3 bucket for parquet export.
+        AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket.
     """
     # remove any duplicated primary keys
@@ -966,38 +1021,57 @@ def upsert_lmp(
     log.info(f'lmp_upsert.timestamp_mst_HE.min(): {lmp_upsert.timestamp_mst_HE.min()}')
     log.info(f'lmp_upsert.timestamp_mst_HE.max(): {lmp_upsert.timestamp_mst_HE.max()}')
 
+    parquet_files = utils.get_parquet_files()
+    lmp_file = [pf for pf in parquet_files if 'lmp.parquet' in pf]
+
     # upsert with duckdb
-    with duckdb.connect(DUCKDB_PATH) as con_ddb:
-        create_lmp = '''
-        CREATE TABLE IF NOT EXISTS lmp (
-             Interval_HE TIMESTAMP,
-             GMTIntervalEnd_HE TIMESTAMP,
-             timestamp_mst_HE TIMESTAMP,
-             Settlement_Location_Name STRING, 
-             PNODE_Name STRING,
-             LMP DOUBLE,
-             MLC DOUBLE,
-             MCC DOUBLE,
-             MEC DOUBLE,
-             PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
-             );
-        '''
+    with duckdb.connect() as con_ddb:
+        con_ddb.sql("INSTALL httpfs;")
+        con_ddb.sql("LOAD httpfs;")
+
+        if len(lmp_file) == 0:
+            create_lmp = '''
+            CREATE TABLE IF NOT EXISTS lmp (
+                Interval_HE TIMESTAMP,
+                GMTIntervalEnd_HE TIMESTAMP,
+                timestamp_mst_HE TIMESTAMP,
+                Settlement_Location_Name STRING,
+                PNODE_Name STRING,
+                LMP DOUBLE,
+                MLC DOUBLE,
+                MCC DOUBLE,
+                MEC DOUBLE,
+                PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
+                );
+            '''
+        else:
+            create_lmp = f'''
+            CREATE TABLE lmp AS
+            SELECT *
+            FROM read_parquet('s3://{AWS_S3_BUCKET}/{lmp_file[0]}');
+            '''
+
         con_ddb.sql(create_lmp)
 
         res = con_ddb.sql('select count(*) from lmp')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
+        log.info('delete conflicts')
+        lmp_delete_conflicts = '''
+        -- Delete conflicting rows by composite primary key
+        DELETE FROM lmp
+        WHERE (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name) IN (
+            SELECT GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name FROM lmp_upsert
+        );
+        '''
+        con_ddb.sql(lmp_delete_conflicts)
+
+        log.info('inserting data')
         lmp_insert_update = '''
         INSERT INTO lmp
             SELECT * FROM lmp_upsert
-            ON CONFLICT DO UPDATE SET 
-            LMP = EXCLUDED.LMP, 
-            MLC = EXCLUDED.MLC,
-            MCC = EXCLUDED.MCC,
-            MEC = EXCLUDED.MEC;
         '''
-
         con_ddb.sql(lmp_insert_update)
 
         res = con_ddb.sql('select count(*) from lmp')
@@ -1006,11 +1080,6 @@ def upsert_lmp(
         rows_updated = update_count - insert_count
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
-
-        # copy to s3
-        con_ddb.sql("INSTALL httpfs;")
-        con_ddb.sql("LOAD httpfs;")
-        con_ddb.sql(f"COPY lmp TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/lmp.parquet';")
 
 
 def upsert_gen_cap(

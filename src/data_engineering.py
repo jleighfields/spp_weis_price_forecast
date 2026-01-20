@@ -11,9 +11,8 @@ using polars for data manipulation and duckdb for database operations. It handle
 
 Dependencies:
     - polars: DataFrame operations and transformations
-    - duckdb: In-memory database for data storage and querying
+    - duckdb: In-memory database for data storage and querying (with httpfs for S3 access)
     - darts: Time series creation and missing value handling
-    - boto3: S3 access for data retrieval
 """
 
 # base imports
@@ -22,7 +21,6 @@ import sys
 from typing import Optional, List
 
 # data processing
-import boto3
 import pandas as pd
 import duckdb
 import polars as pl
@@ -89,19 +87,18 @@ IDS = ['unique_id']
 # create database
 #############################################
 def create_database(
-    datasets: List[str]=['lmp', 'mtrf', 'mtlf', 'weather']
+    datasets: List[str]=['lmp', 'mtrf', 'mtlf']
 ) -> duckdb.DuckDBPyConnection:
     """
     Create an in-memory DuckDB database from S3 parquet files.
 
-    Downloads parquet files from the configured S3 bucket/folder and loads them
-    into a DuckDB in-memory database as tables. The function dynamically discovers
-    available parquet files in S3 and matches them to requested datasets.
+    Reads parquet files directly from S3 using DuckDB's httpfs extension and
+    creates tables in an in-memory database. No local file downloads required.
 
     Args:
         datasets: List of dataset names to load. Each name corresponds
             to a parquet file in S3 (e.g., 'lmp' -> 'data/lmp.parquet').
-            Defaults to ['lmp', 'mtrf', 'mtlf', 'weather'].
+            Defaults to ['lmp', 'mtrf', 'mtlf'].
 
     Returns:
         duckdb.DuckDBPyConnection: Connection to in-memory DuckDB database
@@ -111,34 +108,21 @@ def create_database(
         AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket where data is stored.
     """
-    # client for getting parquets
-    s3 = boto3.client('s3')
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
 
     # List all objects in the S3 folder and filter for parquet files
-    bucket_contents = utils.list_folder_contents_resource(AWS_S3_BUCKET, AWS_S3_FOLDER)
-    parquet_files = [d.key for d in bucket_contents if '.parquet' in d.key]
-
-    os.makedirs('data', exist_ok=True)
-    # create file paths for data
-    file_paths = [f'data/{ds}.parquet' for ds in datasets]
-    # TODO: add error handling
-    for fp in file_paths:
-        # Match local file path pattern to S3 key (handles folder prefix differences)
-        key = [pf for pf in parquet_files if fp in pf]
-        assert len(key) > 0, f'{key = }'
-        log.info(f'getting: {key[0]} from s3')
-        s3.download_file(Bucket=AWS_S3_BUCKET, Key=key[0], Filename=fp)
-
-    log.info(f'os.listdir(data): {os.listdir("data")}')
+    parquet_files = utils.get_parquet_files()
 
     con = duckdb.connect()
+    con.sql("INSTALL httpfs;")
+    con.sql("LOAD httpfs;")
 
-    for i, ds in enumerate(datasets):
-        log.info(f'loading: {ds}')
-        log.info(f'file_paths[i]: {file_paths[i]}')
-        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM '{file_paths[i]}'")
+    for ds in datasets:
+        # Match dataset name to S3 parquet file key
+        key = [pf for pf in parquet_files if f'{ds}.parquet' in pf]
+        assert len(key) > 0, f'No parquet file found for dataset: {ds}'
+        log.info(f'loading {ds} from s3://{AWS_S3_BUCKET}/{key[0]}')
+        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('s3://{AWS_S3_BUCKET}/{key[0]}')")
 
     return con
 
