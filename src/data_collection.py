@@ -873,9 +873,15 @@ def upsert_mtlf(
         log.info('inserting data')
         mtlf_insert_update = '''
         INSERT INTO mtlf
-            SELECT * FROM mtlf_upsert
+            SELECT * FROM mtlf_upsert;
         '''
         con_ddb.sql(mtlf_insert_update)
+
+        mtlf_copy_to = f'''
+        COPY mtlf TO 's3://{AWS_S3_BUCKET}/{mtlf_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        '''
+        log.info(f'{mtlf_copy_to = }')
+        con_ddb.sql(mtlf_copy_to)
 
         res = con_ddb.sql('select count(*) from mtlf')
         end_count = res.fetchall()[0][0]
@@ -967,9 +973,15 @@ def upsert_mtrf(
         log.info('inserting data')
         mtrf_insert_update = '''
         INSERT INTO mtrf
-            SELECT * FROM mtrf_upsert
+            SELECT * FROM mtrf_upsert;
         '''
         con_ddb.sql(mtrf_insert_update)
+
+        mtrf_copy_to = f'''
+        COPY mtrf TO 's3://{AWS_S3_BUCKET}/{mtrf_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        '''
+        log.info(f'{mtrf_copy_to = }')
+        con_ddb.sql(mtrf_copy_to)
 
         res = con_ddb.sql('select count(*) from mtrf')
         end_count = res.fetchall()[0][0]
@@ -977,6 +989,7 @@ def upsert_mtrf(
         rows_updated = update_count - insert_count
         log.info(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
+
 
 def upsert_lmp(
     lmp_upsert: pd.DataFrame,
@@ -1070,9 +1083,15 @@ def upsert_lmp(
         log.info('inserting data')
         lmp_insert_update = '''
         INSERT INTO lmp
-            SELECT * FROM lmp_upsert
+            SELECT * FROM lmp_upsert;
         '''
         con_ddb.sql(lmp_insert_update)
+
+        lmp_copy_to = f'''
+        COPY lmp TO 's3://{AWS_S3_BUCKET}/{lmp_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        '''
+        log.info(f'{lmp_copy_to = }')
+        con_ddb.sql(lmp_copy_to)
 
         res = con_ddb.sql('select count(*) from lmp')
         end_count = res.fetchall()[0][0]
