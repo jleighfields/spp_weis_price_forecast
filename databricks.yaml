@@ -79,23 +79,6 @@ resources:
           job_cluster_key: Job_cluster_sm
           libraries: *libraries
 
-    data_collection_daily:
-      name: data_collection_daily
-      job_clusters:
-        - *job_cluster_med
-      trigger:
-        pause_status: UNPAUSED
-        periodic:
-          interval: 2
-          unit: HOURS
-      tasks:
-        - task_key: data_collection_daily
-          notebook_task:
-            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_daily
-            source: WORKSPACE
-          job_cluster_key: Job_cluster_med
-          libraries: *libraries
-
     data_collection_5_min:
       name: data_collection_5_min
       job_clusters:
@@ -114,3 +97,21 @@ resources:
           libraries: *libraries
       queue:
         enabled: true
+
+    data_collection_daily:
+      name: data_collection_daily
+      job_clusters:
+        - *job_cluster_med
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 2
+          unit: DAYS
+      tasks:
+        - task_key: data_collection_daily
+          notebook_task:
+            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_daily
+            source: WORKSPACE
+          job_cluster_key: Job_cluster_med
+          libraries: *libraries
+
