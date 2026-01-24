@@ -79,6 +79,22 @@ For development work on our local Windows machines there are two scripts to help
 * There is stub for a script to launch streamlit as well, [start_streamlit.bat](./scripts/start_streamlit.bat).
 
 
+## Databricks Asset Bundles
+
+To validate and deploy the Databricks bundle:
+
+```bash
+# Authenticate with Databricks
+databricks auth login --host <databricks workspace url>
+
+# Validate the bundle configuration
+databricks bundle validate
+
+# Deploy to dev target
+databricks bundle deploy --target <target workspace>
+```
+
+
 ## Data format
 ![Time series data](./imgs/time_series_data.PNG)
 

@@ -1,68 +1,71 @@
-# Define cluster configurations under a top-level definitions or resources section
-definitions:
-  variables:
-  AWS_DEFAULT_REGION: "us-west-2"
-  AWS_S3_BUCKET: "databricks-storage-7474645306723306"
-  AWS_S3_FOLDER: "unity-catalog/7474645306723306/spp-weis/"
+bundle:
+  name: spp-weis
 
-  job_clusters:
-  - job_cluster_key: Job_cluster_sm
-    new_cluster:
-      spark_version: 17.3.x-scala2.13
-      aws_attributes:
-        first_on_demand: 1
-        spot_bid_price_percent: 100
-      node_type_id: r5d.large
-      spark_env_vars:
-        PYSPARK_PYTHON: /databricks/python3/bin/python3
-      data_security_mode: DATA_SECURITY_MODE_DEDICATED
-      runtime_engine: STANDARD
-      kind: CLASSIC_PREVIEW
-      is_single_node: true
-      libraries:
-      - pypi:
-          package: polars==1.37.1
-      - pypi:
-          package: pyarrow==19.0.1
-      - pypi:
-          package: python-dotenv==1.2.1
-      - pypi:
-          package: boto3==1.35.92
-      - pypi:
-          package: duckdb==1.4.3
-      - pypi:
-          package: tqdm==4.67.1
-  - job_cluster_key: Job_cluster_med
-    new_cluster:
-      spark_version: 17.3.x-scala2.13
-      aws_attributes:
-        first_on_demand: 1
-        spot_bid_price_percent: 100
-      node_type_id: r5d.xlarge
-      spark_env_vars:
-        PYSPARK_PYTHON: /databricks/python3/bin/python3
-      data_security_mode: DATA_SECURITY_MODE_DEDICATED
-      runtime_engine: STANDARD
-      kind: CLASSIC_PREVIEW
-      is_single_node: true
-      libraries:
-      - pypi:
-          package: polars==1.37.1
-      - pypi:
-          package: pyarrow==19.0.1
-      - pypi:
-          package: python-dotenv==1.2.1
-      - pypi:
-          package: boto3==1.35.92
-      - pypi:
-          package: duckdb==1.4.3
-      - pypi:
-          package: tqdm==4.67.1
+targets:
+  dev:
+    workspace:
+      host: https://dbc-5cfb7418-cc9c.cloud.databricks.com
+
+variables:
+  AWS_DEFAULT_REGION:
+    default: "us-west-2"
+  AWS_S3_BUCKET:
+    default: "databricks-storage-7474645306723306"
+  AWS_S3_FOLDER:
+    default: "unity-catalog/7474645306723306/spp-weis/"
+
+# YAML anchors for reusable cluster configurations
+x-job-cluster-sm: &job_cluster_sm
+  job_cluster_key: Job_cluster_sm
+  new_cluster:
+    spark_version: 17.3.x-scala2.13
+    aws_attributes:
+      first_on_demand: 1
+      spot_bid_price_percent: 100
+    node_type_id: r5d.large
+    spark_env_vars:
+      PYSPARK_PYTHON: /databricks/python3/bin/python3
+    data_security_mode: DATA_SECURITY_MODE_DEDICATED
+    runtime_engine: STANDARD
+    kind: CLASSIC_PREVIEW
+    is_single_node: true
+
+x-job-cluster-med: &job_cluster_med
+  job_cluster_key: Job_cluster_med
+  new_cluster:
+    spark_version: 17.3.x-scala2.13
+    aws_attributes:
+      first_on_demand: 1
+      spot_bid_price_percent: 100
+    node_type_id: r5d.xlarge
+    spark_env_vars:
+      PYSPARK_PYTHON: /databricks/python3/bin/python3
+    data_security_mode: DATA_SECURITY_MODE_DEDICATED
+    runtime_engine: STANDARD
+    kind: CLASSIC_PREVIEW
+    is_single_node: true
+
+# YAML anchor for shared libraries
+x-libraries: &libraries
+  - pypi:
+      package: polars==1.37.1
+  - pypi:
+      package: pyarrow==19.0.1
+  - pypi:
+      package: python-dotenv==1.2.1
+  - pypi:
+      package: boto3==1.35.92
+  - pypi:
+      package: duckdb==1.4.3
+  - pypi:
+      package: tqdm==4.67.1
 
 resources:
   jobs:
     data_collection_hourly:
       name: data_collection_hourly
+      job_clusters:
+        - *job_cluster_sm
       trigger:
         pause_status: UNPAUSED
         periodic:
@@ -74,8 +77,12 @@ resources:
             notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_hourly
             source: WORKSPACE
           job_cluster_key: Job_cluster_sm
+          libraries: *libraries
+
     data_collection_daily:
       name: data_collection_daily
+      job_clusters:
+        - *job_cluster_med
       trigger:
         pause_status: UNPAUSED
         periodic:
@@ -87,14 +94,23 @@ resources:
             notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_daily
             source: WORKSPACE
           job_cluster_key: Job_cluster_med
+          libraries: *libraries
+
     data_collection_5_min:
       name: data_collection_5_min
+      job_clusters:
+        - *job_cluster_med
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 2
+          unit: HOURS
       tasks:
         - task_key: data_collection_5_min
           notebook_task:
             notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_5_min
             source: WORKSPACE
           job_cluster_key: Job_cluster_med
+          libraries: *libraries
       queue:
         enabled: true
-
