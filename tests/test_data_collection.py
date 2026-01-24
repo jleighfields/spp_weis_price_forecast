@@ -584,14 +584,14 @@ class TestUpsertMtlf:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        # Mock get_parquet_files to return empty list (no existing file)
-        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+        # Mock get_parquet_files to return existing file
+        with patch('data_collection.utils.get_parquet_files', return_value=['test/mtlf.parquet']):
             with patch('data_collection.duckdb.connect', return_value=mock_con):
                 dc.upsert_mtlf(df)
 
-        # Verify CREATE TABLE was called
+        # Verify SQL operations were called
         calls = [str(call) for call in mock_con.sql.call_args_list]
-        assert any('CREATE TABLE IF NOT EXISTS mtlf' in str(call) for call in calls)
+        assert any('CREATE TABLE mtlf' in str(call) for call in calls)
 
     def test_backfill_removes_nulls(self):
         """Test that backfill=True removes rows with null values."""
@@ -610,8 +610,8 @@ class TestUpsertMtlf:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        # Mock get_parquet_files to return empty list (no existing file)
-        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+        # Mock get_parquet_files to return existing file
+        with patch('data_collection.utils.get_parquet_files', return_value=['test/mtlf.parquet']):
             with patch('data_collection.duckdb.connect', return_value=mock_con):
                 # Should not raise error - null row will be dropped
                 dc.upsert_mtlf(df.copy(), backfill=True)
@@ -641,8 +641,8 @@ class TestUpsertLmp:
         mock_con.__exit__ = MagicMock(return_value=False)
         mock_con.sql.return_value.fetchall.return_value = [[0]]
 
-        # Mock get_parquet_files to return empty list (no existing file)
-        with patch('data_collection.utils.get_parquet_files', return_value=[]):
+        # Mock get_parquet_files to return existing file
+        with patch('data_collection.utils.get_parquet_files', return_value=['test/lmp.parquet']):
             with patch('data_collection.duckdb.connect', return_value=mock_con):
                 # Should not raise - duplicates will be removed
                 dc.upsert_lmp(df)
