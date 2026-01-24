@@ -1,0 +1,4 @@
+variables:
+  AWS_DEFAULT_REGION: "us-west-2"
+  AWS_S3_BUCKET: "databricks-storage-7474645306723306"
+  AWS_S3_FOLDER: "unity-catalog/7474645306723306/spp-weis/"
