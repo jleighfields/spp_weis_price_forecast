@@ -1,3 +1,99 @@
+resources:
+  jobs:
+    data_collection_hourly:
+      name: data_collection_hourly
+      tasks:
+        - task_key: data_collection_hourly
+          notebook_task:
+            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_hourly
+            source: WORKSPACE
+          job_cluster_key: Job_cluster_sm
+          libraries:
+            - pypi:
+                package: polars==1.37.1
+            - pypi:
+                package: pyarrow==19.0.1
+            - pypi:
+                package: python-dotenv==1.2.1
+            - pypi:
+                package: boto3==1.35.92
+            - pypi:
+                package: duckdb==1.4.3
+            - pypi:
+                package: tqdm==4.67.1
+    data_collection_daily:
+      name: data_collection_daily
+      tasks:
+        - task_key: data_collection_daily
+          notebook_task:
+            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_daily
+            source: WORKSPACE
+          job_cluster_key: Job_cluster_med
+          libraries:
+            - pypi:
+                package: polars==1.37.1
+            - pypi:
+                package: pyarrow==19.0.1
+            - pypi:
+                package: python-dotenv==1.2.1
+            - pypi:
+                package: boto3==1.35.92
+            - pypi:
+                package: duckdb==1.4.3
+            - pypi:
+                package: tqdm==4.67.1
+    data_collection_5_min:
+      name: data_collection_5_min
+      tasks:
+        - task_key: data_collection_5_min
+          notebook_task:
+            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_5_min
+            source: WORKSPACE
+          job_cluster_key: Job_cluster_med
+          libraries:
+            - pypi:
+                package: polars==1.37.1
+            - pypi:
+                package: pyarrow==19.0.1
+            - pypi:
+                package: python-dotenv==1.2.1
+            - pypi:
+                package: boto3==1.35.92
+            - pypi:
+                package: duckdb==1.4.3
+            - pypi:
+                package: tqdm==4.67.1
+      job_clusters:
+        - job_cluster_key: Job_cluster_sm
+          new_cluster:
+            spark_version: 17.3.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              spot_bid_price_percent: 100
+            node_type_id: r5d.large
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
+        - job_cluster_key: Job_cluster_med
+          new_cluster:
+            spark_version: 17.3.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              spot_bid_price_percent: 100
+            node_type_id: r5d.xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
+      queue:
+        enabled: true
+
+
 variables:
   AWS_DEFAULT_REGION: "us-west-2"
   AWS_S3_BUCKET: "databricks-storage-7474645306723306"
