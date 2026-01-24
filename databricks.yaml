@@ -2,6 +2,11 @@ resources:
   jobs:
     data_collection_hourly:
       name: data_collection_hourly
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 2
+          unit: HOURS
       tasks:
         - task_key: data_collection_hourly
           notebook_task:
@@ -23,6 +28,11 @@ resources:
                 package: tqdm==4.67.1
     data_collection_daily:
       name: data_collection_daily
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 2
+          unit: HOURS
       tasks:
         - task_key: data_collection_daily
           notebook_task:
@@ -44,6 +54,11 @@ resources:
                 package: tqdm==4.67.1
     data_collection_5_min:
       name: data_collection_5_min
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 2
+          unit: HOURS
       tasks:
         - task_key: data_collection_5_min
           notebook_task:

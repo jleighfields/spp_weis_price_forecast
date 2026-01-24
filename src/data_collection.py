@@ -64,26 +64,26 @@ import utils
 
 
 # set duckdb path
-DUCKDB_PATH = None
-paths = [
-    '~/spp_weis_price_forecast/data/',
-    '~/Documents/github/spp_weis_price_forecast/data/',
-    '/Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/data/',
-]
+# DUCKDB_PATH = None
+# paths = [
+#     '~/spp_weis_price_forecast/data/',
+#     '~/Documents/github/spp_weis_price_forecast/data/',
+#     '/Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/data/',
+# ]
 
-for p in paths:
-    log.info(f'{p = } - {os.path.isfile(p) = }')
-    # Expand the tilde to the absolute home path
-    expanded_path = os.path.expanduser(p)
-    if os.path.isdir(expanded_path):
-        DUCKDB_PATH = expanded_path
-        log.info(f'setting DUCKDB_PATH = {p}')
-        break
+# for p in paths:
+#     log.info(f'{p = } - {os.path.isfile(p) = }')
+#     # Expand the tilde to the absolute home path
+#     expanded_path = os.path.expanduser(p)
+#     if os.path.isdir(expanded_path):
+#         DUCKDB_PATH = expanded_path
+#         log.info(f'setting DUCKDB_PATH = {p}')
+#         break
 
-assert DUCKDB_PATH
+# assert DUCKDB_PATH
 
-DUCKDB_PATH += 'spp.ddb'
-log.info(f'{os.path.isfile(DUCKDB_PATH) = }')
+# DUCKDB_PATH += 'spp.ddb'
+# log.info(f'{os.path.isfile(DUCKDB_PATH) = }')
 
 # AWS S3 configuration - allows deployment to different environments
 # by configuring bucket and folder prefix via environment variables
@@ -1133,7 +1133,7 @@ def upsert_gen_cap(
     log.info(f'gen_cap_upsert.timestamp_mst.max(): {gen_cap_upsert.timestamp_mst.max()}')
 
     # upsert with duckdb
-    with duckdb.connect(DUCKDB_PATH) as con_ddb:
+    with duckdb.connect() as con_ddb:
         create_gen_cap = '''
         CREATE TABLE IF NOT EXISTS gen_cap (
              GMTIntervalEnd TIMESTAMP PRIMARY KEY,
