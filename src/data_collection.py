@@ -63,28 +63,6 @@ for module_path in module_paths:
 import utils
 
 
-# set duckdb path
-# DUCKDB_PATH = None
-# paths = [
-#     '~/spp_weis_price_forecast/data/',
-#     '~/Documents/github/spp_weis_price_forecast/data/',
-#     '/Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/data/',
-# ]
-
-# for p in paths:
-#     log.info(f'{p = } - {os.path.isfile(p) = }')
-#     # Expand the tilde to the absolute home path
-#     expanded_path = os.path.expanduser(p)
-#     if os.path.isdir(expanded_path):
-#         DUCKDB_PATH = expanded_path
-#         log.info(f'setting DUCKDB_PATH = {p}')
-#         break
-
-# assert DUCKDB_PATH
-
-# DUCKDB_PATH += 'spp.ddb'
-# log.info(f'{os.path.isfile(DUCKDB_PATH) = }')
-
 # AWS S3 configuration - allows deployment to different environments
 # by configuring bucket and folder prefix via environment variables
 AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
@@ -706,88 +684,6 @@ def get_range_data_gen_cap(
 ###########################################################
 # UPSERT DATA
 ###########################################################
-
-# def upsert_weather(
-#     start: datetime=None, # datetime.datetime(2023, 1, 1)
-#     end: datetime=None, # datetime.datetime(2024, 1, 1)
-# ) -> None:
-#     """
-#     Function to upsert new/backfilled weather data into duckdb database.
-#     https://dev.meteostat.net/python/
-#     Args:
-#         start: datetime=None like datetime.datetime(2023, 1, 1)
-#         end: datetime=None, like datetime.datetime(2024, 1, 1)
-#     Returns:
-#         None - new data is upserted to table
-#     """
-
-#     # use Denver
-#     lat = 38.7,
-#     lon = -104.9,
-#     alt = 1600,
-#     model = True,
-
-#     # remove missing values if backfilling
-#     if not start:
-#         start = (pd.Timestamp.utcnow() + pd.Timedelta('-14d')).to_pydatetime().replace(tzinfo=None)
-#         end = (pd.Timestamp.utcnow() + pd.Timedelta('10d')).to_pydatetime().replace(tzinfo=None)
-
-#     log.info(f'start: {start}')
-#     log.info(f'end: {end}')
-    
-#     # Get hourly data
-#     location_point = Point(lat, lon, alt)
-#     weather_upsert = Hourly(location_point, start, end, timezone='UTC', model=model)
-#     weather_upsert = weather_upsert.fetch()
-#     weather_upsert = (
-#         weather_upsert[['temp']]
-#         .reset_index()
-#         .rename(columns={'time': 'timestamp', 'temp': 'temperature'})
-#     )
-#     weather_upsert['timestamp_mst'] = weather_upsert.timestamp.dt.tz_convert('MST').dt.tz_convert(None).astype('datetime64[us]')
-#     weather_upsert['timestamp'] = weather_upsert.timestamp.dt.tz_convert(None).astype('datetime64[us]')
-#     weather_upsert = weather_upsert[['timestamp', 'timestamp_mst', 'temperature']]
-
-#     log.info(f'weather_upsert.info(): {weather_upsert.info()}')
-#     log.info(f'weather_upsert.timestamp_mst.min(): {weather_upsert.timestamp_mst.min()}')
-#     log.info(f'weather_upsert.timestamp_mst.max(): {weather_upsert.timestamp_mst.max()}')
-
-#     # upsert with duckdb
-#     with duckdb.connect(DUCKDB_PATH) as con_ddb:
-#         create_weather = '''
-#         CREATE TABLE IF NOT EXISTS weather (
-#              timestamp TIMESTAMP PRIMARY KEY,
-#              timestamp_mst TIMESTAMP,
-#              temperature DOUBLE
-#              );
-#         '''
-#         con_ddb.sql(create_weather)
-
-#         res = con_ddb.sql('select count(*) from weather')
-#         start_count = res.fetchall()[0][0]
-#         log.info(f'starting count: {start_count:,}')
-
-#         weather_insert_update = '''
-#         INSERT INTO weather
-#             SELECT * FROM weather_upsert
-#             ON CONFLICT DO UPDATE SET 
-#             temperature = EXCLUDED.temperature;
-#         '''
-
-#         con_ddb.sql(weather_insert_update)
-
-#         res = con_ddb.sql('select count(*) from weather')
-#         update_count = len(weather_upsert)
-#         end_count = res.fetchall()[0][0]
-#         insert_count = end_count - start_count
-#         rows_updated = update_count - insert_count
-#         log.info(
-#             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
-
-#         # copy to s3
-#         con_ddb.sql("INSTALL httpfs;")
-#         con_ddb.sql("LOAD httpfs;")
-#         con_ddb.sql(f"COPY weather TO 's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/weather.parquet';")
 
 
 def upsert_mtlf(
