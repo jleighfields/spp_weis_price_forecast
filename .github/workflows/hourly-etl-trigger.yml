@@ -8,8 +8,8 @@ on:
   #   branches: [ "main" ]
   # pull_request:
   #   branches: [ "main" ]
-  schedule:
-    - cron: "45 */1 * * *" # run every hour at minute 45
+  # schedule:
+  #   - cron: "45 */1 * * *" # run every hour at minute 45
   workflow_dispatch:  # manual triggers
 
 jobs:
