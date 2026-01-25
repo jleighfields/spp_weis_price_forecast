@@ -37,6 +37,8 @@ log = logging.getLogger(__name__)
 # data
 import requests
 import pandas as pd
+import polars as pl
+import polars_xdt as xdt
 import duckdb
 # from meteostat import Hourly, Point
 
@@ -92,27 +94,30 @@ class ProgressParallel(Parallel):
 
 
 def convert_datetime_cols(
-        df: pd.DataFrame,
+        df: pl.DataFrame,
         dt_cols: List[str] = ['Interval', 'GMTIntervalEnd'],
-) -> None:
+) -> pl.DataFrame:
     """
     Function to convert string columns to datetime values.
     Args:
         df: pd.DataFrame - dataframe with datetimes as strings
         dt_cols: List[str] - list of column names to convert
     Returns:
-        None - columns are updated in place
+        pl.DataFrame - with timestamp columns
     """
 
     for col in dt_cols:
         log.debug(f'converting {col} to datetime')
-        df[col] = pd.to_datetime(df[col], format = '%m/%d/%Y %H:%M:%S')
+        df = df.with_columns(pl.col(col).str.to_datetime(format = '%m/%d/%Y %H:%M:%S'))
+        # df[col] = pd.to_datetime(df[col], format = '%m/%d/%Y %H:%M:%S')
+        
+    return df
 
 
 def set_he(
-        df: pd.DataFrame,
+        df: pl.DataFrame,
         time_cols: List[str] = ['Interval', 'GMTIntervalEnd', 'timestamp_mst'],
-    ) -> None:
+    ) -> pl.DataFrame:
     """
     Function to add hour ending column for grouping 5 minute intervals.
     Args:
@@ -125,7 +130,10 @@ def set_he(
     for time_col in time_cols:
         he_col = time_col+'_HE'
         log.debug(f'adding hour ending col: {he_col}')
-        df[he_col] = df[time_col].dt.ceil('h')
+        # df[he_col] = df[time_col].dt.ceil('h')
+        df = df.with_columns(xdt.ceil(time_col, '1h').alias(he_col))
+
+    return df
 
 
 def get_time_components(
@@ -181,13 +189,15 @@ def get_time_components(
         tc['YMD'] = tc['YM']+tc['DAY']
         tc['COMBINED'] = tc['YMD']+tc['HOUR']+tc['MINUTE']
         tc['timestamp'] = time_stamp_ct
+        tc['timestamp_utc'] = time_stamp_ct.tz_convert(None)
         return tc
 
     except Exception:
         log.error(f'error parsing: {time_stamp}')
         return None
     
-def add_timestamp_mst(df: pd.DataFrame) -> None:
+
+def add_timestamp_mst(df: pl.DataFrame) -> pl.DataFrame:
     """
     Add MST timestamp column derived from GMT interval end time.
 
@@ -198,16 +208,18 @@ def add_timestamp_mst(df: pd.DataFrame) -> None:
         df: DataFrame with 'GMTIntervalEnd' datetime column.
 
     Returns:
-        None - column is added in place.
+        pl.DataFrame 
     """
-    df['timestamp_mst'] = (
-        df.GMTIntervalEnd.dt.tz_localize("UTC")
-        .dt.tz_convert('MST')
-        .dt.tz_localize(None)
+    df = df.with_columns(
+        pl.col("GMTIntervalEnd")
+        .dt.offset_by("-7h")
+        .alias("timestamp_mst")
     )
 
+    return df
 
-def format_df_colnames(df: pd.DataFrame) -> None:
+
+def format_df_colnames(df: pl.DataFrame) -> None:
     """
     Function to format dataframe column names.  Used after reading
     csv data from url to prepare for loading into a database.
@@ -220,37 +232,36 @@ def format_df_colnames(df: pd.DataFrame) -> None:
 
     df.columns = [col.strip().replace(' ', '_') for col in df.columns]
 
-
 ###########################################################
 # GET FILE URLS
 ###########################################################
 def get_csv_from_url(
         url: str,
         timeout: int=60,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """
     Function to read csv file from SPP url.
     Args:
         url: str - url path to csv
     Returns:
-        pd.DataFrame created from reading in the csv from the url,
+        pl.DataFrame created from reading in the csv from the url,
             if there is an error reading the url an empty dataframe
             is returned
     """
     try:
         response = requests.get(url, timeout=timeout)
         if response.ok:
-            df = pd.read_csv(StringIO(response.text))
+            df = pl.read_csv(StringIO(response.text))
             log.debug(f'df.shape: {df.shape}')
         else:
-            df = pd.DataFrame()
+            df = pl.DataFrame()
             log.error(f'ERROR READING URL: {url}')
             log.error(response.reason)
 
     except Exception as e:
         # By this way we can know about the type of error occurring
         log.error(e)
-        df = pd.DataFrame()
+        df = pl.DataFrame()
     return df
 
 
@@ -354,7 +365,7 @@ def get_range_data(
         n_periods: int,
         freq: str,
         get_process_func: Callable,
-        dup_cols: List[str],
+        # dup_cols: List[str],
         do_parallel: bool=True,
     ) -> pd.DataFrame:
     """
@@ -404,49 +415,64 @@ def get_range_data(
 
     else:
         df_list = []
-        for tc in tc_list:
+        for tc in tqdm.tqdm(tc_list):
             df_list+=[get_process_func(tc)]
             # time.sleep(0.5) # be kind to the server, maybe
 
-    df = pd.concat(df_list)
+    # df = pd.concat(df_list)
 
-    if df.shape[0] > 0:
-        # using keep='last'
-        # assumes the last items are the most recent
-        # this will be true given the use of pd.date_range
-        dups = df[dup_cols].duplicated(keep='last')
-        df = df[~dups]
-        df = df.sort_values(dup_cols).reset_index(drop=True)
+    # if df.shape[0] > 0:
+    #     # using keep='last'
+    #     # assumes the last items are the most recent
+    #     # this will be true given the use of pd.date_range
+    #     dups = df[dup_cols].duplicated(keep='last')
+    #     df = df[~dups]
+    #     df = df.sort_values(dup_cols).reset_index(drop=True)
 
-    return df
+    return df_list
 
 
-def get_process_mtlf(tc: dict) -> pd.DataFrame:
+def get_process_mtlf(tc: dict) -> str:
     """
     Function to get and process MTLF data.
     Args:
         tc: dict - dictionary returned from get_time_components()
     Returns:
-        pd.DataFrame with processed data for file corresponding to
-            url created from tc
+        str
     """
-    mtlf_url = get_hourly_mtlf_url(tc)
-    log.debug(f'mtlf_url: {mtlf_url}')
+    data_category = 'mtlf'
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+    
+    url = get_hourly_mtlf_url(tc)
+    log.debug(f'{data_category} url: {url}')
 
-    df = get_csv_from_url(mtlf_url)
+    df = get_csv_from_url(url)
 
     if df.shape[0] > 0:
+        parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
+        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
         format_df_colnames(df)
-        convert_datetime_cols(df)
-        add_timestamp_mst(df)
-
-    return df
+        df = convert_datetime_cols(df)
+        df = add_timestamp_mst(df)
+        df = df.with_columns(
+            pl.col.MTLF.cast(pl.Float32),
+            pl.col.Averaged_Actual.cast(pl.Float32),
+            pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
+            pl.lit(url).alias('url'),
+        )
+        df.unique().write_parquet(s3_path)
+        return s3_path
+    else:
+        return url
 
 
 def get_range_data_mtlf(
         end_ts: pd.Timestamp,
         n_periods: int,
-    ) -> pd.DataFrame:
+    ) -> List[str]:
     """
     Helper function to get and process MTLF data for a range of datetimes.
     Default args are set for MTLF and passed to get_range_data()
@@ -461,30 +487,46 @@ def get_range_data_mtlf(
     """
     freq = 'h'
     get_process_func = get_process_mtlf
-    dup_cols = ['GMTIntervalEnd']
-    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+    # dup_cols = ['GMTIntervalEnd']
+    return get_range_data(end_ts, n_periods, freq, get_process_func)
 
 
-def get_process_mtrf(tc: dict) -> pd.DataFrame:
+def get_process_mtrf(tc: dict) -> str:
     """
     Function to get and process MTRF data.
     Args:
         tc: dict - dictionary returned from get_time_components()
     Returns:
-        pd.DataFrame with processed data for file corresponding to
-            url created from tc
+        str
     """
-    mtrf_url = get_hourly_mtrf_url(tc)
-    log.debug(f'mtrf_url: {mtrf_url}')
+    data_category = 'mtrf'
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+    
+    url = get_hourly_mtrf_url(tc)
+    log.debug(f'{data_category} url: {url}')
 
-    df = get_csv_from_url(mtrf_url)
+    df = get_csv_from_url(url)
 
     if df.shape[0] > 0:
+        parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
+        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
         format_df_colnames(df)
-        convert_datetime_cols(df)
-        add_timestamp_mst(df)
+        df = convert_datetime_cols(df)
+        df = add_timestamp_mst(df)
+        df = df.with_columns(
+            pl.col.Wind_Forecast_MW.cast(pl.Float32),
+            pl.col.Solar_Forecast_MW.cast(pl.Float32),
+            pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
+            pl.lit(url).alias('url'),
+        )
+        df.unique().write_parquet(s3_path)
+        return s3_path
+    else:
+        return url
 
-    return df
 
 
 def get_range_data_mtrf(
@@ -505,11 +547,11 @@ def get_range_data_mtrf(
     """
     freq = 'h'
     get_process_func = get_process_mtrf
-    dup_cols = ['GMTIntervalEnd']
-    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+    # dup_cols = ['GMTIntervalEnd']
+    return get_range_data(end_ts, n_periods, freq, get_process_func)
 
 
-def agg_lmp(five_min_lmp_df: pd.DataFrame) -> pd.DataFrame:
+def agg_lmp(five_min_lmp_df: pl.DataFrame) -> pl.DataFrame:
     """
     Helper function to aggregate 5 minute LMPs to hour ending LMPs.
     Args:
@@ -523,10 +565,9 @@ def agg_lmp(five_min_lmp_df: pd.DataFrame) -> pd.DataFrame:
     ]
     value_cols = ['LMP', 'MLC', 'MCC', 'MEC']
     he_lmp_df = (
-        five_min_lmp_df[group_cols + value_cols]
-        .groupby(group_cols)
+        five_min_lmp_df.select(group_cols + value_cols)
+        .group_by(group_cols)
         .mean()
-        .reset_index()
     )
     return he_lmp_df
 
@@ -541,27 +582,52 @@ def get_process_5min_lmp(tc: dict) -> pd.DataFrame:
         pd.DataFrame with processed data for file corresponding to
             url created from tc
     """
-    lmp_url = get_5min_lmp_url(tc)
-    log.debug(f'lmp_url: {lmp_url}')
+    data_category = 'lmp_5min'
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
 
-    df = get_csv_from_url(lmp_url)
+    url = get_5min_lmp_url(tc)
+    log.debug(f'{data_category} url: {url}')
+
+    df = get_csv_from_url(url)
 
     if df.shape[0] > 0:
+        parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
+        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
         format_df_colnames(df)
-        df.rename(
-            columns={
-                'GMT_Interval':'GMTIntervalEnd',
+        log.debug(f'{df.columns = }')
+        # df.columns = ['Interval', 'GMTIntervalEnd', 'Settlement_Location', 'Pnode', 'LMP', 'MLC', 'MCC', 'MEC']
+        df = df.rename(
+            {
                 'Settlement_Location':'Settlement_Location_Name',
                 'Pnode':'PNODE_Name',
             },
-            inplace=True
         )
-        convert_datetime_cols(df)
-        add_timestamp_mst(df)
-        set_he(df)
+        df = convert_datetime_cols(df)
+        df = add_timestamp_mst(df)
+        df = set_he(df)
         df = agg_lmp(df)
+        
+        df = df.with_columns(
+            pl.col.LMP.cast(pl.Float32),
+            pl.col.MLC.cast(pl.Float32),
+            pl.col.MCC.cast(pl.Float32),
+            pl.col.MEC.cast(pl.Float32),
+            pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
+            pl.lit(url).alias('url'),
+        )
+        df.unique().write_parquet(s3_path)
+        return s3_path
+    else:
+        return url
 
-    return df
+
+# def get_range_data_daily_lmps(
+#         end_ts: pd.Timestamp
+
+#     return df
 
 #TODO: combine daily and interval lmp get functions
 def get_range_data_interval_5min_lmps(
@@ -581,8 +647,8 @@ def get_range_data_interval_5min_lmps(
     """
     freq = '5min'
     get_process_func = get_process_5min_lmp
-    dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
-    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+    # dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
+    return get_range_data(end_ts, n_periods, freq, get_process_func)
 
 
 def get_process_daily_lmp(tc) -> pd.DataFrame:
@@ -595,20 +661,41 @@ def get_process_daily_lmp(tc) -> pd.DataFrame:
         pd.DataFrame with processed data for file corresponding to
             url created from tc
     """
-    lmp_url = get_daily_lmp_url(tc)
-    log.debug(f'lmp_url: {lmp_url}')
+    data_category = 'lmp_daily'
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
 
-    df = get_csv_from_url(lmp_url)
+    url = get_daily_lmp_url(tc)
+    log.debug(f'{data_category} url: {url}')
+
+    df = get_csv_from_url(url)
 
     if df.shape[0] > 0:
+        parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
+        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
         format_df_colnames(df)
-        df.rename(columns={'GMT_Interval':'GMTIntervalEnd'}, inplace=True)
-        convert_datetime_cols(df)
-        add_timestamp_mst(df)
-        set_he(df)
+        log.debug(f'{df.columns = }')
+        # df.columns = ['Interval', 'GMT_Interval', 'Settlement_Location_Name', 'PNODE_Name', 'LMP', 'MLC', 'MCC', 'MEC']
+        df = df.rename({'GMT_Interval':'GMTIntervalEnd'})
+        df = convert_datetime_cols(df)
+        df = add_timestamp_mst(df)
+        df = set_he(df)
         df = agg_lmp(df)
-
-    return df
+        
+        df = df.with_columns(
+            pl.col.LMP.cast(pl.Float32),
+            pl.col.MLC.cast(pl.Float32),
+            pl.col.MCC.cast(pl.Float32),
+            pl.col.MEC.cast(pl.Float32),
+            pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
+            pl.lit(url).alias('url'),
+        )
+        df.unique().write_parquet(s3_path)
+        return s3_path
+    else:
+        return url
 
 #TODO: combine daily and interval lmp get functions
 def get_range_data_interval_daily_lmps(
@@ -628,57 +715,57 @@ def get_range_data_interval_daily_lmps(
     """
     freq = 'D'
     get_process_func = get_process_daily_lmp
-    dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
-    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+    # dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
+    return get_range_data(end_ts, n_periods, freq, get_process_func)
 
 
-def get_process_gen_cap(tc: dict) -> pd.DataFrame:
-    """
-    Function to get and process MTLF data.
-    Args:
-        tc: dict - dictionary returned from get_time_components()
-    Returns:
-        pd.DataFrame with processed data for file corresponding to
-            url created from tc
-    """
-    gen_cap_url = get_gen_cap_url(tc)
-    log.debug(f'gen_cap_url: {gen_cap_url}')
+# def get_process_gen_cap(tc: dict) -> pd.DataFrame:
+#     """
+#     Function to get and process MTLF data.
+#     Args:
+#         tc: dict - dictionary returned from get_time_components()
+#     Returns:
+#         pd.DataFrame with processed data for file corresponding to
+#             url created from tc
+#     """
+#     gen_cap_url = get_gen_cap_url(tc)
+#     log.debug(f'gen_cap_url: {gen_cap_url}')
 
-    df = get_csv_from_url(gen_cap_url)
+#     df = get_csv_from_url(gen_cap_url)
 
-    if df.shape[0] > 0:
-        format_df_colnames(df)
-        df['GMT_TIME'] = pd.to_datetime(df['GMT_TIME'], format='ISO8601')
-        df.rename(columns={'GMT_TIME': 'GMTIntervalEnd'}, inplace=True)
-        df['timestamp_mst'] = (
-            df.GMTIntervalEnd
-            .dt.tz_convert('MST')
-            .dt.tz_localize(None)
-        )
+#     if df.shape[0] > 0:
+#         format_df_colnames(df)
+#         df['GMT_TIME'] = pd.to_datetime(df['GMT_TIME'], format='ISO8601')
+#         df.rename(columns={'GMT_TIME': 'GMTIntervalEnd'}, inplace=True)
+#         df['timestamp_mst'] = (
+#             df.GMTIntervalEnd
+#             .dt.tz_convert('MST')
+#             .dt.tz_localize(None)
+#         )
 
-    return df
+#     return df
     
 
-def get_range_data_gen_cap(
-        end_ts: pd.Timestamp,
-        n_periods: int,
-    ):
-    """
-    Helper function to get and process MTRF data for a range of datetimes.
-    Default args are set for MTLF and passed to get_range_data()
-    Args:
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        n_periods: int - the number of time periods to gather prior to end_ts
-    Returns:
-        pd.DataFrame with processed data for file corresponding to
-            url created from tc
-    """
-    freq = 'D'
-    get_process_func = get_process_gen_cap
-    dup_cols = ['GMTIntervalEnd']
-    return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
+# def get_range_data_gen_cap(
+#         end_ts: pd.Timestamp,
+#         n_periods: int,
+#     ):
+#     """
+#     Helper function to get and process MTRF data for a range of datetimes.
+#     Default args are set for MTLF and passed to get_range_data()
+#     Args:
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#     Returns:
+#         pd.DataFrame with processed data for file corresponding to
+#             url created from tc
+#     """
+#     freq = 'D'
+#     get_process_func = get_process_gen_cap
+#     dup_cols = ['GMTIntervalEnd']
+#     return get_range_data(end_ts, n_periods, freq, get_process_func, dup_cols)
 
 
 ###########################################################
@@ -687,78 +774,50 @@ def get_range_data_gen_cap(
 
 
 def upsert_mtlf(
-        mtlf_upsert: pd.DataFrame,
-        backfill: bool=False,
+    parquet_files: List[str],
 ) -> None:
     """
-    Upsert new/backfilled MTLF (Mid-Term Load Forecast) data to S3 parquet via DuckDB.
-
-    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
-    deletes conflicting rows by primary key (GMTIntervalEnd), inserts new records,
-    then writes the updated table back to S3 as a parquet file.
-
-    Args:
-        mtlf_upsert: DataFrame to upsert to MTLF table. Must contain columns:
-            Interval, GMTIntervalEnd, timestamp_mst, MTLF, Averaged_Actual.
-        backfill: If True, removes rows with missing values before upsert. This
-            removes rows where average actual is missing because the time period
-            is forecasted, preventing overwriting actual values with forecasted values.
-
-    Returns:
-        None - data is upserted to S3 parquet file.
-
-    Environment Variables:
-        AWS_S3_BUCKET: S3 bucket containing the parquet files.
-        AWS_S3_FOLDER: Folder prefix within the bucket.
+    TODO: doc string
     """
 
-    # remove missing values if backfilling
-    if backfill:
-        mtlf_upsert.dropna(axis=0, how='any', inplace=True)
-    # remove any duplicated primary keys
-    mtlf_upsert = mtlf_upsert[~mtlf_upsert.GMTIntervalEnd.duplicated()]
-    update_count = len(mtlf_upsert)
-    # NOTE: the df col order must match the order in the table
-    ordered_cols = [
-        'Interval', 'GMTIntervalEnd', 'timestamp_mst',
-        'MTLF', 'Averaged_Actual',
-    ]
-    mtlf_upsert = mtlf_upsert[ordered_cols]
-    log.info(f'mtlf_upsert.timestamp_mst.min(): {mtlf_upsert.timestamp_mst.min()}')
-    log.info(f'mtlf_upsert.timestamp_mst.max(): {mtlf_upsert.timestamp_mst.max()}')
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
 
-    parquet_files = utils.get_parquet_files()
-    mtlf_file = [pf for pf in parquet_files if 'mtlf.parquet' in pf]
+    s3_path_target = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtlf.parquet'
+
+    log.info(f'number of files upserting: {len(parquet_files)}')
+    parquet_list = ', '.join([f"'{pf}'" for pf in parquet_files])
 
     # upsert with duckdb
     with duckdb.connect() as con_ddb:
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
 
-        if len(mtlf_file) == 0:
-            create_mtlf = '''
-            CREATE TABLE IF NOT EXISTS mtlf (
-                Interval TIMESTAMP,
-                GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-                timestamp_mst TIMESTAMP,
-                MTLF INTEGER, 
-                Averaged_Actual DOUBLE
-                );
-            '''
-        else:
-            create_mtlf = f'''
+        create_mtlf = f'''
             CREATE TABLE mtlf AS
-            SELECT *
-            FROM read_parquet('s3://{AWS_S3_BUCKET}/{mtlf_file[0]}');
+            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual
+            FROM read_parquet('{s3_path_target}');
             '''
-
         con_ddb.sql(create_mtlf)
-            
         res = con_ddb.sql('select count(*) from mtlf')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
-        log.info('delete conflicts')
+        create_mtlf_upsert = f'''
+            CREATE TABLE mtlf_upsert AS
+            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual
+            FROM read_parquet([{parquet_list}]);
+            '''
+        con_ddb.sql(create_mtlf_upsert)
+        res = con_ddb.sql('select min(GMTIntervalEnd), max(GMTIntervalEnd) from mtlf_upsert')
+        log.info(f'min/max update times: \n{res}')
+
+        res = con_ddb.sql('select count(*) from mtlf_upsert')
+        update_count = res.fetchall()[0][0]
+        log.info(f'{update_count = }')
+
         mtlf_delete_conflicts = '''
         -- Delete conflicting rows
         DELETE FROM mtlf
@@ -774,91 +833,66 @@ def upsert_mtlf(
         con_ddb.sql(mtlf_insert_update)
 
         mtlf_copy_to = f'''
-        COPY mtlf TO 's3://{AWS_S3_BUCKET}/{mtlf_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        COPY mtlf TO '{s3_path_target}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
         '''
         log.info(f'{mtlf_copy_to = }')
         con_ddb.sql(mtlf_copy_to)
 
-        res = con_ddb.sql('select count(*) from mtlf')
+        res = con_ddb.sql(f"select count(*) from read_parquet('{s3_path_target}')")
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
         rows_updated = update_count - insert_count
         log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
+            f'ROWS INSERTED: {insert_count:,} - ROWS UPDATED: {rows_updated :,} - TOTAL: {end_count:,}'
+            )
+            
 
 
 def upsert_mtrf(
-        mtrf_upsert: pd.DataFrame,
-        backfill: bool=False,
+    parquet_files: List[str],
 ) -> None:
     """
-    Upsert new/backfilled MTRF (Mid-Term Resource Forecast) data to S3 parquet via DuckDB.
-
-    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
-    deletes conflicting rows by primary key (GMTIntervalEnd), inserts new records,
-    then writes the updated table back to S3 as a parquet file.
-
-    Args:
-        mtrf_upsert: DataFrame to upsert to MTRF table. Must contain columns:
-            Interval, GMTIntervalEnd, timestamp_mst, Wind_Forecast_MW, Solar_Forecast_MW.
-        backfill: If True, removes rows with missing values before upsert. This
-            removes rows where forecast values are missing, preventing overwriting
-            actual values with incomplete data.
-
-    Returns:
-        None - data is upserted to S3 parquet file.
-
-    Environment Variables:
-        AWS_S3_BUCKET: S3 bucket containing the parquet files.
-        AWS_S3_FOLDER: Folder prefix within the bucket.
+    TODO: doc string
     """
-    # remove missing values if backfilling
-    if backfill:
-        mtrf_upsert.dropna(axis=0, how='any', inplace=True)
-    # remove any duplicated primary keys
-    mtrf_upsert = mtrf_upsert[~mtrf_upsert.GMTIntervalEnd.duplicated()]
-    update_count = len(mtrf_upsert)
-    # NOTE: the df col order must match the order in the table
-    ordered_cols = [
-        'Interval', 'GMTIntervalEnd', 'timestamp_mst',
-        'Wind_Forecast_MW', 'Solar_Forecast_MW',
-    ]
-    mtrf_upsert = mtrf_upsert[ordered_cols]
-    log.info(f'mtrf_upsert.timestamp_mst.min(): {mtrf_upsert.timestamp_mst.min()}')
-    log.info(f'mtrf_upsert.timestamp_mst.max(): {mtrf_upsert.timestamp_mst.max()}')
 
-    parquet_files = utils.get_parquet_files()
-    mtrf_file = [pf for pf in parquet_files if 'mtrf.parquet' in pf]
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+
+    s3_path_target = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/mtrf.parquet'
+
+    log.info(f'number of files upserting: {len(parquet_files)}')
+    parquet_list = ', '.join([f"'{pf}'" for pf in parquet_files])
 
     # upsert with duckdb
     with duckdb.connect() as con_ddb:
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
-
-        if len(mtrf_file) == 0:
-            create_mtrf = '''
-            CREATE TABLE IF NOT EXISTS mtrf (
-                Interval TIMESTAMP,
-                GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-                timestamp_mst TIMESTAMP,
-                Wind_Forecast_MW DOUBLE,
-                Solar_Forecast_MW DOUBLE
-                );
-            '''
-        else:
-            create_mtrf = f'''
+        # Interval	GMTIntervalEnd	Wind_Forecast_MW	Solar_Forecast_MW
+        create_mtrf = f'''
             CREATE TABLE mtrf AS
-            SELECT *
-            FROM read_parquet('s3://{AWS_S3_BUCKET}/{mtrf_file[0]}');
+            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW
+            FROM read_parquet('{s3_path_target}');
             '''
-
         con_ddb.sql(create_mtrf)
-
         res = con_ddb.sql('select count(*) from mtrf')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
-        log.info('delete conflicts')
+        create_mtrf_upsert = f'''
+            CREATE TABLE mtrf_upsert AS
+            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW
+            FROM read_parquet([{parquet_list}]);
+            '''
+        con_ddb.sql(create_mtrf_upsert)
+        res = con_ddb.sql('select min(GMTIntervalEnd), max(GMTIntervalEnd) from mtrf_upsert')
+        log.info(f'min/max update times: \n{res}')
+
+        res = con_ddb.sql('select count(*) from mtrf_upsert')
+        update_count = res.fetchall()[0][0]
+        log.info(f'{update_count = }')
+
         mtrf_delete_conflicts = '''
         -- Delete conflicting rows
         DELETE FROM mtrf
@@ -874,97 +908,97 @@ def upsert_mtrf(
         con_ddb.sql(mtrf_insert_update)
 
         mtrf_copy_to = f'''
-        COPY mtrf TO 's3://{AWS_S3_BUCKET}/{mtrf_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        COPY mtrf TO '{s3_path_target}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
         '''
         log.info(f'{mtrf_copy_to = }')
         con_ddb.sql(mtrf_copy_to)
 
-        res = con_ddb.sql('select count(*) from mtrf')
+        res = con_ddb.sql(f"select count(*) from read_parquet('{s3_path_target}')")
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
         rows_updated = update_count - insert_count
         log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
-
-
+            f'ROWS INSERTED: {insert_count:,} - ROWS UPDATED: {rows_updated :,} - TOTAL: {end_count:,}'
+            )
+            
+        
 def upsert_lmp(
-    lmp_upsert: pd.DataFrame,
-    backfill: bool=False, #NOOP
+    parquet_files: List[str],
 ) -> None:
     """
-    Upsert new/backfilled LMP (Locational Marginal Price) data to S3 parquet via DuckDB.
-
-    Loads existing data from S3 parquet (if available) into an in-memory DuckDB table,
-    deletes conflicting rows by composite primary key (GMTIntervalEnd_HE,
-    Settlement_Location_Name, PNODE_Name), inserts new records, then writes the
-    updated table back to S3 as a parquet file.
-
-    Note:
-        The backfill parameter is not used (unlike MTLF and MTRF) since prices
-        aren't forecasted, so there's no concern about overwriting actuals with forecasts.
-
-    Args:
-        lmp_upsert: DataFrame to upsert to LMP table. Must contain columns:
-            Interval_HE, GMTIntervalEnd_HE, timestamp_mst_HE, Settlement_Location_Name,
-            PNODE_Name, LMP, MLC, MCC, MEC.
-        backfill: Not used; included for compatibility with collect_upsert_data().
-
-    Returns:
-        None - data is upserted to S3 parquet file.
-
-    Environment Variables:
-        AWS_S3_BUCKET: S3 bucket containing the parquet files.
-        AWS_S3_FOLDER: Folder prefix within the bucket.
+    TODO: doc string
     """
-    # remove any duplicated primary keys
-    idx = lmp_upsert[['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']].duplicated()
-    lmp_upsert = lmp_upsert[~idx]
-    # NOTE: the df col order must match the order in the table
-    ordered_cols = [
-        'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
-        'Settlement_Location_Name', 'PNODE_Name',
-        'LMP', 'MLC', 'MCC', 'MEC'
-    ]
-    lmp_upsert = lmp_upsert[ordered_cols]
-    update_count = len(lmp_upsert)
-    log.info(f'lmp_upsert.timestamp_mst_HE.min(): {lmp_upsert.timestamp_mst_HE.min()}')
-    log.info(f'lmp_upsert.timestamp_mst_HE.max(): {lmp_upsert.timestamp_mst_HE.max()}')
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
 
-    parquet_files = utils.get_parquet_files()
-    lmp_file = [pf for pf in parquet_files if 'lmp.parquet' in pf]
+    s3_path_target = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/lmp.parquet'
+
+    log.info(f'number of files upserting: {len(parquet_files)}')
+    parquet_list = ', '.join([f"'{pf}'" for pf in parquet_files])
 
     # upsert with duckdb
     with duckdb.connect() as con_ddb:
         con_ddb.sql("INSTALL httpfs;")
         con_ddb.sql("LOAD httpfs;")
 
-        if len(lmp_file) == 0:
-            create_lmp = '''
-            CREATE TABLE IF NOT EXISTS lmp (
-                Interval_HE TIMESTAMP,
-                GMTIntervalEnd_HE TIMESTAMP,
-                timestamp_mst_HE TIMESTAMP,
-                Settlement_Location_Name STRING,
-                PNODE_Name STRING,
-                LMP DOUBLE,
-                MLC DOUBLE,
-                MCC DOUBLE,
-                MEC DOUBLE,
-                PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
-                );
-            '''
-        else:
-            create_lmp = f'''
+        # create_lmp = '''
+        # CREATE TABLE IF NOT EXISTS lmp (
+        #     Interval_HE TIMESTAMP,
+        #     GMTIntervalEnd_HE TIMESTAMP,
+        #     timestamp_mst_HE TIMESTAMP,
+        #     Settlement_Location_Name STRING,
+        #     PNODE_Name STRING,
+        #     LMP DOUBLE,
+        #     MLC DOUBLE,
+        #     MCC DOUBLE,
+        #     MEC DOUBLE,
+        #     PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
+        #     );
+        # '''
+
+        create_lmp = f'''
             CREATE TABLE lmp AS
-            SELECT *
-            FROM read_parquet('s3://{AWS_S3_BUCKET}/{lmp_file[0]}');
+            SELECT DISTINCT Interval_HE
+            , GMTIntervalEnd_HE
+            , timestamp_mst_HE
+            , Settlement_Location_Name
+            , PNODE_Name
+            , LMP
+            , MLC
+            , MCC
+            , MEC
+            --PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
+            FROM read_parquet('{s3_path_target}');
             '''
-
         con_ddb.sql(create_lmp)
-
         res = con_ddb.sql('select count(*) from lmp')
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
+
+        create_lmp_upsert = f'''
+            CREATE TABLE lmp_upsert AS
+            SELECT DISTINCT Interval_HE
+            , GMTIntervalEnd_HE
+            , timestamp_mst_HE
+            , Settlement_Location_Name
+            , PNODE_Name
+            , LMP
+            , MLC
+            , MCC
+            , MEC
+            --PRIMARY KEY (GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)
+            FROM read_parquet([{parquet_list}]);
+            '''
+        con_ddb.sql(create_lmp_upsert)
+        res = con_ddb.sql('select min(GMTIntervalEnd_HE), max(GMTIntervalEnd_HE) from lmp_upsert')
+        log.info(f'min/max update times: \n{res}')
+
+        res = con_ddb.sql('select count(*) from lmp_upsert')
+        update_count = res.fetchall()[0][0]
+        log.info(f'{update_count = }')
+
 
         log.info('delete conflicts')
         lmp_delete_conflicts = '''
@@ -984,12 +1018,12 @@ def upsert_lmp(
         con_ddb.sql(lmp_insert_update)
 
         lmp_copy_to = f'''
-        COPY lmp TO 's3://{AWS_S3_BUCKET}/{lmp_file[0]}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
+        COPY lmp TO '{s3_path_target}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE TRUE);
         '''
         log.info(f'{lmp_copy_to = }')
         con_ddb.sql(lmp_copy_to)
 
-        res = con_ddb.sql('select count(*) from lmp')
+        res = con_ddb.sql(f"select count(*) from read_parquet('{s3_path_target}')")
         end_count = res.fetchall()[0][0]
         insert_count = end_count - start_count
         rows_updated = update_count - insert_count
@@ -997,271 +1031,271 @@ def upsert_lmp(
             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
 
-def upsert_gen_cap(
-        gen_cap_upsert: pd.DataFrame,
-        backfill: bool=False,
-) -> None:
-    """
-    Function to upsert new/backfilled generation capacity data into duckdb database.
-    Args:
-        gen_cap_upsert: pd.DataFrame - dataframe to upsert to MTRF table in database.
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
-    Returns:
-        None - new data is upserted to table
-    """
-    # remove missing values if backfilling
-    if backfill:
-        gen_cap_upsert.dropna(axis=0, how='any', inplace=True)
-    # remove any duplicated primary keys
-    gen_cap_upsert = gen_cap_upsert[~gen_cap_upsert.GMTIntervalEnd.duplicated()]
-    update_count = len(gen_cap_upsert)
-    # NOTE: the df col order must match the order in the table
-    ordered_cols = [
-        'GMTIntervalEnd', 'timestamp_mst',
-        'Coal_Market', 'Coal_Self', 'Hydro', 
-        'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
-    ]
-    gen_cap_upsert = gen_cap_upsert[ordered_cols]
-    log.info(f'gen_cap_upsert.timestamp_mst.min(): {gen_cap_upsert.timestamp_mst.min()}')
-    log.info(f'gen_cap_upsert.timestamp_mst.max(): {gen_cap_upsert.timestamp_mst.max()}')
+# def upsert_gen_cap(
+#         gen_cap_upsert: pd.DataFrame,
+#         backfill: bool=False,
+# ) -> None:
+#     """
+#     Function to upsert new/backfilled generation capacity data into duckdb database.
+#     Args:
+#         gen_cap_upsert: pd.DataFrame - dataframe to upsert to MTRF table in database.
+#         backfill: bool = False - if true removes rows with missing values before
+#             upsert.  This removes rows where average actual is missing because
+#             the time period is forecasted and prevents overwriting actual values
+#             with forecasted values.
+#     Returns:
+#         None - new data is upserted to table
+#     """
+#     # remove missing values if backfilling
+#     if backfill:
+#         gen_cap_upsert.dropna(axis=0, how='any', inplace=True)
+#     # remove any duplicated primary keys
+#     gen_cap_upsert = gen_cap_upsert[~gen_cap_upsert.GMTIntervalEnd.duplicated()]
+#     update_count = len(gen_cap_upsert)
+#     # NOTE: the df col order must match the order in the table
+#     ordered_cols = [
+#         'GMTIntervalEnd', 'timestamp_mst',
+#         'Coal_Market', 'Coal_Self', 'Hydro', 
+#         'Natural_Gas', 'Nuclear', 'Solar', 'Wind',
+#     ]
+#     gen_cap_upsert = gen_cap_upsert[ordered_cols]
+#     log.info(f'gen_cap_upsert.timestamp_mst.min(): {gen_cap_upsert.timestamp_mst.min()}')
+#     log.info(f'gen_cap_upsert.timestamp_mst.max(): {gen_cap_upsert.timestamp_mst.max()}')
 
-    # upsert with duckdb
-    with duckdb.connect() as con_ddb:
-        create_gen_cap = '''
-        CREATE TABLE IF NOT EXISTS gen_cap (
-             GMTIntervalEnd TIMESTAMP PRIMARY KEY,
-             timestamp_mst TIMESTAMP,
-             Coal_Market DOUBLE, 
-             Coal_Self DOUBLE,
-             Hydro DOUBLE,
-             Natural_Gas DOUBLE,
-             Nuclear DOUBLE,
-             Solar DOUBLE,
-             Wind DOUBLE
-             );
-        '''
-        con_ddb.sql(create_gen_cap)
+#     # upsert with duckdb
+#     with duckdb.connect() as con_ddb:
+#         create_gen_cap = '''
+#         CREATE TABLE IF NOT EXISTS gen_cap (
+#              GMTIntervalEnd TIMESTAMP PRIMARY KEY,
+#              timestamp_mst TIMESTAMP,
+#              Coal_Market DOUBLE, 
+#              Coal_Self DOUBLE,
+#              Hydro DOUBLE,
+#              Natural_Gas DOUBLE,
+#              Nuclear DOUBLE,
+#              Solar DOUBLE,
+#              Wind DOUBLE
+#              );
+#         '''
+#         con_ddb.sql(create_gen_cap)
 
-        res = con_ddb.sql('select count(*) from gen_cap')
-        start_count = res.fetchall()[0][0]
-        log.info(f'starting count: {start_count:,}')
+#         res = con_ddb.sql('select count(*) from gen_cap')
+#         start_count = res.fetchall()[0][0]
+#         log.info(f'starting count: {start_count:,}')
 
-        gen_cap_insert_update = '''
-        INSERT INTO gen_cap
-            SELECT * FROM gen_cap_upsert
-            ON CONFLICT DO UPDATE SET Coal_Market = EXCLUDED.Coal_Market, 
-            Coal_Self = EXCLUDED.Coal_Self,
-            Hydro = EXCLUDED.Hydro,
-            Natural_Gas = EXCLUDED.Natural_Gas,
-            Nuclear = EXCLUDED.Nuclear,
-            Solar = EXCLUDED.Solar,
-            Wind = EXCLUDED.Wind;
-        '''
+#         gen_cap_insert_update = '''
+#         INSERT INTO gen_cap
+#             SELECT * FROM gen_cap_upsert
+#             ON CONFLICT DO UPDATE SET Coal_Market = EXCLUDED.Coal_Market, 
+#             Coal_Self = EXCLUDED.Coal_Self,
+#             Hydro = EXCLUDED.Hydro,
+#             Natural_Gas = EXCLUDED.Natural_Gas,
+#             Nuclear = EXCLUDED.Nuclear,
+#             Solar = EXCLUDED.Solar,
+#             Wind = EXCLUDED.Wind;
+#         '''
 
-        con_ddb.sql(gen_cap_insert_update)
+#         con_ddb.sql(gen_cap_insert_update)
 
-        res = con_ddb.sql('select count(*) from gen_cap')
-        end_count = res.fetchall()[0][0]
-        insert_count = end_count - start_count
-        rows_updated = update_count - insert_count
-        log.info(
-            f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
+#         res = con_ddb.sql('select count(*) from gen_cap')
+#         end_count = res.fetchall()[0][0]
+#         insert_count = end_count - start_count
+#         rows_updated = update_count - insert_count
+#         log.info(
+#             f'ROWS INSERTED: {insert_count:,} ROWS UPDATED: {rows_updated :,} TOTAL: {end_count:,}')
 
 
 ###########################################################
 # COLLECT AND UPSERT DATA
 ###########################################################
 
-def collect_upsert_data(
-    get_range_data_func: Callable,
-    upsert_func: Callable,
-    n_periods: int,
-    primary_key_cols: List[str],
-    end_ts: Union[pd.Timestamp, None] = None,
-    backfill: bool=False,
-) -> None:
-    """
-    Function to combine data collection and upsert.  This is used as
-    a base function.  Helper functions will wrap this function and
-    pass in data specific parameters needed to collect and upsert
-    new data.
-    Args:
-        get_range_data_func: Callable - data specific function
-            to get a range of data, i.e. get_range_data_mtrf()
-        n_periods: int - the number of time periods to gather prior to end_ts
-        primary_key_cols: List[str] - columns that define unique
-            rows.  This is used to find duplicate rows and update
-            those rows with new data.
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
-    Returns:
-        None - new data is upserted to table
-    """
+# def collect_upsert_data(
+#     get_range_data_func: Callable,
+#     upsert_func: Callable,
+#     n_periods: int,
+#     primary_key_cols: List[str],
+#     end_ts: Union[pd.Timestamp, None] = None,
+#     backfill: bool=False,
+# ) -> None:
+#     """
+#     Function to combine data collection and upsert.  This is used as
+#     a base function.  Helper functions will wrap this function and
+#     pass in data specific parameters needed to collect and upsert
+#     new data.
+#     Args:
+#         get_range_data_func: Callable - data specific function
+#             to get a range of data, i.e. get_range_data_mtrf()
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#         primary_key_cols: List[str] - columns that define unique
+#             rows.  This is used to find duplicate rows and update
+#             those rows with new data.
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         backfill: bool = False - if true removes rows with missing values before
+#             upsert.  This removes rows where average actual is missing because
+#             the time period is forecasted and prevents overwriting actual values
+#             with forecasted values.
+#     Returns:
+#         None - new data is upserted to table
+#     """
 
-    # set end_ts to current time if None
-    if end_ts is None:
-        end_ts = pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#     # set end_ts to current time if None
+#     if end_ts is None:
+#         end_ts = pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
 
-    log.info(f'end_ts: {end_ts}')
-    log.info(f'n_periods: {n_periods}')
+#     log.info(f'end_ts: {end_ts}')
+#     log.info(f'n_periods: {n_periods}')
 
-    # get data
-    range_df = get_range_data_func(end_ts, n_periods=n_periods)
+#     # get data
+#     range_df = get_range_data_func(end_ts, n_periods=n_periods)
 
-    # upsert data
-    if range_df.shape[0] > 0:
-        range_df.info()
-        assert not range_df[primary_key_cols].duplicated().any()
-        upsert_func(range_df, backfill=backfill)
+#     # upsert data
+#     if range_df.shape[0] > 0:
+#         range_df.info()
+#         assert not range_df[primary_key_cols].duplicated().any()
+#         upsert_func(range_df, backfill=backfill)
 
-    else:
-        log.info(f'no data to upsert for end_ts: {end_ts} - n_periods: {n_periods}')
-
-
-def collect_upsert_mtlf(
-    end_ts: Union[pd.Timestamp, None] = None,
-    n_periods: int = 6,
-    backfill: bool = False,
-) -> None:
-    """
-    Helper function to wrap collect_upsert_data() with defaults for
-    the MTLF data.
-    Args:
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        n_periods: int - the number of time periods to gather prior to end_ts
-            default set to get the previous 6 hours of data
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
-    Returns:
-        None - new data is upserted to table
-    """
-
-    primary_key_cols = ['GMTIntervalEnd']
-
-    collect_upsert_data(
-        get_range_data_mtlf,
-        upsert_mtlf,
-        n_periods,
-        primary_key_cols,
-        end_ts=end_ts,
-        backfill=backfill,
-    )
+#     else:
+#         log.info(f'no data to upsert for end_ts: {end_ts} - n_periods: {n_periods}')
 
 
-def collect_upsert_mtrf(
-    end_ts: Union[pd.Timestamp, None] = None,
-    n_periods: int = 6,
-    backfill: bool = False,
-) -> None:
-    """
-    Helper function to wrap collect_upsert_data() with defaults for
-    the MTRF data.
-    Args:
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        n_periods: int - the number of time periods to gather prior to end_ts
-            default set to get the previous 6 hours of data
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
-    Returns:
-        None - new data is upserted to table
-    """
+# def collect_upsert_mtlf(
+#     end_ts: Union[pd.Timestamp, None] = None,
+#     n_periods: int = 6,
+#     backfill: bool = False,
+# ) -> None:
+#     """
+#     Helper function to wrap collect_upsert_data() with defaults for
+#     the MTLF data.
+#     Args:
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#             default set to get the previous 6 hours of data
+#         backfill: bool = False - if true removes rows with missing values before
+#             upsert.  This removes rows where average actual is missing because
+#             the time period is forecasted and prevents overwriting actual values
+#             with forecasted values.
+#     Returns:
+#         None - new data is upserted to table
+#     """
 
-    # set default table
-    primary_key_cols = ['GMTIntervalEnd']
+#     primary_key_cols = ['GMTIntervalEnd']
 
-    collect_upsert_data(
-        get_range_data_mtrf,
-        upsert_mtrf,
-        n_periods,
-        primary_key_cols,
-        end_ts=end_ts,
-        backfill=backfill,
-    )
-
-
-def collect_upsert_lmp(
-    daily_file: bool,
-    end_ts: Union[pd.Timestamp, None] = None,
-    n_periods: int = 6,
-) -> None:
-    """
-    Helper function to wrap collect_upsert_data() with defaults for
-    the LMP data.
-    Args:
-        daily_file: bool - flag for daily files vs 5 min interval files
-            since they are formatted differently :(
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        n_periods: int - the number of time periods to gather prior to end_ts
-            default set to get the previous 6 hours of data
-    Returns:
-        None - new data is upserted to table
-    """
-
-    primary_key_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
-
-    if daily_file:  # loading 5 min lmps for entire day
-        lmp_get_range_data_func = get_range_data_interval_daily_lmps
-    else:  # working with 5 min interval files
-        lmp_get_range_data_func = get_range_data_interval_5min_lmps
-
-    collect_upsert_data(
-        lmp_get_range_data_func,
-        upsert_lmp,
-        n_periods,
-        primary_key_cols,
-        end_ts=end_ts,
-    )
+#     collect_upsert_data(
+#         get_range_data_mtlf,
+#         upsert_mtlf,
+#         n_periods,
+#         primary_key_cols,
+#         end_ts=end_ts,
+#         backfill=backfill,
+#     )
 
 
-def collect_upsert_gen_cap(
-    end_ts: Union[pd.Timestamp, None] = None,
-    n_periods: int = 6,
-    backfill: bool = False,
-) -> None:
-    """
-    Helper function to wrap collect_upsert_data() with defaults for
-    the MTRF data.
-    Args:
-        end_ts: pd.Timestamp - the last time period to get data
-            i.e. pd.Timestamp('6/4/2023') or
-            pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        n_periods: int - the number of time periods to gather prior to end_ts
-            default set to get the previous 6 hours of data
-        backfill: bool = False - if true removes rows with missing values before
-            upsert.  This removes rows where average actual is missing because
-            the time period is forecasted and prevents overwriting actual values
-            with forecasted values.
-    Returns:
-        None - new data is upserted to table
-    """
+# def collect_upsert_mtrf(
+#     end_ts: Union[pd.Timestamp, None] = None,
+#     n_periods: int = 6,
+#     backfill: bool = False,
+# ) -> None:
+#     """
+#     Helper function to wrap collect_upsert_data() with defaults for
+#     the MTRF data.
+#     Args:
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#             default set to get the previous 6 hours of data
+#         backfill: bool = False - if true removes rows with missing values before
+#             upsert.  This removes rows where average actual is missing because
+#             the time period is forecasted and prevents overwriting actual values
+#             with forecasted values.
+#     Returns:
+#         None - new data is upserted to table
+#     """
 
-    # set default table
-    primary_key_cols = ['GMTIntervalEnd']
+#     # set default table
+#     primary_key_cols = ['GMTIntervalEnd']
 
-    collect_upsert_data(
-        get_range_data_gen_cap,
-        upsert_gen_cap,
-        n_periods,
-        primary_key_cols,
-        end_ts=end_ts,
-        backfill=backfill,
-    )
+#     collect_upsert_data(
+#         get_range_data_mtrf,
+#         upsert_mtrf,
+#         n_periods,
+#         primary_key_cols,
+#         end_ts=end_ts,
+#         backfill=backfill,
+#     )
+
+
+# def collect_upsert_lmp(
+#     daily_file: bool,
+#     end_ts: Union[pd.Timestamp, None] = None,
+#     n_periods: int = 6,
+# ) -> None:
+#     """
+#     Helper function to wrap collect_upsert_data() with defaults for
+#     the LMP data.
+#     Args:
+#         daily_file: bool - flag for daily files vs 5 min interval files
+#             since they are formatted differently :(
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#             default set to get the previous 6 hours of data
+#     Returns:
+#         None - new data is upserted to table
+#     """
+
+#     primary_key_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
+
+#     if daily_file:  # loading 5 min lmps for entire day
+#         lmp_get_range_data_func = get_range_data_interval_daily_lmps
+#     else:  # working with 5 min interval files
+#         lmp_get_range_data_func = get_range_data_interval_5min_lmps
+
+#     collect_upsert_data(
+#         lmp_get_range_data_func,
+#         upsert_lmp,
+#         n_periods,
+#         primary_key_cols,
+#         end_ts=end_ts,
+#     )
+
+
+# def collect_upsert_gen_cap(
+#     end_ts: Union[pd.Timestamp, None] = None,
+#     n_periods: int = 6,
+#     backfill: bool = False,
+# ) -> None:
+#     """
+#     Helper function to wrap collect_upsert_data() with defaults for
+#     the MTRF data.
+#     Args:
+#         end_ts: pd.Timestamp - the last time period to get data
+#             i.e. pd.Timestamp('6/4/2023') or
+#             pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
+#         n_periods: int - the number of time periods to gather prior to end_ts
+#             default set to get the previous 6 hours of data
+#         backfill: bool = False - if true removes rows with missing values before
+#             upsert.  This removes rows where average actual is missing because
+#             the time period is forecasted and prevents overwriting actual values
+#             with forecasted values.
+#     Returns:
+#         None - new data is upserted to table
+#     """
+
+#     # set default table
+#     primary_key_cols = ['GMTIntervalEnd']
+
+#     collect_upsert_data(
+#         get_range_data_gen_cap,
+#         upsert_gen_cap,
+#         n_periods,
+#         primary_key_cols,
+#         end_ts=end_ts,
+#         backfill=backfill,
+#     )
 

@@ -59,6 +59,8 @@ x-libraries: &libraries
       package: duckdb==1.4.3
   - pypi:
       package: tqdm==4.67.1
+  - pypi:
+      package: polars-xdt==0.17.1
 
 resources:
   jobs:
