@@ -25,7 +25,6 @@ Dependencies:
 # base imports
 import os
 import sys
-from time import sleep
 from io import StringIO
 from typing import List, Union, Callable
 import tqdm
@@ -263,8 +262,6 @@ def get_csv_from_url(
         # By this way we can know about the type of error occurring
         log.error(e)
         df = pl.DataFrame()
-
-    sleep(1)
     return df
 
 
@@ -809,9 +806,25 @@ def upsert_mtlf(
         log.info(f'starting count: {start_count:,}')
 
         create_mtlf_upsert = f'''
+            CREATE TABLE DeduplicatedData AS
+                SELECT Interval
+                    , GMTIntervalEnd
+                    , MTLF
+                    , Averaged_Actual
+                    , timestamp_mst
+                    , ROW_NUMBER() OVER (
+                            PARTITION BY GMTIntervalEnd, file_create_time_utc -- Group by columns that define a duplicate
+                            ORDER BY file_create_time_utc ASC                  -- Define which "first" to keep
+                        ) as rn
+                FROM read_parquet([{parquet_list}]);
+
             CREATE TABLE mtlf_upsert AS
             SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual, timestamp_mst
-            FROM read_parquet([{parquet_list}]);
+            FROM DeduplicatedData
+            WHERE
+                rn = 1; -- Keep only the first row in each group
+
+            DROP TABLE DeduplicatedData;
             '''
         con_ddb.sql(create_mtlf_upsert)
         res = con_ddb.sql('select min(GMTIntervalEnd), max(GMTIntervalEnd) from mtlf_upsert')
@@ -883,10 +896,31 @@ def upsert_mtrf(
         start_count = res.fetchall()[0][0]
         log.info(f'starting count: {start_count:,}')
 
+        # create_mtrf_upsert = f'''
+        #     CREATE TABLE mtrf_upsert AS
+        #     SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW, timestamp_mst
+        #     FROM read_parquet([{parquet_list}]);
+        #     '''
         create_mtrf_upsert = f'''
+            CREATE TABLE DeduplicatedData AS
+                SELECT Interval
+                    , GMTIntervalEnd
+                    , Wind_Forecast_MW
+                    , Solar_Forecast_MW
+                    , timestamp_mst
+                    , ROW_NUMBER() OVER (
+                            PARTITION BY GMTIntervalEnd, file_create_time_utc -- Group by columns that define a duplicate
+                            ORDER BY file_create_time_utc ASC                  -- Define which "first" to keep
+                        ) as rn
+                FROM read_parquet([{parquet_list}]);
+
             CREATE TABLE mtrf_upsert AS
             SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW, timestamp_mst
-            FROM read_parquet([{parquet_list}]);
+            FROM DeduplicatedData
+            WHERE
+                rn = 1; -- Keep only the first row in each group
+
+            DROP TABLE DeduplicatedData;
             '''
         con_ddb.sql(create_mtrf_upsert)
         res = con_ddb.sql('select min(GMTIntervalEnd), max(GMTIntervalEnd) from mtrf_upsert')
