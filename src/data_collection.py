@@ -25,6 +25,7 @@ Dependencies:
 # base imports
 import os
 import sys
+from time import sleep
 from io import StringIO
 from typing import List, Union, Callable
 import tqdm
@@ -237,7 +238,7 @@ def format_df_colnames(df: pl.DataFrame) -> None:
 ###########################################################
 def get_csv_from_url(
         url: str,
-        timeout: int=60,
+        timeout: int=120,
 ) -> pl.DataFrame:
     """
     Function to read csv file from SPP url.
@@ -262,6 +263,8 @@ def get_csv_from_url(
         # By this way we can know about the type of error occurring
         log.error(e)
         df = pl.DataFrame()
+
+    sleep(1)
     return df
 
 

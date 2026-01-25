@@ -2958,6 +2958,19 @@ wheels = [
 ]
 
 [[package]]
+name = "polars-xdt"
+version = "0.17.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/fc/5aecdaf5d20a84e9e9daae4a41b9d8f06062467fedb4cdb609d32bcaeee3/polars_xdt-0.17.1.tar.gz", hash = "sha256:3a3860bf3c3015d519192102af4de687feabc6dbf6a038fc2f60cde72e9d0c45", size = 986276, upload-time = "2025-10-21T09:54:25.018Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/63/12149bd0ce61b4d696f967fe219337668586767a51461a03f05d2b43e141/polars_xdt-0.17.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:36b771ca705a0405c09be92deaeee93b4c657ba2940fa59312ae18fed53c39d4", size = 5973275, upload-time = "2025-10-21T09:54:22.593Z" },
+    { url = "https://files.pythonhosted.org/packages/45/6d/befadcd0b966b22283515012fccd49195469f6f066fe1c67a17349f7753c/polars_xdt-0.17.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:32467a45bff7160222cd1d7c1a7fc56c748222120eeeba5682af44bdbed20e85", size = 5582343, upload-time = "2025-10-21T09:54:20.408Z" },
+    { url = "https://files.pythonhosted.org/packages/10/81/24ef6ded9dcc8a6a3134d69bc9b4c512bf437c5459ff1cea5e33bcfbbb8b/polars_xdt-0.17.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8aeadda0f9052588f226fc24df00e97fbadbf4334562be59352a073ed40c09b3", size = 6199223, upload-time = "2025-10-21T09:54:15.879Z" },
+    { url = "https://files.pythonhosted.org/packages/14/33/6e461ae16b55b580f75f4090cada72818f3c38e89a3ae28045660e16c207/polars_xdt-0.17.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8bae8fbf6a4e10fcddd62e0e28ad667b56ecd53d3b6228517a8c72ac384dd233", size = 6817610, upload-time = "2025-10-21T09:54:18.161Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/f1/4f28e5d890dbebd83f1be960bb64a6dcb99e635d8c796bb04fa597a45711/polars_xdt-0.17.1-cp39-abi3-win_amd64.whl", hash = "sha256:a4c68e949e795df57b97ea787638920285553264745661e9506c19a0059811de", size = 5727931, upload-time = "2025-10-21T09:54:26.479Z" },
+]
+
+[[package]]
 name = "prometheus-client"
 version = "0.24.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4082,6 +4095,7 @@ dependencies = [
     { name = "pandas" },
     { name = "plotly" },
     { name = "polars" },
+    { name = "polars-xdt" },
     { name = "pyarrow" },
     { name = "python-dotenv" },
     { name = "scikit-learn" },
@@ -4118,6 +4132,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "plotly", specifier = ">=6.0" },
     { name = "polars", specifier = ">=1.37.1" },
+    { name = "polars-xdt", specifier = ">=0.17.1" },
     { name = "pyarrow", specifier = ">=17.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
