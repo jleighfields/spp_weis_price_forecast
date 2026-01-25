@@ -800,7 +800,7 @@ def upsert_mtlf(
 
         create_mtlf = f'''
             CREATE TABLE mtlf AS
-            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual
+            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual, timestamp_mst
             FROM read_parquet('{s3_path_target}');
             '''
         con_ddb.sql(create_mtlf)
@@ -810,7 +810,7 @@ def upsert_mtlf(
 
         create_mtlf_upsert = f'''
             CREATE TABLE mtlf_upsert AS
-            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual
+            SELECT DISTINCT Interval, GMTIntervalEnd, MTLF, Averaged_Actual, timestamp_mst
             FROM read_parquet([{parquet_list}]);
             '''
         con_ddb.sql(create_mtlf_upsert)
@@ -875,7 +875,7 @@ def upsert_mtrf(
         # Interval	GMTIntervalEnd	Wind_Forecast_MW	Solar_Forecast_MW
         create_mtrf = f'''
             CREATE TABLE mtrf AS
-            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW
+            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW, timestamp_mst
             FROM read_parquet('{s3_path_target}');
             '''
         con_ddb.sql(create_mtrf)
@@ -885,7 +885,7 @@ def upsert_mtrf(
 
         create_mtrf_upsert = f'''
             CREATE TABLE mtrf_upsert AS
-            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW
+            SELECT DISTINCT Interval, GMTIntervalEnd, Wind_Forecast_MW, Solar_Forecast_MW, timestamp_mst
             FROM read_parquet([{parquet_list}]);
             '''
         con_ddb.sql(create_mtrf_upsert)
