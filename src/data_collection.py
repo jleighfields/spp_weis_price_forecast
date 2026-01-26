@@ -862,33 +862,36 @@ def upsert_mtlf_mtrf_lmp(
         )
 
 
-def rebuild_mtlf_mtrf_lmp_from_s3(target: str):
+def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
     assert AWS_S3_BUCKET
     assert AWS_S3_FOLDER
     
-    if target in ['lmp_daily', 'lmp_5min']:
+    if src_dir in ['lmp_daily', 'lmp_5min']:
         key_cols = [
             'GMTIntervalEnd_HE',
             'Settlement_Location_Name', 
             'PNODE_Name',
         ]
-    elif target in ['mtrf', 'mtlf']:
+    elif src_dir in ['mtrf', 'mtlf']:
         key_cols = ['GMTIntervalEnd']
     else:
-        raise ValueError(f"{target = } - expected one of (mtlf, mtrf, lmp_daily)")
+        raise ValueError(f"{src_dir = } - expected one of (mtlf, mtrf, lmp_daily, lmp_5min)")
     
-    
-    object_name = f'{AWS_S3_FOLDER}data/{target}.parquet'
+    if 'lmp_' in src_dir:
+        object_name = f'{AWS_S3_FOLDER}data/lmp.parquet'
+    else: # mtrf, mtlf
+        object_name = f'{AWS_S3_FOLDER}data/{src_dir}.parquet'
+
     s3_path_target = f's3://{AWS_S3_BUCKET}/{object_name}'
     file_exists = check_file_exists_client(AWS_S3_BUCKET, object_name)
     log.info(f'{s3_path_target = }')
     log.info(f'{file_exists = }')
     
     upsert_df = (
-        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{target}/*.parquet')
+        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{src_dir}/*.parquet')
         .sort(key_cols + ['file_create_time_utc'], descending=False)
         .unique(
             subset=key_cols, 
