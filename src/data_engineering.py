@@ -196,6 +196,7 @@ def prep_lmp(
 
     lmp = (
         lmp
+        .drop('file_create_time_utc', 'url', strict=False)
         .with_columns(pl.col("Settlement_Location_Name").alias("unique_id"))
         .filter(~pl.col("unique_id").str.contains("_ARPA"))
         .drop_nulls(subset=["unique_id"])
@@ -249,6 +250,7 @@ def prep_mtrf(
 
     mtrf = (
         mtrf
+        .drop('file_create_time_utc', 'url', strict=False)
         .with_columns(pl.col("Wind_Forecast_MW").cast(pl.Float32))
         .with_columns(pl.col("Solar_Forecast_MW").cast(pl.Float32))
         .drop([c for c in drop_cols if c in mtrf.columns], strict=False)
@@ -294,6 +296,7 @@ def prep_mtlf(
 
     mtlf = (
         mtlf
+        .drop('file_create_time_utc', 'url', strict=False)
         .with_columns(pl.col("MTLF").cast(pl.Float32))
         .with_columns(pl.col("Averaged_Actual").cast(pl.Float32))
         .drop([c for c in drop_cols if c in mtlf.columns], strict=False)

@@ -830,7 +830,7 @@ def upsert_mtlf_mtrf_lmp(
 
     log.info(f'min/max update times: \n{min_max}')
 
-    if check_file_exists_client(AWS_S3_BUCKET, object_name):
+    if file_exists:
         target_df = pl.read_parquet(s3_path_target)
         start_count = target_df.shape[0]
         log.info(f'starting count: {start_count:,}')
@@ -854,6 +854,97 @@ def upsert_mtlf_mtrf_lmp(
     log.info(f'starting count: {start_count:,}')
     target_df.write_parquet(s3_path_target)
 
+    end_count = target_df.shape[0]
+    insert_count = end_count - start_count
+    rows_updated = update_count - insert_count
+    log.info(
+        f'ROWS INSERTED: {insert_count:,} - ROWS UPDATED: {rows_updated :,} - TOTAL: {end_count:,}'
+        )
+
+
+def rebuild_mtlf_mtrf_lmp_from_s3(target: str):
+    
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+    
+    if target in ['lmp_daily', 'lmp_5min']:
+        key_cols = [
+            'GMTIntervalEnd_HE',
+            'Settlement_Location_Name', 
+            'PNODE_Name',
+        ]
+    elif target in ['mtrf', 'mtlf']:
+        key_cols = ['GMTIntervalEnd']
+    else:
+        raise ValueError(f"{target = } - expected one of (mtlf, mtrf, lmp_daily)")
+    
+    
+    object_name = f'{AWS_S3_FOLDER}data/{target}.parquet'
+    s3_path_target = f's3://{AWS_S3_BUCKET}/{object_name}'
+    file_exists = check_file_exists_client(AWS_S3_BUCKET, object_name)
+    log.info(f'{s3_path_target = }')
+    log.info(f'{file_exists = }')
+    
+    upsert_df = (
+        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{target}/*.parquet')
+        .sort(key_cols + ['file_create_time_utc'], descending=False)
+        .unique(
+            subset=key_cols, 
+            keep='last',
+            maintain_order=True,
+        )
+        .collect()
+    )
+    
+    num_dups = upsert_df.select(key_cols).is_duplicated().sum()
+    assert num_dups == 0, print(f'{num_dups = }')
+    
+    update_count = upsert_df.shape[0]
+    
+    if 'GMTIntervalEnd' in upsert_df:
+        min_max = (
+            upsert_df
+            .select(
+                pl.col.GMTIntervalEnd.min().alias('min_date'),
+                pl.col.GMTIntervalEnd.max().alias('max_date'),
+            )
+        )
+    else:
+        min_max = (
+            upsert_df
+            .select(
+                pl.col.GMTIntervalEnd_HE.min().alias('min_date'),
+                pl.col.GMTIntervalEnd_HE.max().alias('max_date'),
+            )
+        )
+    
+    log.info(f'min/max update times: \n{min_max}')
+    
+    if file_exists:
+        target_df = pl.read_parquet(s3_path_target)
+        start_count = target_df.shape[0]
+    
+        target_df = (
+            pl.concat([target_df, upsert_df])
+            .sort(key_cols + ['file_create_time_utc'], descending=False)
+            .unique(
+                subset=key_cols, 
+                keep='last',
+                maintain_order=True,
+            )
+        )
+    else:
+        start_count = 0
+        target_df = upsert_df
+    
+    num_dups = target_df.select(key_cols).is_duplicated().sum()
+    assert num_dups == 0, print(f'{num_dups = }')
+    
+    log.info(f'starting count: {start_count:,}')
+    target_df.write_parquet(s3_path_target)
+    
     end_count = target_df.shape[0]
     insert_count = end_count - start_count
     rows_updated = update_count - insert_count
