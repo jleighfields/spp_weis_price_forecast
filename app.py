@@ -161,8 +161,11 @@ with forcasted_data:
             log.info('finished getting data from s3')
 
         with st.spinner('Preparing data...'):
+            log.info('preparing all_df_pd')
             st.session_state['all_df_pd'] = de.all_df_to_pandas(de.prep_all_df(con))
+            log.info('preparing lmp')
             st.session_state['lmp'] = de.prep_lmp(con)
+            log.info('preparing lmp_pd_df')
             st.session_state['lmp_pd_df'] = (
                 st.session_state['lmp']
                 .to_pandas()

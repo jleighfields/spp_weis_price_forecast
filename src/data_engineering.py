@@ -108,10 +108,18 @@ def create_database(
         AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket where data is stored.
     """
-    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+    log.info(f'{AWS_S3_BUCKET = }')
+    log.info(f'{AWS_S3_FOLDER = }')
 
     # List all objects in the S3 folder and filter for parquet files
-    parquet_files = utils.get_parquet_files()
+    # object_name = f'{AWS_S3_FOLDER}data/{target}.parquet'
+    # s3_path_target = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{target}.parquet'
+    # parquet_files = utils.get_parquet_files()
+    # parquet_files = [ for ds in datasets]
 
     con = duckdb.connect()
     con.sql("INSTALL httpfs;")
@@ -119,10 +127,9 @@ def create_database(
 
     for ds in datasets:
         # Match dataset name to S3 parquet file key
-        key = [pf for pf in parquet_files if f'{ds}.parquet' in pf]
-        assert len(key) > 0, f'No parquet file found for dataset: {ds}'
-        log.info(f'loading {ds} from s3://{AWS_S3_BUCKET}/{key[0]}')
-        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('s3://{AWS_S3_BUCKET}/{key[0]}')")
+        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{ds}.parquet'
+        log.info(f'loading {ds} from {pf}')
+        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('{pf}')")
 
     return con
 
@@ -195,6 +202,8 @@ def prep_lmp(
         .with_columns(pl.col("timestamp_mst_HE").alias("timestamp_mst"))
         .with_columns(pl.col("LMP").cast(pl.Float32))
         .drop([c for c in drop_cols if c in lmp.columns], strict=False)
+        .group_by(["unique_id", "timestamp_mst"])
+        .mean()
         .sort(["unique_id", "timestamp_mst"])
         .with_columns(
             (pl.col("LMP") - pl.col("LMP").shift(1).over("unique_id"))
@@ -243,6 +252,8 @@ def prep_mtrf(
         .with_columns(pl.col("Wind_Forecast_MW").cast(pl.Float32))
         .with_columns(pl.col("Solar_Forecast_MW").cast(pl.Float32))
         .drop([c for c in drop_cols if c in mtrf.columns], strict=False)
+        .group_by("timestamp_mst")
+        .mean()
         .sort("timestamp_mst")
     )
 
@@ -286,6 +297,8 @@ def prep_mtlf(
         .with_columns(pl.col("MTLF").cast(pl.Float32))
         .with_columns(pl.col("Averaged_Actual").cast(pl.Float32))
         .drop([c for c in drop_cols if c in mtlf.columns], strict=False)
+        .group_by("timestamp_mst")
+        .mean()
         .sort("timestamp_mst")
     )
 
@@ -407,42 +420,56 @@ def prep_all_df(
             including engineered features like 're_ratio', 'load_net_re',
             and rolling window aggregations.
     """
+    log.info('preparing lmp')
     lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
+    log.info(f'{lmp.shape = }')
+    log.info('preparing mtlf')
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
+    log.info(f'{mtlf.shape = }')
+    log.info('preparing mtrf')
     mtrf = prep_mtrf(con, start_time=start_time, end_time=end_time)
+    log.info(f'{mtrf.shape = }')
     # weather = prep_weather(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
+    log.info(f'joining mtrf')
     all_df = (
         mtlf
         .join(mtrf, on="timestamp_mst", how="left")
         # .join(weather, on="timestamp_mst", how="left", suffix="_weather")
     )
     # remove duplicate columns from joins
+    log.info('removing columns')
     all_df = all_df.select([c for c in all_df.columns if not c.endswith("_right")])
 
     # create cross join of timestamps with unique_ids
     unique_ids = lmp.select("unique_id").unique()
     timestamps = all_df.select("timestamp_mst")
-    ids_df = timestamps.join(unique_ids, how="cross")
+    ids_df = timestamps.join(unique_ids, how="cross").unique()
+    log.info(f'{ids_df.shape = }')
 
+    log.info('joining lmps')
     all_df = (
         all_df
         .join(ids_df, on="timestamp_mst", how="left")
         .join(lmp, on=["unique_id", "timestamp_mst"], how="left", suffix="_lmp")
     )
+    log.info(f'{all_df.shape = }')
     # remove duplicate columns from joins
+    log.info('removing columns')
     all_df = all_df.select([c for c in all_df.columns if not c.endswith("_right") and not c.endswith("_lmp")])
+    log.info(f'{all_df.shape = }')
 
-    # filter and sort
+    log.info('filter and sort')
     all_df = (
         all_df
         .filter(pl.col("timestamp_mst") >= pd.Timestamp("2023-05-15"))  # some bad data early on...
         .sort(["unique_id", "timestamp_mst"])
         .drop_nulls(subset=["unique_id"])
     )
+    log.info(f'{all_df.shape = }')
 
-    # engineer features
+    log.info('engineer features')
     all_df = (
         all_df
         .with_columns(
@@ -508,6 +535,7 @@ def prep_all_df(
                 .alias(f"load_net_re_diff_rolling_{i}")
             )
         )
+    log.info(f'{all_df.shape = }')
 
     return all_df
 
