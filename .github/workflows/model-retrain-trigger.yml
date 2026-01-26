@@ -1,35 +1,35 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# # This workflow will install Python dependencies, run tests and lint with a single version of Python
+# # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: model-retrain-trigger
+# name: model-retrain-trigger
 
-on:
-  # push:
-  #   branches: [ "main" ]
-  # pull_request:
-  #   branches: [ "main" ]
-  schedule:
-    - cron: "15 00 * * 0" # run every sunday at 12:15AM
-  workflow_dispatch:  # manual triggers
+# on:
+#   # push:
+#   #   branches: [ "main" ]
+#   # pull_request:
+#   #   branches: [ "main" ]
+#   schedule:
+#     - cron: "15 00 * * 0" # run every sunday at 12:15AM
+#   workflow_dispatch:  # manual triggers
 
-jobs:
-  trigger-model-retrain-job:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout repo content
-      uses: actions/checkout@v4
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install lightning-sdk python-dotenv
-        # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Trigger job
-      env:
-        LIGHTNING_USER_ID: ${{ secrets.LIGHTNING_USER_ID }}
-        LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
-      run: python jobs/model_retrain_job.py
+# jobs:
+#   trigger-model-retrain-job:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Checkout repo content
+#       uses: actions/checkout@v4
+#     - name: Set up Python 3.11
+#       uses: actions/setup-python@v4
+#       with:
+#         python-version: "3.11"
+#     - name: Install dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install lightning-sdk python-dotenv
+#         # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+#     - name: Trigger job
+#       env:
+#         LIGHTNING_USER_ID: ${{ secrets.LIGHTNING_USER_ID }}
+#         LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
+#       run: python jobs/model_retrain_job.py
 
