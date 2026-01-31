@@ -79,6 +79,17 @@ For development work on our local Windows machines there are two scripts to help
 * There is stub for a script to launch streamlit as well, [start_streamlit.bat](./scripts/start_streamlit.bat).
 
 
+## Shiny App Deployment
+
+To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
+
+```bash
+rsconnect write-manifest shiny -o -g -e app.py .
+```
+
+This creates a manifest file that Posit Connect uses to determine the app entrypoint, Python version, and dependencies.
+
+
 ## Databricks Asset Bundles
 
 To validate and deploy the Databricks bundle:
