@@ -9,6 +9,7 @@ import os
 import random
 import pickle
 import logging
+from pathlib import Path
 from typing import List
 
 # data
@@ -19,6 +20,8 @@ import boto3
 # user interface
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
+import plotly.io as pio
+import shinyswatch
 
 # forecasting data
 import torch
@@ -129,7 +132,10 @@ app_ui = ui.page_sidebar(
         width=300,
     ),
     # Main content
-    ui.output_image("header_image"),
+    ui.tags.img(
+        src="wind_farm.png",
+        style="width: 100%; max-height: 200px; object-fit: cover; display: block;",
+    ),
     ui.h1("SPP Weis Nodal Price Forecast"),
     ui.markdown(
         "**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** | "
@@ -140,9 +146,11 @@ app_ui = ui.page_sidebar(
     ui.hr(),
     ui.output_ui("forecast_header"),
     output_widget("forecast_plot"),
+    ui.hr(),
     ui.output_ui("forecast_data_section"),
     title="SPP price forecast",
     fillable=False,
+    theme=shinyswatch.theme.flatly(),
 )
 
 
@@ -332,10 +340,6 @@ def server(input, output, session):
     # Render static outputs
     ###############################################################
 
-    @render.image
-    def header_image():
-        return {"src": "./imgs/wind_farm.png", "width": "100%"}
-
     @render.ui
     def train_timestamp_display():
         ts = train_timestamp_val()
@@ -500,6 +504,10 @@ def server(input, output, session):
             show_fig=False,
         )
         log.info(f'type(fig): {type(fig)}')
+        # make the chart fill the available width
+        fig.update_layout(width=None, autosize=True)
+        # round-trip through plotly's JSON serializer to convert NaN/Inf to null
+        fig = pio.from_json(fig.to_json())
         return fig
 
     @render.ui
@@ -515,8 +523,9 @@ def server(input, output, session):
             ui.download_button("download_data", "Download data"),
         )
 
-    @render.data_frame
-    def forecast_table():
+    @reactive.calc
+    def forecast_table_data():
+        '''Prepare display data with string column names for table and download.'''
         plot_df = forecast_display_data()
         if plot_df is None:
             return None
@@ -528,7 +537,16 @@ def server(input, output, session):
             'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 'Ratio',
         ]
         display_data = display_data.loc[:, download_cols]
+        # rename float quantile columns to strings for Shiny DataGrid compatibility
+        display_data = display_data.rename(columns={0.1: 'q10', 0.5: 'q50', 0.9: 'q90'})
         log.info(f'display_data.columns: {display_data.columns}')
+        return display_data
+
+    @render.data_frame
+    def forecast_table():
+        display_data = forecast_table_data()
+        if display_data is None:
+            return None
         return render.DataGrid(display_data)
 
     @render.download(
@@ -537,18 +555,10 @@ def server(input, output, session):
         )
     )
     def download_data():
-        plot_df = forecast_display_data()
-        if plot_df is None:
+        display_data = forecast_table_data()
+        if display_data is None:
             return
-
-        plot_idx = plotting.get_plot_idx(plot_df)
-        display_data = plot_df[plot_idx]
-        download_cols = [
-            'node', 'time', 'LMP_HOURLY', 'mean_fcast', 0.1, 0.5, 0.9,
-            'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 'Ratio',
-        ]
-        display_data = display_data.loc[:, download_cols]
         yield display_data.to_csv(index=False)
 
 
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets=Path(__file__).parent / "imgs")

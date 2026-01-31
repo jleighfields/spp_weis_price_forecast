@@ -4319,6 +4319,21 @@ wheels = [
 ]
 
 [[package]]
+name = "shinyswatch"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "htmltools" },
+    { name = "packaging" },
+    { name = "shiny" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/63/092491e79e022f7dc722cc0ea293b43d3fff68528a87e128d86b51b7873d/shinyswatch-0.9.0.tar.gz", hash = "sha256:090b89668691a1c520c79b7e36b03901489976199b64988e05ad4c86924da17d", size = 1300395, upload-time = "2025-03-03T19:18:04.078Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/04/35477d786dbe2ace26bf34c8251a3213fcb4c70e25539f3739dda9d81dba/shinyswatch-0.9.0-py3-none-any.whl", hash = "sha256:bb335a1db9bf5fc84867e2644ffbcc61ccad452d38c7b386651c2b78ab0f734a", size = 1314155, upload-time = "2025-03-03T19:18:01.602Z" },
+]
+
+[[package]]
 name = "shinywidgets"
 version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -4404,6 +4419,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "shiny" },
+    { name = "shinyswatch" },
     { name = "shinywidgets" },
     { name = "streamlit" },
     { name = "torch" },
@@ -4446,6 +4462,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "shiny", specifier = ">=1.5.1" },
+    { name = "shinyswatch", specifier = ">=0.9.0" },
     { name = "shinywidgets", specifier = ">=0.7.1" },
     { name = "streamlit", specifier = "==1.38" },
     { name = "torch", specifier = "<2.6" },
