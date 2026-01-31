@@ -153,6 +153,7 @@ app_ui = ui.page_sidebar(
         ),
         ui.hr(),
         ui.output_ui("forecast_header"),
+        ui.output_ui("forecast_placeholder"),
         output_widget("forecast_plot"),
         ui.hr(),
         ui.output_ui("forecast_data_section"),
@@ -495,6 +496,15 @@ def server(input, output, session):
         return ui.div(
             ui.h3(f"{node_name} forecasts"),
             ui.p(f"Forecast start time: {fcast_time}"),
+        )
+
+    @render.ui
+    def forecast_placeholder():
+        if preds_val() is not None:
+            return ui.div()
+        return ui.p(
+            "Click 'Get forecast' to generate a plot.",
+            style="color: gray; font-style: italic; padding: 2rem 0;",
         )
 
     @render_plotly
