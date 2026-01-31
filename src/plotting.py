@@ -391,7 +391,7 @@ def plotly_forecast(
 
     fig.update_layout(
             title=title_text,
-            height=800,
+            height=500,
             width=1000,
             yaxis_tickformat = ',',
             plot_bgcolor="rgb(240, 240, 250, 1.0)",
@@ -407,8 +407,10 @@ def plotly_forecast(
         fig.update_yaxes(title_text=" Net load", row=2, col=1)
         # range slider for subplots
         # https://community.plotly.com/t/subplot-with-shared-x-axis-and-range-slider/3148
-        fig.update_layout(xaxis2_rangeslider_visible=True,
-                        xaxis2_rangeslider_thickness=0.1)
+        fig.update_layout(
+            xaxis2_rangeslider_visible=True,
+            xaxis2_rangeslider_thickness=0.05,
+            )
 
 
     fig.for_each_trace(lambda t: t.update(
