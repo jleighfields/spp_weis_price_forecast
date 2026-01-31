@@ -808,6 +808,8 @@ def upsert_mtlf_mtrf_lmp(
 
     num_dups = upsert_df.select(key_cols).is_duplicated().sum()
     assert num_dups == 0, print(f'{num_dups = }')
+    log.info(f'{upsert_df.shape = }')
+
 
     update_count = upsert_df.shape[0]
 
@@ -832,6 +834,7 @@ def upsert_mtlf_mtrf_lmp(
 
     if file_exists:
         target_df = pl.read_parquet(s3_path_target)
+        log.info(f'{target_df.shape = }')
         start_count = target_df.shape[0]
         log.info(f'starting count: {start_count:,}')
 
@@ -903,6 +906,7 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     
     num_dups = upsert_df.select(key_cols).is_duplicated().sum()
     assert num_dups == 0, print(f'{num_dups = }')
+    log.info(f'{upsert_df.shape = }')
     
     update_count = upsert_df.shape[0]
     

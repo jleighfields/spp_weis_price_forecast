@@ -195,6 +195,15 @@ wheels = [
 ]
 
 [[package]]
+name = "ansicolors"
+version = "1.1.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/31/7faed52088732704523c259e24c26ce6f2f33fbeff2ff59274560c27628e/ansicolors-1.1.8.zip", hash = "sha256:99f94f5e3348a0bcd43c82e5fc4414013ccc19d70bd939ad71e0133ce9c372e0", size = 23027, upload-time = "2017-06-02T21:22:10.729Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/18/a56e2fe47b259bb52201093a3a9d4a32014f9d85071ad07e9d60600890ca/ansicolors-1.1.8-py2.py3-none-any.whl", hash = "sha256:00d2dde5a675579325902536738dd27e4fac1fd68f773fe36c21044eb559e187", size = 13847, upload-time = "2017-06-02T21:22:12.67Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -979,6 +988,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/68/fc/259a54fc22111a847981927aa58528d766e8b228c6d41deb0ad8a1959f9f/duckdb-1.3.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4732fb8cc60566b60e7e53b8c19972cb5ed12d285147a3063b16cc64a79f6d9f", size = 21128404, upload-time = "2025-07-08T10:40:53.772Z" },
     { url = "https://files.pythonhosted.org/packages/ab/dc/5d5140383e40661173dacdceaddee2a97c3f6721a5e8d76e08258110595e/duckdb-1.3.2-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:97f7a22dcaa1cca889d12c3dc43a999468375cdb6f6fe56edf840e062d4a8293", size = 22779786, upload-time = "2025-07-08T10:40:55.826Z" },
     { url = "https://files.pythonhosted.org/packages/51/c9/2fcd86ab7530a5b6caff42dbe516ce7a86277e12c499d1c1f5acd266ffb2/duckdb-1.3.2-cp313-cp313-win_amd64.whl", hash = "sha256:cd3d717bf9c49ef4b1016c2216517572258fa645c2923e91c5234053defa3fb5", size = 11395370, upload-time = "2025-07-08T10:40:57.655Z" },
+]
+
+[[package]]
+name = "entrypoints"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/8d/a7121ffe5f402dc015277d2d31eb82d2187334503a011c18f2e78ecbb9b2/entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4", size = 13974, upload-time = "2022-02-02T21:30:28.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/a8/365059bbcd4572cbc41de17fd5b682be5868b218c3c5479071865cab9078/entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f", size = 5294, upload-time = "2022-02-02T21:30:26.024Z" },
 ]
 
 [[package]]
@@ -2785,6 +2803,27 @@ wheels = [
 ]
 
 [[package]]
+name = "papermill"
+version = "2.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp", marker = "python_full_version == '3.12.*'" },
+    { name = "ansicolors" },
+    { name = "click" },
+    { name = "entrypoints" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tenacity" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/99/8d/d843b1739b966d47dae02eb9b705713d810e5b283ea7ad24bf9b3b6bf99e/papermill-2.6.0.tar.gz", hash = "sha256:9fe2a91912fd578f391b4cc8d6d105e73124dcd0cde2a43c3c4a1c77ac88ea24", size = 78342, upload-time = "2024-04-26T21:48:18.788Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/55/83ce641bc61a70cc0721af6f50154ecaaccedfbdbc27366c1755a2a34972/papermill-2.6.0-py3-none-any.whl", hash = "sha256:0f09da6ef709f3f14dde77cb1af052d05b14019189869affff374c9e612f2dd5", size = 38564, upload-time = "2024-04-26T21:48:15.64Z" },
+]
+
+[[package]]
 name = "parso"
 version = "0.8.5"
 source = { registry = "https://pypi.org/simple" }
@@ -4093,6 +4132,7 @@ dependencies = [
     { name = "optuna-dashboard" },
     { name = "optuna-integration", extra = ["pytorch-lightning"] },
     { name = "pandas" },
+    { name = "papermill" },
     { name = "plotly" },
     { name = "polars" },
     { name = "polars-xdt" },
@@ -4130,6 +4170,7 @@ requires-dist = [
     { name = "optuna-dashboard", specifier = ">=0.20.0" },
     { name = "optuna-integration", extras = ["pytorch-lightning"], specifier = ">=4.6.0" },
     { name = "pandas", specifier = ">=2.3.3" },
+    { name = "papermill", specifier = ">=2.6.0" },
     { name = "plotly", specifier = ">=6.0" },
     { name = "polars", specifier = ">=1.37.1" },
     { name = "polars-xdt", specifier = ">=0.17.1" },

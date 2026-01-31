@@ -16,6 +16,7 @@ saved_models/*
 *.pkl
 *polars_testing/
 *spp_trials.db
+*model_retrains/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
