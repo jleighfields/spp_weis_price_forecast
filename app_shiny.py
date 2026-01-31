@@ -134,21 +134,28 @@ app_ui = ui.page_sidebar(
     # Main content
     ui.tags.img(
         src="wind_farm.png",
-        style="width: 100%; max-height: 200px; object-fit: cover; display: block;",
+        style="width: 100%; max-height: 400px; object-fit: cover; display: block;",
     ),
-    ui.h1("SPP Weis Nodal Price Forecast"),
-    ui.markdown(
-        "**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** | "
-        "**[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** | "
-        "**[SPP Weis generation mix](https://portal.spp.org/pages/weis-generation-mix)**"
+    ui.br(),
+    # ui.h1("SPP Weis Nodal Price Forecast"),
+    ui.row(
+        ui.column(2, ui.input_action_button("refresh_data", "Refresh data")),
+        ui.column(
+            10,
+            ui.markdown(
+                "**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** | "
+                "**[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** | "
+                "**[SPP Weis generation mix](https://portal.spp.org/pages/weis-generation-mix)**"
+            ),
+            style="display: flex; align-items: center;",
+        ),
     ),
-    ui.input_action_button("refresh_data", "Refresh data"),
     ui.hr(),
     ui.output_ui("forecast_header"),
     output_widget("forecast_plot"),
     ui.hr(),
     ui.output_ui("forecast_data_section"),
-    title="SPP price forecast",
+    title="SPP Weis Nodal Price Forecast",
     fillable=False,
     theme=shinyswatch.theme.flatly(),
 )
@@ -536,9 +543,13 @@ def server(input, output, session):
             'node', 'time', 'LMP_HOURLY', 'mean_fcast', 0.1, 0.5, 0.9,
             'MTLF', 'Wind_Forecast_MW', 'Solar_Forecast_MW', 'Ratio',
         ]
-        display_data = display_data.loc[:, download_cols]
+        display_data = display_data.loc[:, download_cols].copy()
         # rename float quantile columns to strings for Shiny DataGrid compatibility
         display_data = display_data.rename(columns={0.1: 'q10', 0.5: 'q50', 0.9: 'q90'})
+        # round numeric columns to 2 decimal places
+        numeric_cols = display_data.select_dtypes(include='number').columns
+        for col in numeric_cols:
+            display_data[col] = display_data[col].map(lambda x: f'{x:.2f}' if pd.notna(x) else '')
         log.info(f'display_data.columns: {display_data.columns}')
         return display_data
 
