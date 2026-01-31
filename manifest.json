@@ -1,0 +1,605 @@
+{
+  "version": 1,
+  "locale": "en_US.UTF-8",
+  "metadata": {
+    "appmode": "python-shiny",
+    "entrypoint": "app.py"
+  },
+  "python": {
+    "version": "3.11.14",
+    "package_manager": {
+      "name": "pip",
+      "version": "26.0",
+      "package_file": "requirements.txt"
+    }
+  },
+  "environment": {
+    "python": {
+      "requires": "~=3.11.0"
+    }
+  },
+  "files": {
+    "requirements.txt": {
+      "checksum": "00cb822ac4749d45de8103bbf9912d51"
+    },
+    ".databricks/.gitignore": {
+      "checksum": "b3136a962c78ed1216a17f6c0e30b9c0"
+    },
+    ".databricks/bundle/dev/bin/terraform": {
+      "checksum": "eb6a3f7e03115b96c8165eb63dc83554"
+    },
+    ".databricks/bundle/dev/deployment.json": {
+      "checksum": "b7c30b195285c43da3935fa3cd49217a"
+    },
+    ".databricks/bundle/dev/sync-snapshots/c070bc9399bfc706.json": {
+      "checksum": "1d3aef37fcb2cb37a8118bbe47ae4034"
+    },
+    ".databricks/bundle/dev/terraform/.terraform.lock.hcl": {
+      "checksum": "82201117564ad6751862499f890ee6a6"
+    },
+    ".databricks/bundle/dev/terraform/.terraform/providers/registry.terraform.io/databricks/databricks/1.102.0/linux_amd64/CHANGELOG.md": {
+      "checksum": "e21d76cc6e5a3dd8dd2fcf56b44d1b2b"
+    },
+    ".databricks/bundle/dev/terraform/.terraform/providers/registry.terraform.io/databricks/databricks/1.102.0/linux_amd64/LICENSE": {
+      "checksum": "a9666e245c74a5843544d48cf89e74cb"
+    },
+    ".databricks/bundle/dev/terraform/.terraform/providers/registry.terraform.io/databricks/databricks/1.102.0/linux_amd64/NOTICE": {
+      "checksum": "7cd2ffffb74337cb37131c9fc2416da3"
+    },
+    ".databricks/bundle/dev/terraform/.terraform/providers/registry.terraform.io/databricks/databricks/1.102.0/linux_amd64/terraform-provider-databricks_v1.102.0": {
+      "checksum": "f38559b818d6e12040a640afa9d55076"
+    },
+    ".databricks/bundle/dev/terraform/bundle.tf.json": {
+      "checksum": "ea67d912dc17d323babd7b6f279381ec"
+    },
+    ".databricks/bundle/dev/terraform/plan": {
+      "checksum": "3420b71f8acb609aacdad053f30173f8"
+    },
+    ".databricks/bundle/dev/terraform/terraform.tfstate": {
+      "checksum": "27de4f795637843cb64febfb226f103b"
+    },
+    ".databricks/bundle/dev/terraform/terraform.tfstate.backup": {
+      "checksum": "01857f5b80d3922310b1976c8da15cb3"
+    },
+    ".devcontainer/Dockerfile": {
+      "checksum": "78781696db98fe81f7ebbc59fa6c2d4b"
+    },
+    ".devcontainer/README.md": {
+      "checksum": "1491efc66e02dd3382c07289037ff585"
+    },
+    ".devcontainer/devcontainer.json": {
+      "checksum": "4f83eea72250341728a15103463f768f"
+    },
+    ".devcontainer/docker.txt": {
+      "checksum": "e448f11e4963fefd918c80ef8eaa487b"
+    },
+    ".devcontainer/overrides.json": {
+      "checksum": "3882ef553a983edd14554623f7966744"
+    },
+    ".env": {
+      "checksum": "a63689393d4e22ab7aadbf55e915157f"
+    },
+    ".gitattributes": {
+      "checksum": "05bdb783ee6514c8c072e47680af8ff7"
+    },
+    ".gitignore": {
+      "checksum": "d7fe02ffb8f33aed5afc822a526afc7b"
+    },
+    ".pytest_cache/.gitignore": {
+      "checksum": "ae07caff09568018697eb6087d745223"
+    },
+    ".pytest_cache/CACHEDIR.TAG": {
+      "checksum": "f552fcc7d0ecdb6607533519d6898357"
+    },
+    ".pytest_cache/README.md": {
+      "checksum": "7cc7f8d7cb2f2f6ea48da17c4b42c097"
+    },
+    ".pytest_cache/v/cache/lastfailed": {
+      "checksum": "3d255517a529f4b4ba682c1150f9ac19"
+    },
+    ".pytest_cache/v/cache/nodeids": {
+      "checksum": "6dff1753dac27ac9e9a4dda94dd0cc76"
+    },
+    ".python-version": {
+      "checksum": "c0479ff484dacd51dc5ba0461b16b9bf"
+    },
+    ".streamlit/config.toml": {
+      "checksum": "e573ebb9e1082f58f3f93e5ca28f1ff8"
+    },
+    "LICENSE": {
+      "checksum": "adbcdfe89e3d0429500309d1f936343f"
+    },
+    "README.md": {
+      "checksum": "e492b24c3709f85d491baba4df72412f"
+    },
+    "TRAIN_TIMESTAMP.pkl": {
+      "checksum": "cc0a6a62d023ce137bcbf7598e57398e"
+    },
+    "app.py": {
+      "checksum": "cfaead128f4f6f23a7aa543839589922"
+    },
+    "app.py.bak": {
+      "checksum": "dd0ffd8dc3d05e44a1c937e348379839"
+    },
+    "databricks.yaml": {
+      "checksum": "32794d745116dbc477243f86e2851c09"
+    },
+    "deprecated/.github/workflows/daily-etl-trigger.yml": {
+      "checksum": "a72774ce1c87bc8094df0ff4a30df2e2"
+    },
+    "deprecated/.github/workflows/hourly-etl-trigger.yml": {
+      "checksum": "de0d4da513ee651bc5b991ca836a19a3"
+    },
+    "deprecated/.github/workflows/model-retrain-trigger.yml": {
+      "checksum": "ba796b6616a89386fcd6313305f0fda4"
+    },
+    "deprecated/jobs/data_collection_hourly_job.py": {
+      "checksum": "5c9fbbdb5aa4cd62e0e6329529747b7f"
+    },
+    "deprecated/jobs/data_collection_lmp_5_min_job.py": {
+      "checksum": "46c5c60f597093e814ed47856c42769b"
+    },
+    "deprecated/jobs/data_collection_lmp_daily_job.py": {
+      "checksum": "96d0ff385f7d58be13265fdcf7388ecd"
+    },
+    "deprecated/jobs/model_retrain_job.py": {
+      "checksum": "eacf8ea7b255d6a72268a856081c32b2"
+    },
+    "deprecated/scripts/data_collection/.ipynb_checkpoints/data_collection_5_min-checkpoint.py": {
+      "checksum": "5c05c144b707d11788c0632aa502ce4c"
+    },
+    "deprecated/scripts/data_collection/data_collection_5_min.py": {
+      "checksum": "5c05c144b707d11788c0632aa502ce4c"
+    },
+    "deprecated/scripts/data_collection/data_collection_daily.py": {
+      "checksum": "7f9b91fdb744780eedc7e517d7cac653"
+    },
+    "deprecated/scripts/data_collection/data_collection_hourly.py": {
+      "checksum": "670875ee2e6ce0458f6e44c84b512f3c"
+    },
+    "deprecated/scripts/model_retrain.py": {
+      "checksum": "db7d0eae1d14ed488c982e3f11b1ff98"
+    },
+    "deprecated/scripts/model_retrain_mlflow.py": {
+      "checksum": "99ff81334e60edbdf6e4921465f9cab4"
+    },
+    "env/create_conda.txt": {
+      "checksum": "d97ee364ef87d04d0ed05ea7d756f6a5"
+    },
+    "env/create_venv.txt": {
+      "checksum": "6ec6c1d94c190099c60bbce0dfc1ae40"
+    },
+    "imgs/Roscoe_Wind_Farm_in_West_Texas.jpg": {
+      "checksum": "8c20769a58175a7dca3d5a2616218084"
+    },
+    "imgs/Wind_turbines_in_southern_California_2016.jpg": {
+      "checksum": "9ca72cafee49a9009b941132a9cb9aa2"
+    },
+    "imgs/dev_container_jupyter.PNG": {
+      "checksum": "445965b29bdde23f572481a5f996d6ee"
+    },
+    "imgs/dev_container_start.PNG": {
+      "checksum": "4298abba85c84bc8c8c0c22a51d46261"
+    },
+    "imgs/dev_container_vs_code.PNG": {
+      "checksum": "e44158d45822ebadb54fcce46306eebc"
+    },
+    "imgs/dev_containers.PNG": {
+      "checksum": "64e4ed32e9a0901f3656de4d1fba6bcb"
+    },
+    "imgs/lmp_settlement_location.PNG": {
+      "checksum": "6d0262327720c21ea425e6529411ee0c"
+    },
+    "imgs/mtlf.PNG": {
+      "checksum": "d0c4dd79bfca92dead859c479fde815b"
+    },
+    "imgs/mtrf.PNG": {
+      "checksum": "7aae4d7fc034e54e43db5e28a6553663"
+    },
+    "imgs/power-pathway-2-os-1.jpg": {
+      "checksum": "314211192c12613ae4ffd314c378cabe"
+    },
+    "imgs/time_series_data.PNG": {
+      "checksum": "370e819bc5642aed76d4426aa9a64282"
+    },
+    "imgs/wind_farm.png": {
+      "checksum": "daa3d04f1fbbd7da4b0f089ed019b177"
+    },
+    "mlruns.db": {
+      "checksum": "2d72eae99b4e39e5d20c00c67b541a05"
+    },
+    "model_checkpoints/tide_model/000/_model.pth.tar": {
+      "checksum": "c1bf4e15b13211a8ba6cce475bf5c0bc"
+    },
+    "model_checkpoints/tide_model/000/checkpoints/best-epoch=11-val_loss=99.64.ckpt": {
+      "checksum": "921ec8eb4c580709a1a020ce0eccbc9c"
+    },
+    "model_checkpoints/tide_model/000/checkpoints/last-epoch=11.ckpt": {
+      "checksum": "7313bff13b67e90373c726aee3b3aed9"
+    },
+    "model_checkpoints/tide_model/000/logs/events.out.tfevents.1768682782.pop-os": {
+      "checksum": "eae514538779fdf39cc541b662b29fa8"
+    },
+    "model_checkpoints/tide_model/000/logs/events.out.tfevents.1768682936.pop-os": {
+      "checksum": "917cf7ca330477e17e58ae2ac0b292d3"
+    },
+    "model_checkpoints/tide_model/000/logs/hparams.yaml": {
+      "checksum": "28758877e1b326b9ed636669133d153a"
+    },
+    "model_checkpoints/tide_model/001/_model.pth.tar": {
+      "checksum": "c9555efff85033e66abd4c2ba80a22d2"
+    },
+    "model_checkpoints/tide_model/001/checkpoints/best-epoch=12-val_loss=91.64.ckpt": {
+      "checksum": "d0ad06e8122b483be7c19bb5af85c909"
+    },
+    "model_checkpoints/tide_model/001/checkpoints/last-epoch=12.ckpt": {
+      "checksum": "09c0a7afdbc3bb243a33388c404a012f"
+    },
+    "model_checkpoints/tide_model/001/logs/events.out.tfevents.1768682936.pop-os": {
+      "checksum": "27b87a84687b647008a237c38dc01d1f"
+    },
+    "model_checkpoints/tide_model/001/logs/events.out.tfevents.1768683062.pop-os": {
+      "checksum": "1760a222d9387636219d14827b02060d"
+    },
+    "model_checkpoints/tide_model/001/logs/hparams.yaml": {
+      "checksum": "0d29bd00c9ecae7b2970e420ca538607"
+    },
+    "model_checkpoints/tide_model/002/_model.pth.tar": {
+      "checksum": "f9905d9746fb324c7b7794ec9edf33f4"
+    },
+    "model_checkpoints/tide_model/002/checkpoints/best-epoch=6-val_loss=117.00.ckpt": {
+      "checksum": "2f5a4374ed01e3cb41fb9f24f7207567"
+    },
+    "model_checkpoints/tide_model/002/checkpoints/last-epoch=6.ckpt": {
+      "checksum": "6b5d2584273134a50d8d96603d07942c"
+    },
+    "model_checkpoints/tide_model/002/logs/events.out.tfevents.1768683062.pop-os": {
+      "checksum": "8b086609efa7ce670d28c3cfe5557af7"
+    },
+    "model_checkpoints/tide_model/002/logs/events.out.tfevents.1768683179.pop-os": {
+      "checksum": "479d8b5b0b827f41151dafcb6c1804f0"
+    },
+    "model_checkpoints/tide_model/002/logs/hparams.yaml": {
+      "checksum": "4e910f7a130b4521b67f0af0a1c5bf0a"
+    },
+    "model_checkpoints/tide_model/003/_model.pth.tar": {
+      "checksum": "cb8bc00305f59d711407d4e74c4e485e"
+    },
+    "model_checkpoints/tide_model/003/checkpoints/best-epoch=12-val_loss=106.61.ckpt": {
+      "checksum": "03da9159a1cb39c21a8f10a165428ecc"
+    },
+    "model_checkpoints/tide_model/003/checkpoints/last-epoch=12.ckpt": {
+      "checksum": "8d22f21d99dfa580c1380bb9a87d5591"
+    },
+    "model_checkpoints/tide_model/003/logs/events.out.tfevents.1768683180.pop-os": {
+      "checksum": "2ef041c4dc5074454548b82c68f6ca09"
+    },
+    "model_checkpoints/tide_model/003/logs/events.out.tfevents.1768683321.pop-os": {
+      "checksum": "e92fd4b03bbdd149e147ef38362ff945"
+    },
+    "model_checkpoints/tide_model/003/logs/hparams.yaml": {
+      "checksum": "c1f0447f55043ba0e877c44696e24168"
+    },
+    "model_checkpoints/tide_model/004/_model.pth.tar": {
+      "checksum": "196602e7871702b2d3cbda56673e0ed3"
+    },
+    "model_checkpoints/tide_model/004/checkpoints/best-epoch=15-val_loss=90.71.ckpt": {
+      "checksum": "712ba175ac09cde8a296b297fe32aea4"
+    },
+    "model_checkpoints/tide_model/004/checkpoints/last-epoch=15.ckpt": {
+      "checksum": "696fc9490fae99c188dba445237e9f82"
+    },
+    "model_checkpoints/tide_model/004/logs/events.out.tfevents.1768683321.pop-os": {
+      "checksum": "74975e06679f81e3a0dab2438f322275"
+    },
+    "model_checkpoints/tide_model/004/logs/hparams.yaml": {
+      "checksum": "11e1db36999e16d38d77f2686fef7dd5"
+    },
+    "model_checkpoints/tide_model/tide/_model.pth.tar": {
+      "checksum": "ebf0e8274920c4523bd95d3369316afc"
+    },
+    "model_checkpoints/tide_model/tide/checkpoints/best-epoch=7-val_loss=91.34.ckpt": {
+      "checksum": "27d1f9135cfc8fa8265545a81f6fadb3"
+    },
+    "model_checkpoints/tide_model/tide/checkpoints/last-epoch=7.ckpt": {
+      "checksum": "06f2f9ba1d930552901df15bae435e75"
+    },
+    "notebooks/__inti__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "notebooks/app/.ipynb_checkpoints/app_testing-checkpoint.ipynb": {
+      "checksum": "e7a100f1255b4b896e9f9c3ca09dfbef"
+    },
+    "notebooks/app/app_testing.ipynb": {
+      "checksum": "e3f46b67f2790a1ff605b9880226e99d"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_5_min-checkpoint.ipynb": {
+      "checksum": "891451f256a1f25f76f6ba29b54bc70f"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_backfill-checkpoint.ipynb": {
+      "checksum": "4bcd136fcc41b496c5992de3d4219ac2"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_daily-checkpoint.ipynb": {
+      "checksum": "08df1f0adf5ff2c3d69538f646497bb5"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_hourly-checkpoint.ipynb": {
+      "checksum": "9cd99bc26a36bb8ff4ab62d99c606d1b"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_rebuild-checkpoint.ipynb": {
+      "checksum": "55d707f94dc5067ef9efac5088da6144"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_testing-checkpoint.ipynb": {
+      "checksum": "29551c287c2c4e6ded12abb9067cca09"
+    },
+    "notebooks/data_collection/.ipynb_checkpoints/data_collection_weather-checkpoint.ipynb": {
+      "checksum": "b83d02258f57b0c3c064500899ed9de1"
+    },
+    "notebooks/data_collection/data_collection_5_min.ipynb": {
+      "checksum": "891451f256a1f25f76f6ba29b54bc70f"
+    },
+    "notebooks/data_collection/data_collection_backfill.ipynb": {
+      "checksum": "dc90eea70d1833c88a0d7aa68a615902"
+    },
+    "notebooks/data_collection/data_collection_daily.ipynb": {
+      "checksum": "08df1f0adf5ff2c3d69538f646497bb5"
+    },
+    "notebooks/data_collection/data_collection_hourly.ipynb": {
+      "checksum": "9cd99bc26a36bb8ff4ab62d99c606d1b"
+    },
+    "notebooks/data_collection/data_collection_rebuild.ipynb": {
+      "checksum": "55d707f94dc5067ef9efac5088da6144"
+    },
+    "notebooks/data_collection/data_collection_testing.ipynb": {
+      "checksum": "29551c287c2c4e6ded12abb9067cca09"
+    },
+    "notebooks/data_collection/data_collection_weather.ipynb": {
+      "checksum": "0734a169813bb6a45ba95364e611cfc8"
+    },
+    "notebooks/model_training/.ipynb_checkpoints/model-checkpoint.ipynb": {
+      "checksum": "4173df691500fcb751707a4b7624fc88"
+    },
+    "notebooks/model_training/.ipynb_checkpoints/model_ensemble-checkpoint.ipynb": {
+      "checksum": "71d28b0fe043f130904ce8505386da8a"
+    },
+    "notebooks/model_training/__inti__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "notebooks/model_training/model.ipynb": {
+      "checksum": "4173df691500fcb751707a4b7624fc88"
+    },
+    "notebooks/model_training/model_ensemble.ipynb": {
+      "checksum": "71d28b0fe043f130904ce8505386da8a"
+    },
+    "notebooks/model_training/requirements.txt": {
+      "checksum": "fe17087296ca953d7b13b6c396d0bce7"
+    },
+    "optuna/tide/model_0": {
+      "checksum": "2a1c9de64c174ad395765f7c227c3012"
+    },
+    "optuna/tide/model_0.ckpt": {
+      "checksum": "2a0290486da7bae81ed2eee32e4bdb03"
+    },
+    "optuna/tide/model_1": {
+      "checksum": "ec441d1bc90155f5ac279e8796f40bcc"
+    },
+    "optuna/tide/model_1.ckpt": {
+      "checksum": "2392e8f7b8556b3fde84ead7e0bf465d"
+    },
+    "optuna/tide/model_2": {
+      "checksum": "aac434b7527477c619af9398d5dde1ac"
+    },
+    "optuna/tide/model_2.ckpt": {
+      "checksum": "3b3b7818a6c93c9355e4d373ff3c1588"
+    },
+    "optuna/tide/model_3": {
+      "checksum": "c03a5b2b9360d891cfc2bac7cd9b599d"
+    },
+    "optuna/tide/model_3.ckpt": {
+      "checksum": "1b6454976e29706265de963d235c579c"
+    },
+    "pyproject.toml": {
+      "checksum": "6e2fd6896c8f42680c488afd0e42bc87"
+    },
+    "requirements_data_collection.txt": {
+      "checksum": "2c7bdc557ecb0eb506f98eb7d0972ff7"
+    },
+    "s3_models/TRAIN_TIMESTAMP.pkl": {
+      "checksum": "c123e136e191adfb95783a73553da841"
+    },
+    "s3_models/tide_0.pt": {
+      "checksum": "ad15d15b353655d7744bc1b9b29741d7"
+    },
+    "s3_models/tide_0.pt.ckpt": {
+      "checksum": "3360c929a4a050a44a640a64dbcf5029"
+    },
+    "s3_models/tide_1.pt": {
+      "checksum": "87871c97744a3633f86ddd85cefc1618"
+    },
+    "s3_models/tide_1.pt.ckpt": {
+      "checksum": "9a18d2e499384d367191dc689336058d"
+    },
+    "s3_models/tide_2.pt": {
+      "checksum": "951ed4c4c5bc1d41282aa71fcc859beb"
+    },
+    "s3_models/tide_2.pt.ckpt": {
+      "checksum": "9aaaaf72706306a43bc3ab95466fc33b"
+    },
+    "s3_models/tide_3.pt": {
+      "checksum": "8fbdf58ed2a63149600d2f96bb57da7b"
+    },
+    "s3_models/tide_3.pt.ckpt": {
+      "checksum": "92dba13caff64020a125ec53b89481e4"
+    },
+    "s3_models/tide_4.pt": {
+      "checksum": "222650546d815575e92ff6d52d902803"
+    },
+    "s3_models/tide_4.pt.ckpt": {
+      "checksum": "685af4084dae3b055058d96ad17f38f1"
+    },
+    "saved_models/TRAIN_TIMESTAMP.pkl": {
+      "checksum": "c123e136e191adfb95783a73553da841"
+    },
+    "saved_models/tide_0.pt": {
+      "checksum": "ad15d15b353655d7744bc1b9b29741d7"
+    },
+    "saved_models/tide_0.pt.ckpt": {
+      "checksum": "3360c929a4a050a44a640a64dbcf5029"
+    },
+    "saved_models/tide_1.pt": {
+      "checksum": "87871c97744a3633f86ddd85cefc1618"
+    },
+    "saved_models/tide_1.pt.ckpt": {
+      "checksum": "9a18d2e499384d367191dc689336058d"
+    },
+    "saved_models/tide_2.pt": {
+      "checksum": "951ed4c4c5bc1d41282aa71fcc859beb"
+    },
+    "saved_models/tide_2.pt.ckpt": {
+      "checksum": "9aaaaf72706306a43bc3ab95466fc33b"
+    },
+    "saved_models/tide_3.pt": {
+      "checksum": "8fbdf58ed2a63149600d2f96bb57da7b"
+    },
+    "saved_models/tide_3.pt.ckpt": {
+      "checksum": "92dba13caff64020a125ec53b89481e4"
+    },
+    "saved_models/tide_4.pt": {
+      "checksum": "222650546d815575e92ff6d52d902803"
+    },
+    "saved_models/tide_4.pt.ckpt": {
+      "checksum": "685af4084dae3b055058d96ad17f38f1"
+    },
+    "scripts/.ipynb_checkpoints/model_retrain-checkpoint.ipynb": {
+      "checksum": "14ca98a9a61257b3bb75f16c0e5dcbfd"
+    },
+    "scripts/model_retrain.ipynb": {
+      "checksum": "14ca98a9a61257b3bb75f16c0e5dcbfd"
+    },
+    "scripts/model_retrain.sh": {
+      "checksum": "4386970f947b3a1caa611444a05e0125"
+    },
+    "scripts/model_retrains/.ipynb_checkpoints/2026-01-31T16-25-09_model_retrain-checkpoint.ipynb": {
+      "checksum": "573850052d6a9861cd34a1012c7c8905"
+    },
+    "scripts/model_retrains/2026-01-31T15-49-00_model_retrain.ipynb": {
+      "checksum": "04272a16aed012af9e18328a0feec4be"
+    },
+    "scripts/model_retrains/2026-01-31T16-25-09_model_retrain.ipynb": {
+      "checksum": "573850052d6a9861cd34a1012c7c8905"
+    },
+    "scripts/model_retrains/2026-01-31T16-55-06_model_retrain.ipynb": {
+      "checksum": "a249d1ca4a29d8407e9443c061eaf8dc"
+    },
+    "scripts/model_retrains/2026-01-31T16-56-02_model_retrain.ipynb": {
+      "checksum": "1c574ecaf1ae49b3353b04147415191e"
+    },
+    "scripts/model_retrains/2026-01-31T16-57-52_model_retrain.ipynb": {
+      "checksum": "e0564b0f31f29551c78dcef8c938e0ee"
+    },
+    "spp_trials.db": {
+      "checksum": "57dd66d04934f3e0da9306db05795307"
+    },
+    "src/__inti__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "src/__pycache__/darts_wrapper.cpython-311.pyc": {
+      "checksum": "06c45c5a5adc6cc4a7a4d813bee24474"
+    },
+    "src/__pycache__/data_collection.cpython-311.pyc": {
+      "checksum": "4b5a6837b07302764117bdfa8d33ef8e"
+    },
+    "src/__pycache__/data_engineering.cpython-311.pyc": {
+      "checksum": "3f86606c600e274e19be390ba3bb55e7"
+    },
+    "src/__pycache__/modeling.cpython-311.pyc": {
+      "checksum": "c78eddaa74823dc8c07d1d90b8449877"
+    },
+    "src/__pycache__/parameters.cpython-311.pyc": {
+      "checksum": "81823e999b8dd65d48e6b569b7def44e"
+    },
+    "src/__pycache__/plotting.cpython-311.pyc": {
+      "checksum": "b036901bb80842dcdcb818a9e399a6ea"
+    },
+    "src/__pycache__/utils.cpython-311.pyc": {
+      "checksum": "954eb7d9ae801f0725fff8fdbc0a57b9"
+    },
+    "src/darts_wrapper.py": {
+      "checksum": "a33ae11184d4c5a01932aa9c4b3529b4"
+    },
+    "src/data_collection.py": {
+      "checksum": "c27c21abf94a962e9abd868c45d1d4c7"
+    },
+    "src/data_engineering.py": {
+      "checksum": "852038023fa10364b94957e2b5dac207"
+    },
+    "src/modeling.py": {
+      "checksum": "d901658918f6831963e31fda16b48e0a"
+    },
+    "src/parameters.py": {
+      "checksum": "07059837041179a1d6a8bcabdbb368af"
+    },
+    "src/plotting.py": {
+      "checksum": "e238a403029e11b62f3d215bb7ffec7a"
+    },
+    "src/utils.py": {
+      "checksum": "34eabc7d188bb135e6618d02dd361d54"
+    },
+    "tests/__init__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "tests/__pycache__/__init__.cpython-311.pyc": {
+      "checksum": "b47241d4f66db73ec32aa791573af8bc"
+    },
+    "tests/__pycache__/test_app.cpython-311-pytest-9.0.2.pyc": {
+      "checksum": "fa28f955d8744dc4c462a93a8868477f"
+    },
+    "tests/__pycache__/test_data_collection.cpython-311-pytest-9.0.2.pyc": {
+      "checksum": "cd55eb3fcac5802194718016c47df0cd"
+    },
+    "tests/__pycache__/test_data_engineering.cpython-311-pytest-9.0.2.pyc": {
+      "checksum": "89503fa2d82adad0d349b62ac7be88c6"
+    },
+    "tests/test_app.py": {
+      "checksum": "a1cea3f140d13962266643f8a053bca9"
+    },
+    "tests/test_data_collection.py": {
+      "checksum": "bcbb530b04a5f456e0a3acdd6a987492"
+    },
+    "tests/test_data_engineering.py": {
+      "checksum": "0812ca737f90c7ce5a7d2d27e6e1e275"
+    },
+    "tide_0.pt": {
+      "checksum": "cd5182302126e8c04ec4443f9808aabc"
+    },
+    "tide_0.pt.ckpt": {
+      "checksum": "9154d688e42ee82ef302c26607edb4df"
+    },
+    "tide_1.pt": {
+      "checksum": "0035eeb5448d9bc5e3335e6b5cb7cd85"
+    },
+    "tide_1.pt.ckpt": {
+      "checksum": "9c4e6cc2dc85d3003745496fc182122a"
+    },
+    "tide_2.pt": {
+      "checksum": "b62345ab01f81587929f6af5e20ae9be"
+    },
+    "tide_2.pt.ckpt": {
+      "checksum": "ef174055b1f338556c0d4c86c44cf2bb"
+    },
+    "tide_3.pt": {
+      "checksum": "fc892d1569512b73cae5b29d6c81ced3"
+    },
+    "tide_3.pt.ckpt": {
+      "checksum": "5d770d9b703386a817707dac40d6603d"
+    },
+    "tide_4.pt": {
+      "checksum": "3a45bf9355305da6d1b7605c9105a80e"
+    },
+    "tide_4.pt.ckpt": {
+      "checksum": "9e3da1deb2c5fbd5c12370d3dd07ff85"
+    },
+    "uv.lock": {
+      "checksum": "7ff70d6aa6b3c4ecdd993277f9e507ad"
+    }
+  }
+}
