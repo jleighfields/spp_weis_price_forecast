@@ -16,6 +16,7 @@ def _():
     import io
     import shutil
     import pickle
+    import json
     import sys
     from time import time
 
@@ -274,15 +275,18 @@ def _(AWS_S3_FOLDER, log, pd):
     folder_time = utc_timestamp.strftime('%Y-%m-%d_%H-%M-%S') + '/'
     log.info(f'{folder_time = }')
 
-    artifact_folder = AWS_S3_FOLDER + 'model_retrains/' + folder_time 
+    artifact_folder = 'model_retrains/' + folder_time
     log.info(f'{artifact_folder = }')
-    return artifact_folder, folder_time, utc_timestamp
+
+    artifact_path = AWS_S3_FOLDER + artifact_folder
+    log.info(f'{artifact_path = }')
+    return artifact_folder, artifact_path, folder_time, utc_timestamp
 
 
 @app.cell
 def _(
     AWS_S3_BUCKET,
-    artifact_folder,
+    artifact_path,
     io,
     log,
     models_tft,
@@ -302,14 +306,14 @@ def _(
             m,
             name: str,
             AWS_S3_BUCKET: str=AWS_S3_BUCKET,
-            artifact_folder: str=artifact_folder,
+            artifact_path: str=artifact_path,
         ):
             with tempfile.TemporaryDirectory() as tmpdir:
                 model_path = _os.path.join(tmpdir, name)
                 m.save(model_path)
 
                 # Upload the model wrapper file
-                upload_path = artifact_folder + name
+                upload_path = artifact_path + name
                 s3.upload_file(model_path, AWS_S3_BUCKET, upload_path)
                 log.info(f'Uploaded: {upload_path}')
 
@@ -326,7 +330,7 @@ def _(
         buffer = io.BytesIO()
         pickle.dump(utc_timestamp, buffer)
         buffer.seek(0)
-        upload_path = artifact_folder + "TRAIN_TIMESTAMP.pkl"
+        upload_path = artifact_path + "TRAIN_TIMESTAMP.pkl"
         s3.put_object(
             Bucket=AWS_S3_BUCKET, 
             Key=upload_path, 
@@ -351,8 +355,14 @@ def _(
 
 
 @app.cell
-def _(folder_time, utils):
-    loaded_models_for_test = utils.get_loaded_models('model_retrains/' + folder_time)
+def _(artifact_folder):
+    artifact_folder
+    return
+
+
+@app.cell
+def _(artifact_folder, utils):
+    loaded_models_for_test = utils.get_loaded_models(artifact_folder)
     loaded_models_for_test
     return (loaded_models_for_test,)
 
@@ -366,16 +376,16 @@ def _(mo):
 
 
 @app.cell
-def _(AWS_S3_BUCKET, io, loaded_models_for_test, log, s3, torch):
-    tide_forecasting_models = []
-    with io.BytesIO() as buffer:
-        # Download the S3 object into the buffer
-        log.info(f'{loaded_models_for_test[-1] = }')
-        s3.download_fileobj(AWS_S3_BUCKET, loaded_models_for_test[-1], buffer)
-        buffer.seek(0)
-        tide_forecasting_models.append(
-                torch.load(buffer, map_location=torch.device("cpu"))
-            )
+def _():
+    # tide_forecasting_models = []
+    # with io.BytesIO() as buffer:
+    #     # Download the S3 object into the buffer
+    #     log.info(f'{loaded_models_for_test[-1] = }')
+    #     s3.download_fileobj(AWS_S3_BUCKET, loaded_models_for_test[-1], buffer)
+    #     buffer.seek(0)
+    #     tide_forecasting_models.append(
+    #             torch.load(buffer, map_location=torch.device("cpu"))
+    #         )
     return
 
 
@@ -518,6 +528,36 @@ def _(
 @app.cell
 def _(pred):
     pred.pd_dataframe()
+    return
+
+
+@app.cell
+def _(
+    AWS_S3_BUCKET,
+    AWS_S3_FOLDER,
+    artifact_folder,
+    artifact_path,
+    folder_time,
+    io,
+    log,
+    s3,
+):
+    def _():
+        import json
+
+        champion_json = {
+            "champion": folder_time,
+            "champion_artifact_folder": artifact_folder,
+            "champion_artifact_path": artifact_path,
+        }
+
+        buffer = io.BytesIO(json.dumps(champion_json).encode("utf-8"))
+        champion_key = AWS_S3_FOLDER + "S3_models/champion.json"
+        s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=buffer)
+        log.info(f"Uploaded champion model json: {champion_key}")
+        log.info(f"champion_json: {champion_json}")
+
+    _()
     return
 
 

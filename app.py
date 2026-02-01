@@ -221,15 +221,26 @@ def server(input, output, session):
         if loaded_model_val() is not None:
             return
 
+        import json
         import tempfile
 
         with ui.Progress(min=0, max=2) as p:
             p.set(message="Loading models from S3...")
 
-            log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+            AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
             s3_client = boto3.client('s3')
-            loaded_models_list = utils.get_loaded_models()
+
+            # load champion.json to find the current champion model folder
+            champion_key = AWS_S3_FOLDER + "S3_models/champion.json"
+            log.info(f'loading champion config from: {champion_key}')
+            response = s3_client.get_object(Bucket=AWS_S3_BUCKET, Key=champion_key)
+            champion_config = json.loads(response['Body'].read().decode('utf-8'))
+            log.info(f'champion_config: {champion_config}')
+
+            champion_folder = champion_config['champion_artifact_folder']
+            log.info(f'downloading model checkpoints from: {champion_folder}')
+            loaded_models_list = utils.get_loaded_models(champion_folder)
             log.info(f'loaded_models: {loaded_models_list}')
 
             with tempfile.TemporaryDirectory() as tmpdir:
