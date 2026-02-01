@@ -48,7 +48,7 @@ def list_folder_contents_resource(bucket_name: str, folder_prefix: str):
 
     return bucket_contents
 
-def get_loaded_models() -> List[str]:
+def get_loaded_models(search_folder: str='S3_models/') -> List[str]:
     """
     Retrieves a list of trained model file paths from S3.
 
@@ -61,14 +61,18 @@ def get_loaded_models() -> List[str]:
         AWS_S3_FOLDER: The folder prefix within the bucket.
 
     Returns:
-        List[str]: S3 keys (paths) for all model files found in the S3_models/ directory.
+        List[str]: S3 keys (paths) for all model files found in the search_folder directory.
     """
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
     AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+    folder_prefix = AWS_S3_FOLDER + search_folder
+    log.info(f'{AWS_S3_BUCKET = }')
+    log.info(f'{AWS_S3_FOLDER = }')
+    log.info(f'{folder_prefix = }')
 
-    bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, AWS_S3_FOLDER)
+    bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, folder_prefix)
     # Filter for objects in the S3_models/ subdirectory
-    loaded_models = [d.key for d in bucket_contents if 'S3_models/' in d.key]
+    loaded_models = [d.key for d in bucket_contents if search_folder in d.key]
     # Filter for recognized model file extensions
     loaded_models = [lm for lm in loaded_models if (('.pkl' in lm) or ('.ckpt' in lm) or ('.pt' in lm))]
     log.info(f'loaded_models: {loaded_models}')
