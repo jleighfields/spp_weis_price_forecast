@@ -45,6 +45,21 @@ x-job-cluster-med: &job_cluster_med
     kind: CLASSIC_PREVIEW
     is_single_node: true
 
+x-job-cluster-ml: &job_cluster_ml
+  job_cluster_key: Job_cluster_ml
+  new_cluster:
+    spark_version: 17.3.x-scala2.13
+    aws_attributes:
+      first_on_demand: 1
+      spot_bid_price_percent: 100
+    node_type_id: g4dn.2xlarge
+    spark_env_vars:
+      PYSPARK_PYTHON: /databricks/python3/bin/python3
+    data_security_mode: DATA_SECURITY_MODE_DEDICATED
+    runtime_engine: STANDARD
+    kind: CLASSIC_PREVIEW
+    is_single_node: true
+
 # YAML anchor for shared libraries
 x-libraries: &libraries
   - pypi:
@@ -61,6 +76,15 @@ x-libraries: &libraries
       package: tqdm==4.67.1
   - pypi:
       package: polars-xdt==0.17.1
+  - pypi:
+      package: marimo==0.19.7
+
+x-libraries-ml: &libraries_ml
+  - pypi:
+      package: torch==2.5.1
+  - pypi:
+      package: darts==0.31.0
+
 
 resources:
   jobs:
@@ -84,28 +108,6 @@ resources:
           job_cluster_key: Job_cluster_med
           libraries: *libraries
 
-    # data_collection_5_min:
-    #   name: data_collection_5_min
-      # email_notifications:
-      #     on_failure:
-      #       - "jleighfields@gmail.com" # Job-level failure notifications
-    #   job_clusters:
-    #     - *job_cluster_med
-    #   trigger:
-    #     pause_status: UNPAUSED
-    #     periodic:
-    #       interval: 2
-    #       unit: HOURS
-    #   tasks:
-    #     - task_key: data_collection_5_min
-    #       notebook_task:
-    #         notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_5_min
-    #         source: WORKSPACE
-    #       job_cluster_key: Job_cluster_med
-    #       libraries: *libraries
-    #   queue:
-    #     enabled: true
-
     data_collection_daily:
       name: data_collection_daily
       email_notifications:
@@ -125,4 +127,25 @@ resources:
             source: WORKSPACE
           job_cluster_key: Job_cluster_med
           libraries: *libraries
+
+    model_retrain_weekly:
+      name: model_retrain_weekly
+      email_notifications:
+        on_failure:
+          - "jleighfields@gmail.com"
+      job_clusters:
+        - *job_cluster_ml
+      schedule:
+        pause_status: UNPAUSED
+        quartz_cron_expression: "0 0 20 ? * SUN"
+        timezone_id: "America/Denver"
+      tasks:
+        - task_key: model_retrain
+          spark_python_task:
+            python_file: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/scripts/model_retrain_marimo.py
+            source: WORKSPACE
+          job_cluster_key: Job_cluster_ml
+          libraries:
+            - *libraries
+            - *libraries_ml
 
