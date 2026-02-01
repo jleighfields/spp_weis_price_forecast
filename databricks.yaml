@@ -20,7 +20,7 @@ variables:
 #   new_cluster:
 #     spark_version: 17.3.x-scala2.13
 #     aws_attributes:
-#       first_on_demand: 1
+#       first_on_demand: 0
 #       spot_bid_price_percent: 100
 #     node_type_id: r5d.large
 #     spark_env_vars:
@@ -35,7 +35,7 @@ x-job-cluster-med: &job_cluster_med
   new_cluster:
     spark_version: 17.3.x-scala2.13
     aws_attributes:
-      first_on_demand: 1
+      first_on_demand: 0
       spot_bid_price_percent: 100
     node_type_id: r5d.xlarge
     spark_env_vars:
@@ -50,7 +50,7 @@ x-job-cluster-ml: &job_cluster_ml
   new_cluster:
     spark_version: 17.3.x-scala2.13
     aws_attributes:
-      first_on_demand: 1
+      first_on_demand: 0
       spot_bid_price_percent: 100
     node_type_id: g4dn.2xlarge
     spark_env_vars:
