@@ -221,87 +221,94 @@ def server(input, output, session):
         if loaded_model_val() is not None:
             return
 
+        import tempfile
+
         with ui.Progress(min=0, max=2) as p:
             p.set(message="Loading models from S3...")
-
-            # remove old model files
-            files_to_remove = [
-                f for f in os.listdir('.')
-                if f.endswith('.pt') or f.endswith('.ckpt') or f.endswith('.pkl')
-            ]
-            for f in files_to_remove:
-                log.info(f'removing: {f}')
-                os.remove(f)
 
             log.info('downloading model checkpoints')
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
             s3_client = boto3.client('s3')
             loaded_models_list = utils.get_loaded_models()
-
             log.info(f'loaded_models: {loaded_models_list}')
-            for lm in loaded_models_list:
-                log.info(f'downloading: {lm}')
-                s3_client.download_file(
-                    Bucket=AWS_S3_BUCKET, Key=lm, Filename=lm.split('/')[-1]
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for lm in loaded_models_list:
+                    local_file = os.path.join(tmpdir, lm.split('/')[-1])
+                    log.info(f'downloading: {lm} to {local_file}')
+                    s3_client.download_file(
+                        Bucket=AWS_S3_BUCKET, Key=lm, Filename=local_file
+                    )
+
+                p.set(1, detail="Loading model weights...")
+
+                local_files = os.listdir(tmpdir)
+
+                tsmixer_ckpts = [
+                    f for f in local_files
+                    if 'tsmixer' in f and '.pt' in f
+                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
+                ]
+                tsmixer_forecasting_models = []
+                for m_ckpt in tsmixer_ckpts:
+                    log.info(f'loading model: {m_ckpt}')
+                    tsmixer_forecasting_models.append(
+                        TSMixerModel.load(
+                            os.path.join(tmpdir, m_ckpt),
+                            map_location=torch.device('cpu'),
+                        )
+                    )
+
+                tide_ckpts = [
+                    f for f in local_files
+                    if 'tide_' in f and '.pt' in f
+                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
+                ]
+                tide_forecasting_models = []
+                for m_ckpt in tide_ckpts:
+                    log.info(f'loading model: {m_ckpt}')
+                    tide_forecasting_models.append(
+                        TiDEModel.load(
+                            os.path.join(tmpdir, m_ckpt),
+                            map_location=torch.device('cpu'),
+                        )
+                    )
+
+                tft_ckpts = [
+                    f for f in local_files
+                    if 'tft' in f and '.pt' in f
+                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
+                ]
+                tft_forecasting_models = []
+                for m_ckpt in tft_ckpts:
+                    log.info(f'loading model: {m_ckpt}')
+                    tft_forecasting_models.append(
+                        TFTModel.load(
+                            os.path.join(tmpdir, m_ckpt),
+                            map_location=torch.device('cpu'),
+                        )
+                    )
+
+                forecasting_models = (
+                    tsmixer_forecasting_models
+                    + tide_forecasting_models
+                    + tft_forecasting_models
+                )
+                model = NaiveEnsembleModel(
+                    forecasting_models=forecasting_models,
+                    train_forecasting_models=False,
                 )
 
-            p.set(1, detail="Loading model weights...")
+                log.info(f'loaded_model: {model}')
+                loaded_model_val.set(model)
 
-            tsmixer_ckpts = [
-                f for f in os.listdir('.')
-                if 'tsmixer' in f and '.pt' in f
-                and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-            ]
-            tsmixer_forecasting_models = []
-            for m_ckpt in tsmixer_ckpts:
-                log.info(f'loading model: {m_ckpt}')
-                tsmixer_forecasting_models.append(
-                    TSMixerModel.load(m_ckpt, map_location=torch.device('cpu'))
-                )
+                # get model training timestamp
+                timestamp_file = os.path.join(tmpdir, 'TRAIN_TIMESTAMP.pkl')
+                with open(timestamp_file, 'rb') as handle:
+                    TRAIN_TIMESTAMP = pickle.load(handle)
 
-            tide_ckpts = [
-                f for f in os.listdir('.')
-                if 'tide_' in f and '.pt' in f
-                and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-            ]
-            tide_forecasting_models = []
-            for m_ckpt in tide_ckpts:
-                log.info(f'loading model: {m_ckpt}')
-                tide_forecasting_models.append(
-                    TiDEModel.load(m_ckpt, map_location=torch.device('cpu'))
-                )
-
-            tft_ckpts = [
-                f for f in os.listdir('.')
-                if 'tft' in f and '.pt' in f
-                and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-            ]
-            tft_forecasting_models = []
-            for m_ckpt in tft_ckpts:
-                log.info(f'loading model: {m_ckpt}')
-                tft_forecasting_models.append(
-                    TFTModel.load(m_ckpt, map_location=torch.device('cpu'))
-                )
-
-            forecasting_models = (
-                tsmixer_forecasting_models
-                + tide_forecasting_models
-                + tft_forecasting_models
-            )
-            model = NaiveEnsembleModel(
-                forecasting_models=forecasting_models,
-                train_forecasting_models=False,
-            )
-
-            log.info(f'loaded_model: {model}')
-            loaded_model_val.set(model)
-
-            # get model training timestamp
-            with open('TRAIN_TIMESTAMP.pkl', 'rb') as handle:
-                TRAIN_TIMESTAMP = pickle.load(handle)
-
-            log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
-            train_timestamp_val.set(str(TRAIN_TIMESTAMP))
+                log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
+                train_timestamp_val.set(str(TRAIN_TIMESTAMP))
 
             p.set(2, detail="Done")
 
