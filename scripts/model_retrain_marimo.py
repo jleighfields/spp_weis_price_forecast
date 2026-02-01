@@ -75,9 +75,8 @@ def _():
 
 @app.cell
 def _(log, os, sys):
-    # adding module folder to system path
-    # home = os.getenv("HOME")
-    # project_dir = os.path.join(home, "Documents", "github", "spp_weis_price_forecast")
+    # Navigate to project root so src/ imports work regardless of where
+    # the notebook is launched from (local dev, Databricks, CI, etc.)
     while 'src' not in os.listdir():
         os.chdir('..')
 
@@ -103,7 +102,8 @@ def _(log, os, sys):
 
 @app.cell
 def _(dbutils, os):
-    # set env vars
+    # On Databricks, pull AWS creds from the secrets store.
+    # Locally, fall back to .env file via python-dotenv.
     if 'dbutils' in locals():
         os.environ['AWS_ACCESS_KEY_ID'] = dbutils.secrets.get(scope = "aws", key = "AWS_ACCESS_KEY_ID")
         os.environ['AWS_SECRET_ACCESS_KEY'] = dbutils.secrets.get(scope = "aws", key = "AWS_SECRET_ACCESS_KEY")
@@ -149,6 +149,7 @@ def _(mo):
 
 @app.cell
 def _(de):
+    # Create a DuckDB connection backed by S3 parquet files
     con = de.create_database()
     return (con,)
 
@@ -176,11 +177,14 @@ def _(con, de, log):
 
 @app.cell
 def _(all_df_pd, de, lmp_all, test_all, train_all, train_test_all):
+    # Convert DataFrames to Darts TimeSeries objects for model training/prediction
     all_series = de.get_series(lmp_all)
     train_test_all_series = de.get_series(train_test_all)
     train_series = de.get_series(train_all)
     test_series = de.get_series(test_all)
 
+    # Future covariates (known ahead of time, e.g. weather/load forecasts)
+    # and past covariates (only known up to current time)
     futr_cov = de.get_futr_cov(all_df_pd)
     past_cov = de.get_past_cov(all_df_pd)
     return all_series, futr_cov, past_cov, test_series, train_test_all_series
@@ -204,6 +208,7 @@ def _(
     train_test_all_series,
 ):
     def _():
+        # Train TOP_N TSMixer models with different hyperparameter sets
         models_tsmixer = []
         if parameters.USE_TSMIXER:
             for i, param in enumerate(parameters.TSMIXER_PARAMS[: parameters.TOP_N]):
@@ -233,6 +238,7 @@ def _(
     train_test_all_series,
 ):
     def _():
+        # Train TOP_N TiDE models with different hyperparameter sets
         models_tide = []
         if parameters.USE_TIDE:
             for i, param in enumerate(parameters.TIDE_PARAMS[: parameters.TOP_N]):
@@ -263,6 +269,7 @@ def _(
     train_test_all_series,
 ):
     def _():
+        # Train TOP_N TFT models with different hyperparameter sets
         models_tft = []
         if parameters.USE_TFT:
             for i, param in enumerate(parameters.TFT_PARAMS[: parameters.TOP_N]):
@@ -292,6 +299,9 @@ def _(mo):
 
 @app.cell
 def _(AWS_S3_FOLDER, log, pd):
+    # Create a timestamped folder path for this retrain run's artifacts.
+    # artifact_folder: relative path passed to utils.get_loaded_models()
+    # artifact_path:   full S3 key prefix for uploading files
     utc_timestamp = pd.Timestamp.utcnow()
     log.info(f'{utc_timestamp = }')
 
@@ -322,9 +332,13 @@ def _(
     utc_timestamp,
 ):
     def _():
+        # Upload all trained models to S3 under the timestamped artifact path.
+        # Darts' .save() produces two files per model:
+        #   <name>.pt      - pickled model wrapper (config, training state)
+        #   <name>.pt.ckpt - PyTorch Lightning checkpoint (neural network weights)
+        # Both are required for Darts' .load() to fully restore a trained model.
 
         upload_paths = []
-
 
         def model_to_tmp_upload(
             m,
@@ -350,7 +364,7 @@ def _(
 
             return upload_path
 
-
+        # Upload training timestamp so the Shiny app can display when models were last trained
         buffer = io.BytesIO()
         pickle.dump(utc_timestamp, buffer)
         buffer.seek(0)
@@ -380,6 +394,7 @@ def _(
 
 @app.cell
 def _(artifact_folder, utils):
+    # List all model files just uploaded to S3 for verification and loading
     loaded_models_for_test = utils.get_loaded_models(artifact_folder)
     loaded_models_for_test
     return (loaded_models_for_test,)
@@ -416,11 +431,16 @@ def _(
     torch,
 ):
     def _():
+        # Re-download models from S3 and load them to verify the save/load
+        # round-trip works before promoting to champion.
+        # Each model needs both .pt and .pt.ckpt files in the same directory
+        # for Darts' .load() to fully restore the trained model.
 
         def get_checkpoints(
             model_filter: str, # 'tsmixer_', 'tide_', or 'tft_'
             loaded_models_for_test: List[str]=loaded_models_for_test,
         ):
+            """Filter S3 keys to just the main .pt files (not .ckpt or .pkl)."""
             return [
                 f for f in loaded_models_for_test
                 if model_filter in f and ".pt" in f and ".ckpt" not in f
@@ -428,6 +448,7 @@ def _(
             ]
 
         def load_model_from_s3(model_class, key):
+            """Download a model's .pt + .pt.ckpt files to a temp dir and load."""
             with tempfile.TemporaryDirectory() as tmpdir:
                 filename = key.split('/')[-1]
                 local_path = os.path.join(tmpdir, filename)
@@ -491,12 +512,16 @@ def _(
     pd,
 ):
     def _():
+        # Combine all reloaded models into a NaiveEnsembleModel (simple average
+        # of predictions). train_forecasting_models=False since they're already trained.
         log.info("loading model from checkpoints")
         loaded_model = NaiveEnsembleModel(
             forecasting_models=forecasting_models,
             train_forecasting_models=False,
         )
 
+        # Smoke test: run a short prediction on one node to verify the
+        # ensemble works end-to-end before promoting to champion.
         log.info("test getting predictions")
         plot_ind = 3
         plot_series = all_series[plot_ind]
@@ -555,7 +580,9 @@ def _(
     s3,
 ):
     def _():
-    
+        # Upload champion.json to S3_models/ so the Shiny app knows which
+        # retrain folder contains the current production models.
+        # Only promoted if the smoke-test prediction succeeded.
         if pred is not None:
             champion_json = {
                 "champion": folder_time,
