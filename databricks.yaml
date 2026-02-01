@@ -95,8 +95,6 @@ x-libraries-ml: &libraries_ml
   - pypi:
       package: polars-xdt==0.17.1
   - pypi:
-      package: marimo==0.19.7
-  - pypi:
       package: torch==2.5.1
   - pypi:
       package: darts==0.31.0
@@ -157,8 +155,8 @@ resources:
         timezone_id: "America/Denver"
       tasks:
         - task_key: model_retrain
-          spark_python_task:
-            python_file: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/scripts/model_retrain_marimo.py
+          notebook_task:
+            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/scripts/model_retrain_marimo
             source: WORKSPACE
           job_cluster_key: Job_cluster_ml
           libraries: *libraries_ml
