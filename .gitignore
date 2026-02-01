@@ -17,6 +17,7 @@ saved_models/*
 *polars_testing/
 *spp_trials.db
 *model_retrains/
+*__marimo__/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
