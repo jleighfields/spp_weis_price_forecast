@@ -81,6 +81,22 @@ x-libraries: &libraries
 
 x-libraries-ml: &libraries_ml
   - pypi:
+      package: polars==1.37.1
+  - pypi:
+      package: pyarrow==19.0.1
+  - pypi:
+      package: python-dotenv==1.2.1
+  - pypi:
+      package: boto3==1.35.92
+  - pypi:
+      package: duckdb==1.4.3
+  - pypi:
+      package: tqdm==4.67.1
+  - pypi:
+      package: polars-xdt==0.17.1
+  - pypi:
+      package: marimo==0.19.7
+  - pypi:
       package: torch==2.5.1
   - pypi:
       package: darts==0.31.0
@@ -145,7 +161,5 @@ resources:
             python_file: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/scripts/model_retrain_marimo.py
             source: WORKSPACE
           job_cluster_key: Job_cluster_ml
-          libraries:
-            - *libraries
-            - *libraries_ml
+          libraries: *libraries_ml
 
