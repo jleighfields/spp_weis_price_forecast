@@ -105,8 +105,10 @@ def _(dbutils, os):
     # On Databricks, pull AWS creds from the secrets store.
     # Locally, fall back to .env file via python-dotenv.
     if 'dbutils' in locals():
-        os.environ['AWS_ACCESS_KEY_ID'] = dbutils.secrets.get(scope = "aws", key = "AWS_ACCESS_KEY_ID")
-        os.environ['AWS_SECRET_ACCESS_KEY'] = dbutils.secrets.get(scope = "aws", key = "AWS_SECRET_ACCESS_KEY")
+        os.environ['AWS_ACCESS_KEY_ID'] = dbutils.secrets.get(scope="aws", key="AWS_ACCESS_KEY_ID")
+        os.environ['AWS_SECRET_ACCESS_KEY'] = dbutils.secrets.get(scope="aws", key="AWS_SECRET_ACCESS_KEY")
+        os.environ['AWS_S3_BUCKET'] = dbutils.secrets.get(scope="aws", key="AWS_S3_BUCKET")
+        os.environ['AWS_S3_FOLDER'] = dbutils.secrets.get(scope="aws", key="AWS_S3_FOLDER")
         import mlflow
         mlflow.autolog(disable=True)
     else:
