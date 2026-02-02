@@ -13,6 +13,8 @@ variables:
     default: "databricks-storage-7474645306723306"
   AWS_S3_FOLDER:
     default: "unity-catalog/7474645306723306/spp-weis/"
+  workspace_path:
+    default: "/Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast"
 
 # YAML anchors for reusable cluster configurations
 # x-job-cluster-sm: &job_cluster_sm
@@ -117,7 +119,7 @@ resources:
       tasks:
         - task_key: data_collection_hourly
           notebook_task:
-            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_hourly
+            notebook_path: ${var.workspace_path}/notebooks/data_collection/data_collection_hourly
             source: WORKSPACE
           job_cluster_key: Job_cluster_med
           libraries: *libraries
@@ -137,7 +139,7 @@ resources:
       tasks:
         - task_key: data_collection_daily
           notebook_task:
-            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/notebooks/data_collection/data_collection_daily
+            notebook_path: ${var.workspace_path}/notebooks/data_collection/data_collection_daily
             source: WORKSPACE
           job_cluster_key: Job_cluster_med
           libraries: *libraries
@@ -156,7 +158,7 @@ resources:
       tasks:
         - task_key: model_retrain
           notebook_task:
-            notebook_path: /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast/scripts/model_retrain_marimo
+            notebook_path: ${var.workspace_path}/notebooks/model_training/model_retrain
             source: WORKSPACE
           job_cluster_key: Job_cluster_ml
           libraries: *libraries_ml
