@@ -1,98 +1,106 @@
-# SPP Weis
+# SPP WEIS Price Forecast
 
 ## Introduction
-This is a POC project to build out a forecasting model using an MLOps lifecycle.
+This project forecasts SPP WEIS (Western Energy Imbalance Service) locational marginal prices using deep learning ensemble models. It implements a full MLOps lifecycle on Databricks:
 
-* Collect data
-* Engineer data
-* Train and evaluate models
-* Version model
-* Deploy model
-* Monitor model
+* Automated data collection from SPP
+* Feature engineering with Polars and DuckDB
+* Model training with Darts (TiDE, TSMixer, TFT)
+* Ensemble model serving via a Shiny web app
 
-## Data
-SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis.  This data is public and updated on regular intervals.  An automated job will be set up to pull this data and store it in Databricks. This automation can be scheduled in Databricks or Posit, this project will test out both options to examine pros and cons.
+## Architecture
 
-## MLOps frameworks
-We can test and compare [MLFlow](https://docs.databricks.com/mlflow/index.html) in Databricks and [Vetiver](https://vetiver.rstudio.com/) in Posit.
-
-## Model interactivity
-Model interactivity will handled via a dashboard.  Possible dashboarding tools include [Streamlit](https://streamlit.io/) and [Shiny](https://shiny.posit.co/py/).  Dashboard functionality will include:
-
-* Comparing historical forecasts to actuals
-* Displaying performance metrics for model performance
-* Allowing users to do what-if analysis by changing model inputs and making API calls
-
-## Price forecasting
-All of the data to build a price forecasting model is available from SPP.  For the price model we need a load forecast and a forecast of renewable energy generation.  [Here](https://pricecontourmap.spp.org/pricecontourmapwest/) is the price contour map for the Weis.
-
-* Locational marginal prices for settlement locations are available [here](https://marketplace.spp.org/pages/lmp-by-settlement-location-weis), this is the target data.  It contains 5 minute interval data updated every five minutes.  We'll aggregate this up to the hourly level for the purposes of the POC. We will use this data to test building a global forecasing for all of the price locations.\
-[Example 5 minute data file](./data/WEIS-RTBM-LMP-SL-202306071210.csv)\
-![LMP summary](./imgs/lmp_settlement_location.PNG)
-* Mid term load forecasts (MTLF) are available [here](https://marketplace.spp.org/pages/systemwide-hourly-load-forecast-mtlf-vs-actual-weis).  This is a Weis system wide hourly load forecast for the next 7 days (168 hours).  It also include acutal loads so it can be used to build out a history of actuals for model training.  This data is updated every hour.\
-[Example data](./data/WEIS-OP-MTLF-202306071100.csv)\
-![MTLF summary](./imgs/mtlf.PNG)
-* Mid term resource forecasts (MTRF) are available [here](https://marketplace.spp.org/pages/mid-term-resource-forecast-mtrf-weis).  This is a Weis system wide hourly forecast for solar and wind generation for the next 144 hours. The forecast is updated every hour and include recent actuals that can be used to build out a history of data.\
-[Example data](./data/WEIS-OP-MTRF-202306071100.csv)\
-![MTRF summary](./imgs/mtrf.PNG)
-
-## Forecasting tools
-The [Darts](https://unit8co.github.io/darts/README.html) implements a consistent interface to many different forecasting models.  Included in the models are machine learning and deep learning.  This POC is a good canidate for these types of models given the non-linearities and multiple seasonalities included in the data.  We can also get confidence intervals and create global forecasting models.  The Darts interface allows us to include historical data, actuals we have recorded, as well as future data, like forecasted load and renewable energy generation.  Not every model supports these features, [here](https://unit8co.github.io/darts/README.html#forecasting-models) is a table showing what each model supports.  To get up and running with here are some examples:
-
-* The [Quickstart](https://unit8co.github.io/darts/quickstart/00-quickstart.html?highlight=global#Machine-learning-and-global-models) contains a good overview and includes a section on global models.
-* The [Temporal Fusion Transformer](https://unit8co.github.io/darts/examples/13-TFT-examples.html) has all of the features we need, historical and future data, as well as confidence intervals for forecasts.
-* [Here](https://unit8co.github.io/darts/examples/01-multi-time-series-and-covariates.html) is an example of training using multiple series and transfer learning.
-* [Here](https://unit8co.github.io/darts/examples/14-transfer-learning.html?highlight=global) is a longer example of transfer learning and global models.
-
-## Project plan
-The goal is to do incremental development and testing to for the entire MLOps lifecycle.  To that end, some work can be done in parallel and we may not move linearly through the cycle.  Steps 3 and 4 could be done in parallel. Here are the proposed steps:
-
-1. Gather data from SPP [DATA-368](https://xecxt1.atlassian.net/browse/DATA-368)
-    * Build out scripts locally to extract and load data for model training.
-    * Set up processes to automate loading this data into data bricks.
-    * Update existing data with the latest updated data from SPP, for example each hourly load forecast file may update the the past few hours of loads as revisions are made.  See this [documentation](https://docs.databricks.com/delta/merge.html) for upserting data into Databricks.
-    * TODO:
-        * set up upsert for single historical file (so it doesn't overwrite actuals with forecasts)
-2. Build out a quick test model [DATA-369](https://xecxt1.atlassian.net/browse/DATA-369)
-    * Test out global forecasting instead of local forecastin
-    * Verify we have enough data to have a useful model
-    * Test setting up an API
-    * Get a feel for canidate models and good sets of hyper parameters
-    * Understand computational needs for model training
-3. Build out MLOps framework and evaluate possible tools [DATA-370](https://xecxt1.atlassian.net/browse/DATA-370)
-    * Train and evaluate models
-    * Version model
-    * Deploy model
-    * Monitor model
-4. Build out user interface [DATA-371](https://xecxt1.atlassian.net/browse/DATA-371)
-    * Comparing historical forecasts to actuals
-    * Displaying performance metrics for model performance
-    * Allowing users to do what-if analysis by changing model inputs and making API calls
-    * Identify potential users and get iterative feedback from them
-
-
-## Local project set up
-For development work on our local Windows machines there are two scripts to help set up the environment and launch jupyter-lab.
-
-* Run the [create_env.bat](./env/create_env.bat) to create the `spp_weis` conda environment.  The pakages needed for the project may be fluid to start as do the intial work so this environment will need to be occasionally updated.
-* There is a convenience script in the scripts folder, [start_jupyter_lab.bat](./scripts/start_jupyter_lab.bat), to launch jupyter-lab locally.
-* There is stub for a script to launch streamlit as well, [start_streamlit.bat](./scripts/start_streamlit.bat).
-
-
-## Shiny App Deployment
-
-To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
-
-```bash
-rsconnect write-manifest shiny -o -g -e app.py .
+```
+SPP Portal (public CSV data)
+    |
+    v
+Data Collection (Databricks Jobs, S3 parquet)
+    |
+    v
+Data Engineering (DuckDB + Polars)
+    |
+    v
+Model Training (Darts - TiDE, TSMixer, TFT ensemble)
+    |
+    v
+Shiny Web App (interactive forecasts with confidence intervals)
 ```
 
-This creates a manifest file that Posit Connect uses to determine the app entrypoint, Python version, and dependencies.
+## Data
 
+SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Databricks jobs collect and upsert this data to S3.
 
-## Databricks Asset Bundles
+### Data types collected
 
-To validate and deploy the Databricks bundle:
+* **LMP** - Locational marginal prices for settlement locations ([source](https://marketplace.spp.org/pages/lmp-by-settlement-location-weis)). 5-minute interval data aggregated to hourly. This is the forecast target.\
+![LMP summary](./imgs/lmp_settlement_location.PNG)
+
+* **MTLF** - Mid-term load forecast ([source](https://marketplace.spp.org/pages/systemwide-hourly-load-forecast-mtlf-vs-actual-weis)). System-wide hourly load forecast for the next 7 days (168 hours), updated every hour. Includes actuals for model training.\
+![MTLF summary](./imgs/mtlf.PNG)
+
+* **MTRF** - Mid-term resource forecast ([source](https://marketplace.spp.org/pages/mid-term-resource-forecast-mtrf-weis)). System-wide hourly wind and solar generation forecast for the next 144 hours, updated every hour.\
+![MTRF summary](./imgs/mtrf.PNG)
+
+## Forecasting
+
+The [Darts](https://unit8co.github.io/darts/README.html) library provides a consistent interface to multiple forecasting models. The project trains three model types and combines them into a `NaiveEnsembleModel`:
+
+* **TiDE** - Temporal Imputation using Deep Embeddings
+* **TSMixer** - Time Series Mixer
+* **TFT** - Temporal Fusion Transformer
+
+Key parameters (see `src/parameters.py`):
+* Forecast horizon: 120 hours (5 days)
+* Input chunk length: 168 hours (7 days)
+* Top 3 models per type are ensembled
+
+### Data format
+![Time series data](./imgs/time_series_data.PNG)
+
+Historical and future covariates are declared in the fit function. Input and output chunk lengths are declared in the constructors.
+
+![TFT Constructor](./imgs/tft_constructor.PNG)
+![TFT Fit](./imgs/tft_fit.PNG)
+
+## Project structure
+
+```
+├── app.py                    # Shiny web app
+├── databricks.yaml           # Databricks Asset Bundle config
+├── pyproject.toml            # Python dependencies
+├── src/
+│   ├── data_collection.py    # ETL functions for SPP data
+│   ├── data_engineering.py   # Feature engineering, train/test splits
+│   ├── modeling.py           # Model training (TiDE, TSMixer, TFT)
+│   ├── parameters.py         # Hyperparameters and configuration
+│   ├── plotting.py           # Forecast visualization
+│   └── utils.py              # Utility functions
+├── notebooks/
+│   ├── data_collection/      # Data collection notebooks
+│   ├── model_training/       # Model training and tuning notebooks
+│   └── app/                  # App testing notebooks
+└── deprecated/               # Archived workflows and old Streamlit app
+```
+
+## Databricks jobs
+
+Jobs are defined in `databricks.yaml` and deployed via Databricks Asset Bundles.
+
+| Job | Cluster | Schedule | Description |
+|-----|---------|----------|-------------|
+| `data_collection_hourly` | m5d.2xlarge | Every 6 hours | Collects MTLF, MTRF, 5-min LMP data |
+| `data_collection_daily` | m5d.2xlarge | Every 3 days | Collects daily LMP settlement data |
+| `model_retrain_weekly` | g4dn.2xlarge (GPU) | Sunday 8 PM MT | Retrains ensemble model |
+
+All job clusters are single-node with spot instance pricing enabled.
+
+### Serverless compute
+
+Serverless versions of the data collection notebooks exist (`data_collection_*_serverless.ipynb`) but cannot be used on the Databricks Premium tier due to outbound internet access restrictions. Configuring serverless egress network policies requires the Enterprise tier.
+
+## Deployment
+
+### Initial setup
 
 ```bash
 # Authenticate with Databricks
@@ -111,16 +119,21 @@ databricks bundle deploy --target <target workspace>
 2. `databricks bundle deploy` — deploy jobs/cluster configs
 3. `databricks repos update /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast --branch main` — pull latest code into the workspace git folder
 
+### Shiny app deployment
 
-## Data format
-![Time series data](./imgs/time_series_data.PNG)
+To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
 
-See documentation:
-* https://unit8co.github.io/darts/generated_api/darts.models.forecasting.tft_model.html
-* https://unit8co.github.io/darts/generated_api/darts.models.forecasting.lgbm.html
+```bash
+rsconnect write-manifest shiny -o -g -e app.py .
+```
 
- Historical and future covariates are declared in the fit function.  Input and output chunck lengths are declared in the constructors.
+## Local development
 
- ![TFT Constructor](./imgs/tft_constructor.PNG)
- ![TFT Fit](./imgs/tft_fit.PNG)
- 
+The project uses Python 3.11. Dependencies are managed via `pyproject.toml`.
+
+```bash
+# Create virtual environment and install dependencies
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```

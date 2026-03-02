@@ -126,7 +126,7 @@ app_ui = ui.page_sidebar(
         ),
         ui.hr(),
         ui.markdown("**NOTES:**"),
-        ui.markdown("Data is updated every 4-6 hours"),
+        ui.markdown("Data is updated every 6 hours"),
         ui.markdown("Model last trained:"),
         ui.output_ui("train_timestamp_display"),
         width=300,

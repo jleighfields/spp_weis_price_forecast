@@ -24,7 +24,7 @@ x-job-cluster-sm: &job_cluster_sm
     aws_attributes:
       first_on_demand: 0
       spot_bid_price_percent: 100
-    node_type_id: r5d.large
+    node_type_id: m5d.large
     spark_env_vars:
       PYSPARK_PYTHON: /databricks/python3/bin/python3
     data_security_mode: DATA_SECURITY_MODE_DEDICATED
@@ -39,7 +39,7 @@ x-job-cluster-med: &job_cluster_med
     aws_attributes:
       first_on_demand: 0
       spot_bid_price_percent: 100
-    node_type_id: r5d.xlarge
+    node_type_id: m5d.xlarge
     spark_env_vars:
       PYSPARK_PYTHON: /databricks/python3/bin/python3
     data_security_mode: DATA_SECURITY_MODE_DEDICATED
@@ -54,7 +54,7 @@ x-job-cluster-lg: &job_cluster_lg
     aws_attributes:
       first_on_demand: 0
       spot_bid_price_percent: 100
-    node_type_id: r5d.2xlarge
+    node_type_id: m5d.2xlarge
     spark_env_vars:
       PYSPARK_PYTHON: /databricks/python3/bin/python3
     data_security_mode: DATA_SECURITY_MODE_DEDICATED
