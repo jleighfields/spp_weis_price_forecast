@@ -14,7 +14,7 @@ This project forecasts SPP WEIS (Western Energy Imbalance Service) locational ma
 SPP Portal (public CSV data)
     |
     v
-Data Collection (Modal Jobs, S3 parquet)
+Data Collection (Modal Jobs, R2 parquet)
     |
     v
 Data Engineering (DuckDB + Polars)
@@ -28,7 +28,7 @@ Shiny Web App (interactive forecasts with confidence intervals)
 
 ## Data
 
-SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Modal jobs collect and upsert this data to S3.
+SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Modal jobs collect and upsert this data to Cloudflare R2.
 
 ### Data types collected
 
@@ -76,7 +76,9 @@ Historical and future covariates are declared in the fit function. Input and out
 │   ├── modeling.py           # Model training (TiDE, TSMixer, TFT)
 │   ├── parameters.py         # Hyperparameters and configuration
 │   ├── plotting.py           # Forecast visualization
-│   └── utils.py              # S3 and utility functions
+│   └── utils.py              # R2/S3 and utility functions
+├── scripts/
+│   └── r2_move_objects.py    # R2 object move/copy/delete utility
 ├── notebooks/
 │   ├── data_collection/      # Data collection notebooks
 │   ├── model_training/       # Model training and tuning notebooks
