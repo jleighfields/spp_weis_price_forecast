@@ -34,7 +34,7 @@ image = (
 
 @app.function(
     image=image,
-    schedule=modal.Period(hours=6),
+    schedule=modal.Period(hours=4),
     secrets=[modal.Secret.from_name("aws-secret")],
     timeout=1800,
     cpu=16.0,  # 16 physical cores for joblib parallel processing
