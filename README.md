@@ -105,6 +105,12 @@ databricks bundle validate
 databricks bundle deploy --target <target workspace>
 ```
 
+### Deploying updates
+
+1. `git push` — push to GitHub
+2. `databricks bundle deploy` — deploy jobs/cluster configs
+3. `databricks repos update --repo-path /Repos/jleighfields@gmail.com/spp_weis_price_forecast --branch main` — pull latest code into the workspace repo
+
 
 ## Data format
 ![Time series data](./imgs/time_series_data.PNG)
