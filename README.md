@@ -79,7 +79,7 @@ Historical and future covariates are declared in the fit function. Input and out
 │   └── utils.py              # R2/S3 and utility functions
 ├── scripts/
 │   └── r2_move_objects.py    # R2 object move/copy/delete utility
-├── notebooks/
+├── notebooks/                    # Marimo notebooks (.py) — run with `marimo edit` or `python`
 │   ├── data_collection/      # Data collection notebooks
 │   ├── model_training/       # Model training and tuning notebooks
 │   └── app/                  # App testing notebooks
@@ -90,11 +90,13 @@ Historical and future covariates are declared in the fit function. Input and out
 
 All scheduled jobs run on [Modal](https://modal.com), a serverless Python platform with pay-per-second pricing. This replaced Databricks, which was expensive for simple single-node data collection and training jobs.
 
-| Job | File | Resources | Schedule | Est. Runtime | Description |
-|-----|------|-----------|----------|--------------|-------------|
-| `collect_hourly` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects MTLF, MTRF, 5-min LMP data |
-| `collect_daily` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects daily LMP settlement data |
-| `model_retrain_weekly` | `modal_jobs/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~17 min | Retrains ensemble model |
+Modal jobs are thin wrappers that import and run the corresponding [marimo](https://marimo.io) notebooks headlessly. This keeps one source of truth for all logic (the notebook) while Modal handles scheduling, resources, and secrets.
+
+| Job | File | Notebook | Resources | Schedule | Est. Runtime | Description |
+|-----|------|----------|-----------|----------|--------------|-------------|
+| `collect_hourly` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects MTLF, MTRF, 5-min LMP data |
+| `collect_daily` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects daily LMP settlement data |
+| `model_retrain_weekly` | `modal_jobs/model_retrain.py` | `notebooks/model_training/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~15 min | Retrains ensemble model |
 
 Runtimes are estimates based on current resource configuration.
 
@@ -161,6 +163,18 @@ To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
 
 ```bash
 rsconnect write-manifest shiny -o -g -e app.py .
+```
+
+## Notebooks
+
+All notebooks are [marimo](https://marimo.io) `.py` files — pure Python that work as both interactive notebooks and runnable scripts. This gives git-friendly diffs, reproducible execution, and eliminates code duplication between notebooks and Modal jobs.
+
+```bash
+# Interactive editing (opens in browser)
+uv run marimo edit notebooks/model_training/model_retrain.py
+
+# Headless execution (runs all cells top-to-bottom)
+uv run marimo run notebooks/data_collection/data_collection_hourly.py
 ```
 
 ## Local development
