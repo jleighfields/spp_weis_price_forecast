@@ -88,13 +88,28 @@ Historical and future covariates are declared in the fit function. Input and out
 
 All scheduled jobs run on [Modal](https://modal.com), a serverless Python platform with pay-per-second pricing. This replaced Databricks, which was expensive for simple single-node data collection and training jobs.
 
-| Job | File | Resources | Schedule | Description |
-|-----|------|-----------|----------|-------------|
-| `collect_hourly` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 6 hours | Collects MTLF, MTRF, 5-min LMP data |
-| `collect_daily` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 3 days | Collects daily LMP settlement data |
-| `model_retrain_weekly` | `modal_jobs/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | Retrains ensemble model |
+| Job | File | Resources | Schedule | Est. Runtime | Description |
+|-----|------|-----------|----------|--------------|-------------|
+| `collect_hourly` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects MTLF, MTRF, 5-min LMP data |
+| `collect_daily` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects daily LMP settlement data |
+| `model_retrain_weekly` | `modal_jobs/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~17 min | Retrains ensemble model |
 
-AWS credentials are stored in a Modal secret named `aws-secret`.
+Runtimes are estimates based on current resource configuration.
+
+### Estimated monthly cost
+
+Based on Modal's [base rates](https://modal.com/pricing) (CPU: $0.0000131/core/sec, Memory: $0.00000222/GiB/sec, A10 GPU: $0.000306/sec):
+
+| Job | Runs/Month | Cost/Run | Monthly Cost |
+|-----|-----------|----------|--------------|
+| `collect_hourly` | 180 | ~$0.013 | ~$2.35 |
+| `collect_daily` | 10 | ~$0.005 | ~$0.05 |
+| `model_retrain_weekly` | 4.3 | ~$0.48 | ~$2.05 |
+| **Total** | | | **~$4.45** |
+
+These are base rate estimates. Actual costs may vary with region (1.25-2.5x) and preemption settings (up to 3x). Modal includes $30/month in free credits on the Starter plan.
+
+R2/S3 credentials are stored in a Modal secret named `aws-secret`.
 
 ### Deploying Modal jobs
 

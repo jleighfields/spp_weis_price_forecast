@@ -64,7 +64,7 @@ def get_loaded_models(search_folder: str='S3_models/') -> List[str]:
         List[str]: S3 keys (paths) for all model files found in the search_folder directory.
     """
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
     folder_prefix = AWS_S3_FOLDER + search_folder
     log.info(f'{AWS_S3_BUCKET = }')
     log.info(f'{AWS_S3_FOLDER = }')
@@ -95,7 +95,7 @@ def get_parquet_files() -> List[str]:
         List[str]: S3 keys (paths) for all parquet files found in the configured location.
     """
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
     bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, AWS_S3_FOLDER)
     parquet_files = [d.key for d in bucket_contents if '.parquet' in d.key]
 

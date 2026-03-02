@@ -39,6 +39,7 @@ image = (
     timeout=1800,
     cpu=16.0,  # 16 physical cores for joblib parallel processing
     memory=4096,  # 4 GiB
+    env={"MAX_JOBS": "15"},
 )
 def collect_hourly():
     """Collect MTLF, MTRF, and 5-min LMP data."""
@@ -78,6 +79,7 @@ def collect_hourly():
     timeout=1800,
     cpu=16.0,  # 16 physical cores for joblib parallel processing
     memory=4096,  # 4 GiB
+    env={"MAX_JOBS": "15"},
 )
 def collect_daily():
     """Collect daily LMP settlement data."""

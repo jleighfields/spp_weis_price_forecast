@@ -109,9 +109,8 @@ def create_database(
         AWS_S3_FOLDER: Folder prefix within the bucket where data is stored.
     """
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
     log.info(f'{AWS_S3_BUCKET = }')
     log.info(f'{AWS_S3_FOLDER = }')
 

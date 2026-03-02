@@ -85,7 +85,7 @@ def model_retrain_weekly():
     log.info(f"MODEL_NAME: {parameters.MODEL_NAME}")
 
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
     log.info(f"{AWS_S3_FOLDER = }")
 
     s3 = boto3.client("s3", endpoint_url=os.getenv("S3_ENDPOINT_URL"))

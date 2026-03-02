@@ -194,9 +194,9 @@ def server(input, output, session):
             p.set(message="Loading data...")
 
             p.set(1, detail="Connecting to data in Cloudflare R2...")
-            log.info('getting lmp data from s3')
+            log.info('getting lmp data from R2')
             con = de.create_database()
-            log.info('finished getting data from s3')
+            log.info('finished getting data from R2')
 
             p.set(2, detail="Preparing data...")
             log.info('preparing all_df_pd')
@@ -225,10 +225,10 @@ def server(input, output, session):
         import tempfile
 
         with ui.Progress(min=0, max=2) as p:
-            p.set(message="Loading models from S3...")
+            p.set(message="Loading models from Cloudflare R2...")
 
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-            AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
+            AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
             s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
 
             # load champion.json to find the current champion model folder

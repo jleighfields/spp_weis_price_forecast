@@ -48,7 +48,8 @@ import duckdb
 # parallel processing
 from joblib import Parallel, delayed, cpu_count
 core_count = cpu_count()
-N_JOBS = max(1, core_count - 1)
+max_jobs = int(os.environ.get('MAX_JOBS', 0))
+N_JOBS = max_jobs if max_jobs > 0 else max(1, core_count - 1)
 log.info(f'number of cores available: {core_count}')
 log.info(f'N_JOBS: {N_JOBS}')
 
@@ -81,9 +82,8 @@ def _s3_storage_options() -> dict:
 def get_s3_base_path() -> str:
     """Build the base S3 path from AWS environment variables."""
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
     return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/'
 
 import boto3
@@ -888,9 +888,8 @@ def upsert_mtlf_mtrf_lmp(
 def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
     
     if src_dir in ['lmp_daily', 'lmp_5min']:
         key_cols = [
