@@ -66,23 +66,22 @@ Historical and future covariates are declared in the fit function. Input and out
 
 ```
 ├── app.py                    # Shiny web app
-├── databricks.yaml           # Databricks Asset Bundle config (jobs paused)
 ├── pyproject.toml            # Python dependencies
 ├── modal_jobs/
-│   ├── data_collection.py    # Modal jobs for data collection (hourly + daily)
-│   └── model_retrain.py      # Modal job for weekly model retraining (GPU)
+│   ├── data_collection.py    # Scheduled data collection (hourly + daily)
+│   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
 │   ├── data_collection.py    # ETL functions for SPP data
 │   ├── data_engineering.py   # Feature engineering, train/test splits
 │   ├── modeling.py           # Model training (TiDE, TSMixer, TFT)
 │   ├── parameters.py         # Hyperparameters and configuration
 │   ├── plotting.py           # Forecast visualization
-│   └── utils.py              # Utility functions
+│   └── utils.py              # S3 and utility functions
 ├── notebooks/
 │   ├── data_collection/      # Data collection notebooks
 │   ├── model_training/       # Model training and tuning notebooks
 │   └── app/                  # App testing notebooks
-└── deprecated/               # Archived workflows and old Streamlit app
+└── deprecated/               # Archived Databricks config and old Streamlit app
 ```
 
 ## Modal jobs
@@ -116,7 +115,9 @@ modal deploy modal_jobs/model_retrain.py
 
 ## Databricks (deprecated)
 
-The original Databricks jobs are defined in `databricks.yaml` but are now **paused** in favor of Modal. The bundle config is retained for reference.
+Databricks was replaced by Modal because it was overkill for this project's workloads. All three jobs are simple single-node Python scripts, but Databricks requires a full Spark cluster per job, an always-on workspace, and an AWS VPC with NAT gateways — adding significant fixed costs ($100+/month) regardless of usage. Modal provides pay-per-second serverless execution with a free tier, making it a better fit for lightweight scheduled jobs.
+
+The original Databricks bundle config is preserved in `deprecated/databricks.yaml` for reference.
 
 <details>
 <summary>Databricks setup (archived)</summary>
@@ -137,7 +138,7 @@ databricks bundle deploy --target <target workspace>
 
 </details>
 
-### Shiny app deployment
+## Shiny app deployment
 
 To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
 
