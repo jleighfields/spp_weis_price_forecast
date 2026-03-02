@@ -165,7 +165,7 @@ resources:
       job_clusters:
         - *job_cluster_ml
       schedule:
-        pause_status: UNPAUSED
+        pause_status: PAUSED  # Replaced by Modal job (modal_jobs/model_retrain.py)
         quartz_cron_expression: "0 0 20 ? * SUN"
         timezone_id: "America/Denver"
       tasks:
