@@ -68,14 +68,18 @@ for module_path in module_paths:
 import utils
 
 
-# AWS S3 configuration - allows deployment to different environments
-# by configuring bucket and folder prefix via environment variables
-AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
 
 ###########################################################
 # HELPER FUNCTIONS
 ###########################################################
+
+def get_s3_base_path() -> str:
+    """Build the base S3 path from AWS environment variables."""
+    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
+    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
+    assert AWS_S3_BUCKET
+    assert AWS_S3_FOLDER
+    return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/'
 
 import boto3
 from botocore.exceptions import ClientError
@@ -394,13 +398,14 @@ def get_range_data(
         n_periods: int,
         freq: str,
         get_process_func: Callable,
+        base_path: str = None,
         do_parallel: bool=True,
     ) -> List[str]:
     """
-    Collect data for a range of time periods and write to S3.
+    Collect data for a range of time periods and write to storage.
 
     Downloads data from SPP for each time period, processes it, and writes
-    individual parquet files to S3. Returns list of S3 paths or URLs for
+    individual parquet files. Returns list of file paths or URLs for
     failed downloads.
 
     Args:
@@ -412,10 +417,12 @@ def get_range_data(
             - MTRF: get_process_mtrf
             - 5min LMP intervals: get_process_5min_lmp
             - daily LMP files: get_process_daily_lmp
+        base_path: Optional base path for output files. If None, uses S3 path
+            from AWS env vars. Pass a Volume path for serverless compute.
         do_parallel: If True, use parallel processing with joblib.
 
     Returns:
-        List of S3 paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for failed downloads.
     """
 
     # boolean to determine if we need 5 minute intervals
@@ -434,36 +441,35 @@ def get_range_data(
     if do_parallel:
         df_list = (
             ProgressParallel(n_jobs=N_JOBS, total=N)
-            (delayed(get_process_func)(tc) for tc in tc_list)
+            (delayed(get_process_func)(tc, base_path=base_path) for tc in tc_list)
         )
 
     else:
         df_list = []
         for tc in tqdm.tqdm(tc_list):
-            df_list+=[get_process_func(tc)]
+            df_list+=[get_process_func(tc, base_path=base_path)]
 
     return df_list
 
 
-def get_process_mtlf(tc: dict) -> str:
+def get_process_mtlf(tc: dict, base_path: str = None) -> str:
     """
-    Download, process, and write MTLF data to S3.
+    Download, process, and write MTLF data to storage.
 
     Fetches mid-term load forecast CSV from SPP, converts to Polars DataFrame,
-    adds timestamps, and writes to S3 as parquet.
+    adds timestamps, and writes as parquet.
 
     Args:
         tc: Time components dictionary from get_time_components().
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        S3 path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if download failed.
     """
     data_category = 'mtlf'
-    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
-    assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
-    
+    if base_path is None:
+        base_path = get_s3_base_path()
+
     url = get_hourly_mtlf_url(tc)
     log.debug(f'{data_category} url: {url}')
 
@@ -471,7 +477,7 @@ def get_process_mtlf(tc: dict) -> str:
 
     if df.shape[0] > 0:
         parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
-        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
+        output_path = f'{base_path}{data_category}/{parquet_filename}'
         format_df_colnames(df)
         df = convert_datetime_cols(df)
         df = add_timestamp_mst(df)
@@ -481,8 +487,8 @@ def get_process_mtlf(tc: dict) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(s3_path)
-        return s3_path
+        df.unique().write_parquet(output_path)
+        return output_path
     else:
         return url
 
@@ -490,6 +496,7 @@ def get_process_mtlf(tc: dict) -> str:
 def get_range_data_mtlf(
         end_ts: pd.Timestamp,
         n_periods: int,
+        base_path: str = None,
     ) -> List[str]:
     """
     Collect MTLF data for a range of hourly time periods.
@@ -497,35 +504,35 @@ def get_range_data_mtlf(
     Args:
         end_ts: The last hour to get data.
         n_periods: Number of hours to gather prior to end_ts.
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        List of S3 paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for failed downloads.
     """
     freq = 'h'
     get_process_func = get_process_mtlf
     # dup_cols = ['GMTIntervalEnd']
-    return get_range_data(end_ts, n_periods, freq, get_process_func)
+    return get_range_data(end_ts, n_periods, freq, get_process_func, base_path=base_path)
 
 
-def get_process_mtrf(tc: dict) -> str:
+def get_process_mtrf(tc: dict, base_path: str = None) -> str:
     """
-    Download, process, and write MTRF data to S3.
+    Download, process, and write MTRF data to storage.
 
     Fetches mid-term resource forecast (wind/solar) CSV from SPP, converts to
-    Polars DataFrame, adds timestamps, and writes to S3 as parquet.
+    Polars DataFrame, adds timestamps, and writes as parquet.
 
     Args:
         tc: Time components dictionary from get_time_components().
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        S3 path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if download failed.
     """
     data_category = 'mtrf'
-    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
-    assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
-    
+    if base_path is None:
+        base_path = get_s3_base_path()
+
     url = get_hourly_mtrf_url(tc)
     log.debug(f'{data_category} url: {url}')
 
@@ -533,7 +540,7 @@ def get_process_mtrf(tc: dict) -> str:
 
     if df.shape[0] > 0:
         parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
-        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
+        output_path = f'{base_path}{data_category}/{parquet_filename}'
         format_df_colnames(df)
         df = convert_datetime_cols(df)
         df = add_timestamp_mst(df)
@@ -543,8 +550,8 @@ def get_process_mtrf(tc: dict) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(s3_path)
-        return s3_path
+        df.unique().write_parquet(output_path)
+        return output_path
     else:
         return url
 
@@ -553,6 +560,7 @@ def get_process_mtrf(tc: dict) -> str:
 def get_range_data_mtrf(
         end_ts: pd.Timestamp,
         n_periods: int,
+        base_path: str = None,
     ) -> List[str]:
     """
     Collect MTRF data for a range of hourly time periods.
@@ -560,14 +568,15 @@ def get_range_data_mtrf(
     Args:
         end_ts: The last hour to get data.
         n_periods: Number of hours to gather prior to end_ts.
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        List of S3 paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for failed downloads.
     """
     freq = 'h'
     get_process_func = get_process_mtrf
     # dup_cols = ['GMTIntervalEnd']
-    return get_range_data(end_ts, n_periods, freq, get_process_func)
+    return get_range_data(end_ts, n_periods, freq, get_process_func, base_path=base_path)
 
 
 def agg_lmp(five_min_lmp_df: pl.DataFrame) -> pl.DataFrame:
@@ -593,25 +602,24 @@ def agg_lmp(five_min_lmp_df: pl.DataFrame) -> pl.DataFrame:
     return he_lmp_df
 
 
-def get_process_5min_lmp(tc: dict) -> str:
+def get_process_5min_lmp(tc: dict, base_path: str = None) -> str:
     """
-    Download, process, and write 5-minute LMP interval data to S3.
+    Download, process, and write 5-minute LMP interval data to storage.
 
     Fetches single 5-minute LMP CSV from SPP, aggregates to hourly, and writes
-    to S3 as parquet. Note: 5-minute files have different column names than
+    as parquet. Note: 5-minute files have different column names than
     daily files.
 
     Args:
         tc: Time components dictionary from get_time_components().
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        S3 path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if download failed.
     """
     data_category = 'lmp_5min'
-    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
-    assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
+    if base_path is None:
+        base_path = get_s3_base_path()
 
     url = get_5min_lmp_url(tc)
     log.debug(f'{data_category} url: {url}')
@@ -620,7 +628,7 @@ def get_process_5min_lmp(tc: dict) -> str:
 
     if df.shape[0] > 0:
         parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
-        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
+        output_path = f'{base_path}{data_category}/{parquet_filename}'
         format_df_colnames(df)
         log.debug(f'{df.columns = }')
         # df.columns = ['Interval', 'GMTIntervalEnd', 'Settlement_Location', 'Pnode', 'LMP', 'MLC', 'MCC', 'MEC']
@@ -634,7 +642,7 @@ def get_process_5min_lmp(tc: dict) -> str:
         df = add_timestamp_mst(df)
         df = set_he(df)
         df = agg_lmp(df)
-        
+
         df = df.with_columns(
             pl.col.LMP.cast(pl.Float32),
             pl.col.MLC.cast(pl.Float32),
@@ -643,8 +651,8 @@ def get_process_5min_lmp(tc: dict) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(s3_path)
-        return s3_path
+        df.unique().write_parquet(output_path)
+        return output_path
     else:
         return url
 
@@ -653,6 +661,7 @@ def get_process_5min_lmp(tc: dict) -> str:
 def get_range_data_interval_5min_lmps(
         end_ts: pd.Timestamp,
         n_periods: int,
+        base_path: str = None,
     ) -> List[str]:
     """
     Collect 5-minute LMP interval data for a range of time periods.
@@ -660,35 +669,35 @@ def get_range_data_interval_5min_lmps(
     Args:
         end_ts: The last 5-minute interval to get data.
         n_periods: Number of 5-minute intervals to gather prior to end_ts.
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        List of S3 paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for failed downloads.
     """
     freq = '5min'
     get_process_func = get_process_5min_lmp
     # dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
-    return get_range_data(end_ts, n_periods, freq, get_process_func)
+    return get_range_data(end_ts, n_periods, freq, get_process_func, base_path=base_path)
 
 
-def get_process_daily_lmp(tc: dict) -> str:
+def get_process_daily_lmp(tc: dict, base_path: str = None) -> str:
     """
-    Download, process, and write daily LMP file to S3.
+    Download, process, and write daily LMP file to storage.
 
     Fetches daily 5-minute LMP CSV from SPP (contains full day of intervals),
-    aggregates to hourly, and writes to S3 as parquet. Note: daily files have
+    aggregates to hourly, and writes as parquet. Note: daily files have
     different column names than individual 5-minute interval files.
 
     Args:
         tc: Time components dictionary from get_time_components().
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        S3 path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if download failed.
     """
     data_category = 'lmp_daily'
-    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
-    assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
+    if base_path is None:
+        base_path = get_s3_base_path()
 
     url = get_daily_lmp_url(tc)
     log.debug(f'{data_category} url: {url}')
@@ -697,7 +706,7 @@ def get_process_daily_lmp(tc: dict) -> str:
 
     if df.shape[0] > 0:
         parquet_filename = url.split('WEIS-')[-1].replace('.csv','.parquet')
-        s3_path = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{data_category}/{parquet_filename}'
+        output_path = f'{base_path}{data_category}/{parquet_filename}'
         format_df_colnames(df)
         log.debug(f'{df.columns = }')
         # df.columns = ['Interval', 'GMT_Interval', 'Settlement_Location_Name', 'PNODE_Name', 'LMP', 'MLC', 'MCC', 'MEC']
@@ -706,7 +715,7 @@ def get_process_daily_lmp(tc: dict) -> str:
         df = add_timestamp_mst(df)
         df = set_he(df)
         df = agg_lmp(df)
-        
+
         df = df.with_columns(
             pl.col.LMP.cast(pl.Float32),
             pl.col.MLC.cast(pl.Float32),
@@ -715,8 +724,8 @@ def get_process_daily_lmp(tc: dict) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(s3_path)
-        return s3_path
+        df.unique().write_parquet(output_path)
+        return output_path
     else:
         return url
 
@@ -724,6 +733,7 @@ def get_process_daily_lmp(tc: dict) -> str:
 def get_range_data_interval_daily_lmps(
         end_ts: pd.Timestamp,
         n_periods: int,
+        base_path: str = None,
     ) -> List[str]:
     """
     Collect daily LMP files for a range of days.
@@ -731,14 +741,15 @@ def get_range_data_interval_daily_lmps(
     Args:
         end_ts: The last day to get data.
         n_periods: Number of days to gather prior to end_ts.
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        List of S3 paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for failed downloads.
     """
     freq = 'D'
     get_process_func = get_process_daily_lmp
     # dup_cols = ['GMTIntervalEnd_HE', 'Settlement_Location_Name', 'PNODE_Name']
-    return get_range_data(end_ts, n_periods, freq, get_process_func)
+    return get_range_data(end_ts, n_periods, freq, get_process_func, base_path=base_path)
 
 
 ###########################################################
@@ -748,38 +759,34 @@ def get_range_data_interval_daily_lmps(
 def upsert_mtlf_mtrf_lmp(
     parquet_files: List[str],
     target: str,
+    base_path: str = None,
 ) -> None:
     """
     Upsert data from individual parquet files into a consolidated target file.
 
     Reads multiple parquet files, deduplicates by primary key (keeping the latest
     by file_create_time_utc), merges with existing target file if present, and
-    writes the consolidated result back to S3.
+    writes the consolidated result.
 
     Args:
-        parquet_files: List of S3 paths to individual parquet files to upsert.
+        parquet_files: List of paths to individual parquet files to upsert.
         target: Target data type - 'mtlf', 'mtrf', or 'lmp'. Determines the
             primary key columns used for deduplication:
             - mtlf/mtrf: GMTIntervalEnd
             - lmp: GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name
+        base_path: Optional base path for output. If None, uses S3 path from AWS env vars.
 
     Returns:
-        None - writes consolidated parquet to S3 at data/{target}.parquet.
-
-    Environment Variables:
-        AWS_S3_BUCKET: S3 bucket for data storage.
-        AWS_S3_FOLDER: Folder prefix within the bucket.
+        None - writes consolidated parquet at {base_path}{target}.parquet.
     """
 
-    AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
-    AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER')
-    assert AWS_S3_BUCKET
-    assert AWS_S3_FOLDER
+    if base_path is None:
+        base_path = get_s3_base_path()
 
     if target == 'lmp':
         key_cols = [
             'GMTIntervalEnd_HE',
-            'Settlement_Location_Name', 
+            'Settlement_Location_Name',
             'PNODE_Name',
         ]
     elif target in ['mtrf', 'mtlf']:
@@ -788,10 +795,16 @@ def upsert_mtlf_mtrf_lmp(
         raise ValueError(f"{target = } - expected one of (mtlf, mtrf, lmp)")
 
 
-    object_name = f'{AWS_S3_FOLDER}data/{target}.parquet'
-    s3_path_target = f's3://{AWS_S3_BUCKET}/{object_name}'
-    file_exists = check_file_exists_client(AWS_S3_BUCKET, object_name)
-    log.info(f'{s3_path_target = }')
+    target_path = f'{base_path}{target}.parquet'
+    if target_path.startswith('s3://'):
+        # Parse bucket and object name from S3 path for existence check
+        s3_parts = target_path.replace('s3://', '').split('/', 1)
+        bucket_name = s3_parts[0]
+        object_name = s3_parts[1]
+        file_exists = check_file_exists_client(bucket_name, object_name)
+    else:
+        file_exists = os.path.exists(target_path)
+    log.info(f'{target_path = }')
     log.info(f'{file_exists = }')
     log.info(f'number of files upserting: {len(parquet_files)}')
 
@@ -833,7 +846,7 @@ def upsert_mtlf_mtrf_lmp(
     log.info(f'min/max update times: \n{min_max}')
 
     if file_exists:
-        target_df = pl.read_parquet(s3_path_target)
+        target_df = pl.read_parquet(target_path)
         log.info(f'{target_df.shape = }')
         start_count = target_df.shape[0]
         log.info(f'starting count: {start_count:,}')
@@ -855,7 +868,7 @@ def upsert_mtlf_mtrf_lmp(
     assert num_dups == 0, print(f'{num_dups = }')
 
     log.info(f'starting count: {start_count:,}')
-    target_df.write_parquet(s3_path_target)
+    target_df.write_parquet(target_path)
 
     end_count = target_df.shape[0]
     insert_count = end_count - start_count
@@ -888,9 +901,9 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     else: # mtrf, mtlf
         object_name = f'{AWS_S3_FOLDER}data/{src_dir}.parquet'
 
-    s3_path_target = f's3://{AWS_S3_BUCKET}/{object_name}'
+    target_path = f's3://{AWS_S3_BUCKET}/{object_name}'
     file_exists = check_file_exists_client(AWS_S3_BUCKET, object_name)
-    log.info(f'{s3_path_target = }')
+    log.info(f'{target_path = }')
     log.info(f'{file_exists = }')
     
     upsert_df = (
@@ -930,7 +943,7 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     log.info(f'min/max update times: \n{min_max}')
     
     if file_exists:
-        target_df = pl.read_parquet(s3_path_target)
+        target_df = pl.read_parquet(target_path)
         start_count = target_df.shape[0]
     
         target_df = (
@@ -950,7 +963,7 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     assert num_dups == 0, print(f'{num_dups = }')
     
     log.info(f'starting count: {start_count:,}')
-    target_df.write_parquet(s3_path_target)
+    target_df.write_parquet(target_path)
     
     end_count = target_df.shape[0]
     insert_count = end_count - start_count
