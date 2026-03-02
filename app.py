@@ -47,7 +47,7 @@ log = logging.getLogger(__name__)
 
 # load env
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 
 ###############################################################
@@ -193,7 +193,7 @@ def server(input, output, session):
         with ui.Progress(min=0, max=3) as p:
             p.set(message="Loading data...")
 
-            p.set(1, detail="Connecting to data in S3...")
+            p.set(1, detail="Connecting to data in Cloudflare R2...")
             log.info('getting lmp data from s3')
             con = de.create_database()
             log.info('finished getting data from s3')
@@ -229,7 +229,7 @@ def server(input, output, session):
 
             AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
             AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER")
-            s3_client = boto3.client('s3')
+            s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
 
             # load champion.json to find the current champion model folder
             champion_key = AWS_S3_FOLDER + "S3_models/champion.json"

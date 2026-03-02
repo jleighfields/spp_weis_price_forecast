@@ -68,6 +68,11 @@ for module_path in module_paths:
 import utils
 
 
+def _s3_storage_options() -> dict:
+    """Return Polars storage_options for S3/R2 endpoint, if configured."""
+    endpoint = os.getenv("S3_ENDPOINT_URL")
+    return {"endpoint_url": endpoint} if endpoint else {}
+
 
 ###########################################################
 # HELPER FUNCTIONS
@@ -88,7 +93,7 @@ def check_file_exists_client(bucket_name, object_name):
     """
     Checks if a file (object) exists in an S3 bucket using boto3 client.
     """
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
     try:
         s3_client.head_object(Bucket=bucket_name, Key=object_name)
         return True
@@ -487,7 +492,7 @@ def get_process_mtlf(tc: dict, base_path: str = None) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(output_path)
+        df.unique().write_parquet(output_path, storage_options=_s3_storage_options())
         return output_path
     else:
         return url
@@ -550,7 +555,7 @@ def get_process_mtrf(tc: dict, base_path: str = None) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(output_path)
+        df.unique().write_parquet(output_path, storage_options=_s3_storage_options())
         return output_path
     else:
         return url
@@ -651,7 +656,7 @@ def get_process_5min_lmp(tc: dict, base_path: str = None) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(output_path)
+        df.unique().write_parquet(output_path, storage_options=_s3_storage_options())
         return output_path
     else:
         return url
@@ -724,7 +729,7 @@ def get_process_daily_lmp(tc: dict, base_path: str = None) -> str:
             pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
             pl.lit(url).alias('url'),
         )
-        df.unique().write_parquet(output_path)
+        df.unique().write_parquet(output_path, storage_options=_s3_storage_options())
         return output_path
     else:
         return url
@@ -808,11 +813,13 @@ def upsert_mtlf_mtrf_lmp(
     log.info(f'{file_exists = }')
     log.info(f'number of files upserting: {len(parquet_files)}')
 
+    storage_opts = _s3_storage_options()
+
     upsert_df = (
-        pl.scan_parquet(parquet_files)
+        pl.scan_parquet(parquet_files, storage_options=storage_opts)
         .sort(key_cols + ['file_create_time_utc'], descending=False)
         .unique(
-            subset=key_cols, 
+            subset=key_cols,
             keep='last',
             maintain_order=True,
         )
@@ -846,7 +853,7 @@ def upsert_mtlf_mtrf_lmp(
     log.info(f'min/max update times: \n{min_max}')
 
     if file_exists:
-        target_df = pl.read_parquet(target_path)
+        target_df = pl.read_parquet(target_path, storage_options=storage_opts)
         log.info(f'{target_df.shape = }')
         start_count = target_df.shape[0]
         log.info(f'starting count: {start_count:,}')
@@ -855,7 +862,7 @@ def upsert_mtlf_mtrf_lmp(
             pl.concat([target_df, upsert_df])
             .sort(key_cols + ['file_create_time_utc'], descending=False)
             .unique(
-                subset=key_cols, 
+                subset=key_cols,
                 keep='last',
                 maintain_order=True,
             )
@@ -868,7 +875,7 @@ def upsert_mtlf_mtrf_lmp(
     assert num_dups == 0, print(f'{num_dups = }')
 
     log.info(f'starting count: {start_count:,}')
-    target_df.write_parquet(target_path)
+    target_df.write_parquet(target_path, storage_options=storage_opts)
 
     end_count = target_df.shape[0]
     insert_count = end_count - start_count
@@ -906,23 +913,25 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     log.info(f'{target_path = }')
     log.info(f'{file_exists = }')
     
+    storage_opts = _s3_storage_options()
+
     upsert_df = (
-        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{src_dir}/*.parquet')
+        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{src_dir}/*.parquet', storage_options=storage_opts)
         .sort(key_cols + ['file_create_time_utc'], descending=False)
         .unique(
-            subset=key_cols, 
+            subset=key_cols,
             keep='last',
             maintain_order=True,
         )
         .collect()
     )
-    
+
     num_dups = upsert_df.select(key_cols).is_duplicated().sum()
     assert num_dups == 0, print(f'{num_dups = }')
     log.info(f'{upsert_df.shape = }')
-    
+
     update_count = upsert_df.shape[0]
-    
+
     if 'GMTIntervalEnd' in upsert_df:
         min_max = (
             upsert_df
@@ -939,18 +948,18 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
                 pl.col.GMTIntervalEnd_HE.max().alias('max_date'),
             )
         )
-    
+
     log.info(f'min/max update times: \n{min_max}')
-    
+
     if file_exists:
-        target_df = pl.read_parquet(target_path)
+        target_df = pl.read_parquet(target_path, storage_options=storage_opts)
         start_count = target_df.shape[0]
-    
+
         target_df = (
             pl.concat([target_df, upsert_df])
             .sort(key_cols + ['file_create_time_utc'], descending=False)
             .unique(
-                subset=key_cols, 
+                subset=key_cols,
                 keep='last',
                 maintain_order=True,
             )
@@ -958,12 +967,12 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     else:
         start_count = 0
         target_df = upsert_df
-    
+
     num_dups = target_df.select(key_cols).is_duplicated().sum()
     assert num_dups == 0, print(f'{num_dups = }')
-    
+
     log.info(f'starting count: {start_count:,}')
-    target_df.write_parquet(target_path)
+    target_df.write_parquet(target_path, storage_options=storage_opts)
     
     end_count = target_df.shape[0]
     insert_count = end_count - start_count

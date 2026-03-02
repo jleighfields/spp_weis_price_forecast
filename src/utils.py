@@ -35,7 +35,7 @@ def list_folder_contents_resource(bucket_name: str, folder_prefix: str):
             of S3 ObjectSummary objects. Each object has attributes like 'key', 'size',
             'last_modified', etc.
     """
-    s3 = boto3.resource('s3')
+    s3 = boto3.resource('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
     bucket = s3.Bucket(bucket_name)
 
     # Ensure the prefix ends with a slash to limit results to a specific "folder"

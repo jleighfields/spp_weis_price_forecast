@@ -125,6 +125,19 @@ def create_database(
     con.sql("INSTALL httpfs;")
     con.sql("LOAD httpfs;")
 
+    endpoint = os.getenv("S3_ENDPOINT_URL", "").replace("https://", "")
+    if endpoint:
+        con.sql(f"SET s3_endpoint = '{endpoint}';")
+        con.sql("SET s3_url_style = 'path';")
+
+    s3_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    s3_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    s3_region = os.getenv("AWS_DEFAULT_REGION", "auto")
+    if s3_key and s3_secret:
+        con.sql(f"SET s3_access_key_id = '{s3_key}';")
+        con.sql(f"SET s3_secret_access_key = '{s3_secret}';")
+        con.sql(f"SET s3_region = '{s3_region}';")
+
     for ds in datasets:
         # Match dataset name to S3 parquet file key
         pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{ds}.parquet'
