@@ -202,7 +202,7 @@ def _(
     _df = pd.DataFrame(_data)
 
     _plot_cov_df = (
-        future_cov_series.pd_dataframe()
+        future_cov_series.to_dataframe()
         .reset_index()
         .rename(columns={"timestamp_mst": "time", "re_ratio": "Ratio"})
     )

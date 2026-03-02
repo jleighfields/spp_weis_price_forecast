@@ -182,12 +182,8 @@ def build_fit_tsmixerx(
     # else:
     #     callbacks = [early_stopper] + callbacks
 
-    # pl_trainer_kwargs = {"callbacks": callbacks}
-    # if pl_trainer_kwargs:
-    #     model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
-        
     log.info(f'model_params: \n{log_pretty(model_params)}')
-    
+
     model = TSMixerModel(**model_params)
 
     # train the model
@@ -326,11 +322,8 @@ def build_fit_tide(
     # else:
     #     callbacks = [early_stopper] + callbacks
 
-    # pl_trainer_kwargs = {"callbacks": callbacks}
-    # if pl_trainer_kwargs:
-    #     model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
     log.info(f'model_params: \n{log_pretty(model_params)}')
-    
+
     model = TiDEModel(**model_params)
 
     # train the model
@@ -454,8 +447,6 @@ def build_fit_tft(
     # else:
     #     callbacks = [early_stopper] + callbacks
 
-    # pl_trainer_kwargs = {"callbacks": callbacks}
-    # model_params['pl_trainer_kwargs'] = pl_trainer_kwargs
     log.info(f'model_params: \n{log_pretty(model_params)}')
 
     model = TFTModel(**model_params)
@@ -512,20 +503,22 @@ def get_ci_err(
     ci_cover_err = []
     for i, pred in enumerate(pred_series):
         
-        series_qs = pred.quantiles_df((0.1, 0.9))
-        val_y = actual_series[i].pd_dataframe()
-        
+        series_qs = pred.quantile([0.1, 0.9]).to_dataframe()
+        val_y = actual_series[i].to_dataframe()
+
         eval_df = series_qs.merge(
             val_y,
             how='inner',
             left_index=True,
             right_index=True,
         )
-    
-    
+
+        # Column names in Darts 0.41+: LMP_q0.100, LMP_q0.900
+        _q_low = [c for c in eval_df.columns if 'q0.1' in c][0]
+        _q_high = [c for c in eval_df.columns if 'q0.9' in c][0]
         cover = (
-            (eval_df['LMP_0.9'] > eval_df['LMP']) &
-            (eval_df['LMP_0.1'] < eval_df['LMP'])
+            (eval_df[_q_high] > eval_df['LMP']) &
+            (eval_df[_q_low] < eval_df['LMP'])
         ).mean() # should be about 80%
 
         ci_cover_err += [100 * np.abs(cover - 0.8)]

@@ -455,7 +455,7 @@ def _(pred):
 
 @app.cell
 def _(pred):
-    pred.pd_dataframe()
+    pred.to_dataframe()
     return
 
 

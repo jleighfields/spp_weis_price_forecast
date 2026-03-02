@@ -25,7 +25,7 @@ image = (
         "pandas",
         "joblib",
         "torch==2.5.1",
-        "darts==0.31.0",
+        "darts==0.41.0",
         "scikit-learn",
         "marimo",
         "python-dotenv",

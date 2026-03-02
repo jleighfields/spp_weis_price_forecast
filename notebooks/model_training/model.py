@@ -908,7 +908,7 @@ def _(
         )
 
         _cov_df = (
-            _fc.pd_dataframe()
+            _fc.to_dataframe()
             .reset_index()
             .rename(columns={"timestamp_mst": "time", "re_ratio": "Ratio"})
         )

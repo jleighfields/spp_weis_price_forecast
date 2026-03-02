@@ -116,7 +116,7 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
             )
         
         pred_series = TimeSeries.from_dataframe(
-            pred_series.pd_dataframe()
+            pred_series.to_dataframe()
             )
 
         return TimeSeries.to_json(pred_series)

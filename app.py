@@ -450,7 +450,7 @@ def server(input, output, session):
                 num_samples=500,
             )
 
-            cov_df = future_cov_series.pd_dataframe()
+            cov_df = future_cov_series.to_dataframe()
             cov_df['re_ratio'] = (
                 (cov_df.Wind_Forecast_MW + cov_df.Solar_Forecast_MW)
                 / cov_df.MTLF

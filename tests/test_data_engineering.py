@@ -644,7 +644,7 @@ class TestFillMissing:
         de.fill_missing(series)
 
         # Check no NaN values after filling
-        assert not series[0].pd_dataframe().isna().any().any()
+        assert not series[0].to_dataframe().isna().any().any()
 
 
 class TestGetSeries:

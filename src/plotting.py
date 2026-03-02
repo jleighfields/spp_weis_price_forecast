@@ -66,7 +66,7 @@ def get_quantile_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
 
     # get dataframe from preds TimeSeries
     plot_df = (
-        preds.pd_dataframe()
+        preds.to_dataframe()
         .reset_index()
         .rename(columns={'timestamp_mst': 'time'})
         .melt(id_vars='time')
@@ -111,7 +111,7 @@ def get_mean_df(preds: TimeSeries, node_name: str) -> pd.DataFrame:
     """
 
     plot_df = (
-        preds.pd_dataframe()
+        preds.to_dataframe()
         .reset_index()
         .rename(columns={'timestamp_mst': 'time'})
         .melt(id_vars='time')
