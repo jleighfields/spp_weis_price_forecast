@@ -159,11 +159,19 @@ databricks bundle deploy --target <target workspace>
 
 ## Shiny app deployment
 
-To generate a `manifest.json` for deploying the Shiny app to Posit Connect:
+The Shiny app is deployed to [Posit Connect](https://posit.co/products/enterprise/connect/). Posit Connect uses `requirements.txt` for Python dependency resolution (it does not support `pyproject.toml` directly).
+
+### Generating the manifest and requirements
+
+The `rsconnect` CLI generates both `manifest.json` and `requirements.txt` from the current virtual environment. Run this after dependency changes to keep both files in sync:
 
 ```bash
 rsconnect write-manifest shiny -o -g -e app.py .
 ```
+
+The `-g` flag force-regenerates `requirements.txt`. Alternatively, you can regenerate just the requirements file with `uv pip freeze > requirements.txt`.
+
+Commit and push both files — Posit Connect will detect the updated `requirements.txt` and rebuild the environment on the next deploy.
 
 ## Notebooks
 
