@@ -125,7 +125,7 @@ resources:
       job_clusters:
         - *job_cluster_lg
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED  # Replaced by Modal job (modal_jobs/data_collection.py)
         periodic:
           interval: 6
           unit: HOURS
@@ -145,7 +145,7 @@ resources:
       job_clusters:
         - *job_cluster_lg
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED  # Replaced by Modal job (modal_jobs/data_collection.py)
         periodic:
           interval: 3
           unit: DAYS
