@@ -37,6 +37,8 @@ image = (
     schedule=modal.Period(hours=6),
     secrets=[modal.Secret.from_name("aws-secret")],
     timeout=1800,
+    cpu=16.0,  # 16 physical cores for joblib parallel processing
+    memory=4096,  # 4 GiB
 )
 def collect_hourly():
     """Collect MTLF, MTRF, and 5-min LMP data."""
@@ -74,6 +76,8 @@ def collect_hourly():
     schedule=modal.Period(days=3),
     secrets=[modal.Secret.from_name("aws-secret")],
     timeout=1800,
+    cpu=16.0,  # 16 physical cores for joblib parallel processing
+    memory=4096,  # 4 GiB
 )
 def collect_daily():
     """Collect daily LMP settlement data."""
