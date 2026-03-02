@@ -48,6 +48,7 @@ def _():
     load_dotenv(override=True)
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger("model_retrain")
+    torch.set_float32_matmul_precision("medium")
     t0 = time()
 
     # Add project root and src/ to sys.path for imports
@@ -467,25 +468,16 @@ def _(
     folder_time,
     io,
     json,
-    loaded_models_for_test,
     log,
     pred,
     s3,
 ):
+    # Promote by updating champion.json to point at the new model's folder.
+    # The app loads models directly from model_retrains/<timestamp>/ via
+    # champion_artifact_folder, so no file copying to S3_models/ is needed.
+    # To revert to a previous model, just update champion.json to point at
+    # the old folder (see scripts/r2_promote_champion.py or the plan).
     if pred is not None:
-        # Copy model files from model_retrains/<timestamp>/ to S3_models/
-        _s3_models_prefix = AWS_S3_FOLDER + "S3_models/"
-        for _key in loaded_models_for_test:
-            _filename = _key.split("/")[-1]
-            _dest_key = _s3_models_prefix + _filename
-            s3.copy_object(
-                Bucket=AWS_S3_BUCKET,
-                CopySource={"Bucket": AWS_S3_BUCKET, "Key": _key},
-                Key=_dest_key,
-            )
-            log.info(f"Copied to champion: {_dest_key}")
-
-        # Update champion.json
         champion_json = {
             "champion": folder_time,
             "champion_artifact_folder": artifact_folder,

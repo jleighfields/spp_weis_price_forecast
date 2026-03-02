@@ -184,7 +184,30 @@ modal run modal_jobs/model_retrain.py::model_retrain_weekly --env FORCE_PROMOTE=
 FORCE_PROMOTE=true uv run marimo run notebooks/model_training/model_retrain.py
 ```
 
-### 7. App compatibility
+### 7. Revert to Previous Champion
+
+Since the app loads models directly from `model_retrains/<timestamp>/` via `champion_artifact_folder` in `champion.json`, reverting is just a JSON update — no model files need to be copied. All previous model artifacts remain in their timestamped folders indefinitely.
+
+**Script: `scripts/r2_promote_champion.py`**
+
+A utility script that overwrites `S3_models/champion.json` to point at any previous retrain folder:
+
+```bash
+# Promote a specific retrain folder as champion
+python scripts/r2_promote_champion.py model_retrains/2026-02-23_20-00-00/
+
+# List available retrain folders to choose from
+python scripts/r2_promote_champion.py --list
+```
+
+**Implementation:**
+1. `--list` mode: list all `model_retrains/*/` prefixes in R2 with their `TRAIN_TIMESTAMP.pkl` dates
+2. Promote mode: validate that the target folder exists and contains model files, then overwrite `S3_models/champion.json`
+3. The script reads the existing `champion.json` first and logs the old → new transition
+
+**Note:** This means `S3_models/` only contains `champion.json` — no model file copies. The retrain notebook no longer copies artifacts to `S3_models/`.
+
+### 8. App compatibility
 
 The Shiny app (`app.py`) reads `champion.json` and only uses `champion_artifact_folder` to load models. The new fields are additive — no changes needed to `app.py`.
 
@@ -196,3 +219,4 @@ The Shiny app (`app.py`) reads `champion.json` and only uses `champion_artifact_
    - `S3_models/champion.json` with updated structure including metrics
 3. Run Shiny app to confirm it still loads the champion model correctly
 4. Test force promotion: `FORCE_PROMOTE=true uv run marimo run notebooks/model_training/model_retrain.py` — verify it skips champion comparison and promotes unconditionally
+5. Test revert: `python scripts/r2_promote_champion.py model_retrains/<old_timestamp>/` — verify app loads the old model
