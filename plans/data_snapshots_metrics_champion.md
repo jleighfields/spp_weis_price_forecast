@@ -164,7 +164,27 @@ Updated `champion.json` structure:
 }
 ```
 
-### 6. App compatibility
+### 6. Force Promotion
+
+Add a `--force-promote` mechanism for cases where the champion must be replaced regardless of metrics — e.g., after a Darts version upgrade (old models are incompatible), a change in input data schema, or a change in model hyperparameters/architecture.
+
+**Implementation:**
+- Add an environment variable `FORCE_PROMOTE=true` that skips the champion comparison and always promotes the new model
+- In Modal, pass via `env={"FORCE_PROMOTE": "true"}` on a one-off `modal run` (not in the scheduled deploy)
+- The marimo notebook checks `os.getenv("FORCE_PROMOTE", "").lower() == "true"` before the comparison step
+- When force-promoting, `model_train.json` records `"promoted": true, "promotion_reason": "force promoted"` and skips champion re-evaluation metrics
+- The champion's old metrics are still logged as `null` for audit
+
+**Usage:**
+```bash
+# One-off force promotion (does not affect scheduled deploys)
+modal run modal_jobs/model_retrain.py::model_retrain_weekly --env FORCE_PROMOTE=true
+
+# Or locally
+FORCE_PROMOTE=true uv run marimo run notebooks/model_training/model_retrain.py
+```
+
+### 7. App compatibility
 
 The Shiny app (`app.py`) reads `champion.json` and only uses `champion_artifact_folder` to load models. The new fields are additive — no changes needed to `app.py`.
 
@@ -175,3 +195,4 @@ The Shiny app (`app.py`) reads `champion.json` and only uses `champion_artifact_
    - `model_retrains/<timestamp>/model_train.json` with metrics
    - `S3_models/champion.json` with updated structure including metrics
 3. Run Shiny app to confirm it still loads the champion model correctly
+4. Test force promotion: `FORCE_PROMOTE=true uv run marimo run notebooks/model_training/model_retrain.py` — verify it skips champion comparison and promotes unconditionally
