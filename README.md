@@ -1,7 +1,7 @@
 # SPP WEIS Price Forecast
 
 ## Introduction
-This project forecasts SPP WEIS (Western Energy Imbalance Service) locational marginal prices using deep learning ensemble models. It implements a full MLOps lifecycle on Databricks:
+This project forecasts SPP WEIS (Western Energy Imbalance Service) locational marginal prices using deep learning ensemble models. It implements a full MLOps lifecycle using Modal for serverless compute:
 
 * Automated data collection from SPP
 * Feature engineering with Polars and DuckDB
@@ -14,7 +14,7 @@ This project forecasts SPP WEIS (Western Energy Imbalance Service) locational ma
 SPP Portal (public CSV data)
     |
     v
-Data Collection (Databricks Jobs, S3 parquet)
+Data Collection (Modal Jobs, S3 parquet)
     |
     v
 Data Engineering (DuckDB + Polars)
@@ -28,7 +28,7 @@ Shiny Web App (interactive forecasts with confidence intervals)
 
 ## Data
 
-SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Databricks jobs collect and upsert this data to S3.
+SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Modal jobs collect and upsert this data to S3.
 
 ### Data types collected
 
@@ -66,8 +66,11 @@ Historical and future covariates are declared in the fit function. Input and out
 
 ```
 ├── app.py                    # Shiny web app
-├── databricks.yaml           # Databricks Asset Bundle config
+├── databricks.yaml           # Databricks Asset Bundle config (jobs paused)
 ├── pyproject.toml            # Python dependencies
+├── modal_jobs/
+│   ├── data_collection.py    # Modal jobs for data collection (hourly + daily)
+│   └── model_retrain.py      # Modal job for weekly model retraining (GPU)
 ├── src/
 │   ├── data_collection.py    # ETL functions for SPP data
 │   ├── data_engineering.py   # Feature engineering, train/test splits
@@ -82,34 +85,47 @@ Historical and future covariates are declared in the fit function. Input and out
 └── deprecated/               # Archived workflows and old Streamlit app
 ```
 
-## Databricks jobs
+## Modal jobs
 
-Jobs are defined in `databricks.yaml` and deployed via Databricks Asset Bundles.
+All scheduled jobs run on [Modal](https://modal.com), a serverless Python platform with pay-per-second pricing. This replaced Databricks, which was expensive for simple single-node data collection and training jobs.
 
-| Job | Cluster | Schedule | Description |
-|-----|---------|----------|-------------|
-| `data_collection_hourly` | m5d.2xlarge | Every 6 hours | Collects MTLF, MTRF, 5-min LMP data |
-| `data_collection_daily` | m5d.2xlarge | Every 3 days | Collects daily LMP settlement data |
-| `model_retrain_weekly` | g4dn.2xlarge (GPU) | Sunday 8 PM MT | Retrains ensemble model |
+| Job | File | Resources | Schedule | Description |
+|-----|------|-----------|----------|-------------|
+| `collect_hourly` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 6 hours | Collects MTLF, MTRF, 5-min LMP data |
+| `collect_daily` | `modal_jobs/data_collection.py` | 16 CPU, 4 GiB | Every 3 days | Collects daily LMP settlement data |
+| `model_retrain_weekly` | `modal_jobs/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | Retrains ensemble model |
 
-All job clusters are single-node with spot instance pricing enabled.
+AWS credentials are stored in a Modal secret named `aws-secret`.
 
-### Serverless compute
+### Deploying Modal jobs
 
-Serverless versions of the data collection notebooks exist (`data_collection_*_serverless.ipynb`) but cannot be used on the Databricks Premium tier due to outbound internet access restrictions. Configuring serverless egress network policies requires the Enterprise tier.
+```bash
+# Install Modal CLI
+uv tool install modal
 
-## Deployment
+# Authenticate
+modal token new
+
+# Test a job
+modal run modal_jobs/data_collection.py::collect_hourly
+
+# Deploy scheduled jobs
+modal deploy modal_jobs/data_collection.py
+modal deploy modal_jobs/model_retrain.py
+```
+
+## Databricks (deprecated)
+
+The original Databricks jobs are defined in `databricks.yaml` but are now **paused** in favor of Modal. The bundle config is retained for reference.
+
+<details>
+<summary>Databricks setup (archived)</summary>
 
 ### Initial setup
 
 ```bash
-# Authenticate with Databricks
 databricks auth login --host <databricks workspace url>
-
-# Validate the bundle configuration
 databricks bundle validate
-
-# Deploy to dev target
 databricks bundle deploy --target <target workspace>
 ```
 
@@ -118,6 +134,8 @@ databricks bundle deploy --target <target workspace>
 1. `git push` — push to GitHub
 2. `databricks bundle deploy` — deploy jobs/cluster configs
 3. `databricks repos update /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast --branch main` — pull latest code into the workspace git folder
+
+</details>
 
 ### Shiny app deployment
 
