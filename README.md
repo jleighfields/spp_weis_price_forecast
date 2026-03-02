@@ -109,7 +109,7 @@ databricks bundle deploy --target <target workspace>
 
 1. `git push` — push to GitHub
 2. `databricks bundle deploy` — deploy jobs/cluster configs
-3. `databricks repos update --repo-path /Repos/jleighfields@gmail.com/spp_weis_price_forecast --branch main` — pull latest code into the workspace repo
+3. `databricks repos update /Workspace/Users/jleighfields@gmail.com/spp_weis_price_forecast --branch main` — pull latest code into the workspace git folder
 
 
 ## Data format
