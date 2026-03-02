@@ -129,11 +129,9 @@ rsconnect write-manifest shiny -o -g -e app.py .
 
 ## Local development
 
-The project uses Python 3.11. Dependencies are managed via `pyproject.toml`.
+The project uses Python 3.11. Dependencies are managed via `pyproject.toml` and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 # Create virtual environment and install dependencies
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
+uv sync
 ```
