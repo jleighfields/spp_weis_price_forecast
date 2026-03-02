@@ -1,14 +1,10 @@
 """Modal data collection jobs for SPP WEIS price forecast.
 
-Based on the Databricks data collection notebooks:
-- collect_hourly: notebooks/data_collection/data_collection_hourly.ipynb
-- collect_daily:  notebooks/data_collection/data_collection_daily.ipynb
+Thin wrappers that run the marimo notebooks headlessly.
+The notebooks at notebooks/data_collection/ contain all collection logic.
 
 Test:  modal run modal_jobs/data_collection.py::collect_hourly
 Deploy: modal deploy modal_jobs/data_collection.py
-
-TODO: Migrate data collection notebooks from Jupyter to marimo and update
-      these Modal jobs to use the marimo notebooks directly.
 """
 
 import modal
@@ -27,8 +23,11 @@ image = (
         "polars-xdt==0.17.1",
         "pandas",
         "joblib",
+        "marimo",
+        "python-dotenv",
     )
     .add_local_dir("src", remote_path="/root/src")
+    .add_local_dir("notebooks", remote_path="/root/notebooks")
 )
 
 
@@ -47,29 +46,10 @@ def collect_hourly():
 
     sys.path.insert(0, "/root")
     sys.path.insert(0, "/root/src")
-    import pandas as pd
 
-    import src.data_collection as dc
+    from notebooks.data_collection.data_collection_hourly import app as notebook_app
 
-    end_ts = pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-
-    # MTLF
-    range_df = dc.get_range_data_mtlf(end_ts=end_ts, n_periods=24)
-    parquet_files = [pf for pf in range_df if pf.endswith(".parquet")]
-    if parquet_files:
-        dc.upsert_mtlf_mtrf_lmp(parquet_files, target="mtlf")
-
-    # MTRF
-    range_df = dc.get_range_data_mtrf(end_ts=end_ts, n_periods=24)
-    parquet_files = [pf for pf in range_df if pf.endswith(".parquet")]
-    if parquet_files:
-        dc.upsert_mtlf_mtrf_lmp(parquet_files, target="mtrf")
-
-    # LMP 5-min
-    range_df = dc.get_range_data_interval_5min_lmps(end_ts=end_ts, n_periods=24 * 12)
-    parquet_files = [pf for pf in range_df if pf.endswith(".parquet")]
-    if parquet_files:
-        dc.upsert_mtlf_mtrf_lmp(parquet_files, target="lmp")
+    notebook_app.run()
 
 
 @app.function(
@@ -87,16 +67,7 @@ def collect_daily():
 
     sys.path.insert(0, "/root")
     sys.path.insert(0, "/root/src")
-    import pandas as pd
 
-    import src.data_collection as dc
+    from notebooks.data_collection.data_collection_daily import app as notebook_app
 
-    end_ts = (
-        pd.Timestamp.utcnow().tz_convert("America/Chicago").tz_localize(None)
-        - pd.Timedelta("2D")
-    )
-
-    range_df = dc.get_range_data_interval_daily_lmps(end_ts=end_ts, n_periods=7)
-    parquet_files = [pf for pf in range_df if pf.endswith(".parquet")]
-    if parquet_files:
-        dc.upsert_mtlf_mtrf_lmp(parquet_files, target="lmp")
+    notebook_app.run()

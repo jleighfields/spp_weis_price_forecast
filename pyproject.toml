@@ -39,6 +39,7 @@ dev = [
 
 [dependency-groups]
 dev = [
+    "marimo>=0.13.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.13",

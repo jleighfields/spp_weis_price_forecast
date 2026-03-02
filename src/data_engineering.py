@@ -345,7 +345,7 @@ def prep_gen_cap(
 
     if not start_time:
         # get last 1.5 years
-        start_time = pd.Timestamp.utcnow() - pd.Timedelta(parameters.TRAIN_START)
+        start_time = pd.Timestamp.now("UTC") - pd.Timedelta(parameters.TRAIN_START)
 
     # TODO: handle checks for start_time < end_time
     gen_cap = gen_cap.filter(pl.col("timestamp_mst") >= start_time)

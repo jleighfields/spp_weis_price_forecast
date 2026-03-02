@@ -209,7 +209,7 @@ def build_fit_tsmixerx(
     # )
     
     model.MODEL_TYPE = MODEL_TYPE
-    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
+    model.TRAIN_TIMESTAMP = pd.Timestamp.now("UTC")
 
     return model
 
@@ -352,7 +352,7 @@ def build_fit_tide(
     # )
     
     model.MODEL_TYPE = MODEL_TYPE
-    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
+    model.TRAIN_TIMESTAMP = pd.Timestamp.now("UTC")
 
     return model
 
@@ -479,7 +479,7 @@ def build_fit_tft(
     # )
     
     model.MODEL_TYPE = MODEL_TYPE
-    model.TRAIN_TIMESTAMP = pd.Timestamp.utcnow()
+    model.TRAIN_TIMESTAMP = pd.Timestamp.now("UTC")
 
     return model
 
