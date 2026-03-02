@@ -18,7 +18,7 @@ variables:
 
 # YAML anchors for reusable cluster configurations
 x-job-cluster-sm: &job_cluster_sm
-  job_cluster_key: Job_cluster_sm
+  job_cluster_key: Job_cluster_med
   new_cluster:
     spark_version: 17.3.x-scala2.13
     aws_attributes:
@@ -40,6 +40,21 @@ x-job-cluster-med: &job_cluster_med
       first_on_demand: 0
       spot_bid_price_percent: 100
     node_type_id: r5d.xlarge
+    spark_env_vars:
+      PYSPARK_PYTHON: /databricks/python3/bin/python3
+    data_security_mode: DATA_SECURITY_MODE_DEDICATED
+    runtime_engine: STANDARD
+    kind: CLASSIC_PREVIEW
+    is_single_node: true
+
+x-job-cluster-lg: &job_cluster_lg
+  job_cluster_key: Job_cluster_lg
+  new_cluster:
+    spark_version: 17.3.x-scala2.13
+    aws_attributes:
+      first_on_demand: 0
+      spot_bid_price_percent: 100
+    node_type_id: r5d.2xlarge
     spark_env_vars:
       PYSPARK_PYTHON: /databricks/python3/bin/python3
     data_security_mode: DATA_SECURITY_MODE_DEDICATED
@@ -108,18 +123,18 @@ resources:
         on_failure:
           - "jleighfields@gmail.com" # Job-level failure notifications
       job_clusters:
-        - *job_cluster_sm
+        - *job_cluster_lg
       trigger:
         pause_status: UNPAUSED
         periodic:
-          interval: 4
+          interval: 6
           unit: HOURS
       tasks:
         - task_key: data_collection_hourly
           notebook_task:
             notebook_path: ${var.workspace_path}/notebooks/data_collection/data_collection_hourly
             source: WORKSPACE
-          job_cluster_key: Job_cluster_sm
+          job_cluster_key: Job_cluster_lg
           libraries: *libraries
 
     data_collection_daily:
@@ -128,7 +143,7 @@ resources:
         on_failure:
           - "jleighfields@gmail.com" # Job-level failure notifications
       job_clusters:
-        - *job_cluster_sm
+        - *job_cluster_lg
       trigger:
         pause_status: UNPAUSED
         periodic:
@@ -139,7 +154,7 @@ resources:
           notebook_task:
             notebook_path: ${var.workspace_path}/notebooks/data_collection/data_collection_daily
             source: WORKSPACE
-          job_cluster_key: Job_cluster_sm
+          job_cluster_key: Job_cluster_lg
           libraries: *libraries
 
     model_retrain_weekly:
