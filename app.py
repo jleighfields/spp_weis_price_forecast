@@ -135,10 +135,12 @@ app_ui = ui.page_sidebar(
             ui.column(2, ui.input_action_button("refresh_data", "Refresh data")),
             ui.column(
                 10,
-                ui.markdown(
-                    "**[SPP Weis price map](https://pricecontourmap.spp.org/pricecontourmapwest/)** | "
-                    "**[SPP Weis load and resource forecasts](https://portal.spp.org/pages/weis-forecast-summary)** | "
-                    "**[SPP Weis generation mix](https://portal.spp.org/pages/weis-generation-mix)**"
+                ui.HTML(
+                    '<strong><a href="https://pricecontourmap.spp.org/pricecontourmapwest/" target="_blank">SPP Weis price map</a></strong>'
+                    ' &nbsp;|&nbsp; '
+                    '<strong><a href="https://portal.spp.org/pages/weis-forecast-summary" target="_blank">SPP Weis load and resource forecasts</a></strong>'
+                    ' &nbsp;|&nbsp; '
+                    '<strong><a href="https://portal.spp.org/pages/weis-generation-mix" target="_blank">SPP Weis generation mix</a></strong>'
                 ),
                 style="display: flex; align-items: center;",
             ),
