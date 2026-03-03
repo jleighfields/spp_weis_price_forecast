@@ -324,13 +324,6 @@ def _(
     return
 
 
-@app.cell
-def _(artifact_folder, utils):
-    loaded_models_for_test = utils.get_loaded_models(artifact_folder)
-    loaded_models_for_test
-    return (loaded_models_for_test,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -340,89 +333,26 @@ def _(mo):
 
 
 @app.cell
-def _(
-    AWS_S3_BUCKET,
-    TFTModel,
-    TSMixerModel,
-    TiDEModel,
-    loaded_models_for_test,
-    log,
-    os,
-    s3,
-    tempfile,
-    torch,
-):
-    def get_checkpoints(model_filter: str):
-        """Filter S3 keys to just the main .pt files (not .ckpt or .pkl)."""
-        return [
-            f
-            for f in loaded_models_for_test
-            if model_filter in f
-            and ".pt" in f
-            and ".ckpt" not in f
-            and "TRAIN_TIMESTAMP.pkl" not in f
-        ]
+def _(artifact_folder, log, tempfile, utils):
+    from src.modeling import load_ensemble_from_dir
 
-    def load_model_from_s3(model_class, key):
-        """Download a model's .pt + .pt.ckpt files to a temp dir and load."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            filename = key.split("/")[-1]
-            local_path = os.path.join(tmpdir, filename)
-            s3.download_file(Bucket=AWS_S3_BUCKET, Key=key, Filename=local_path)
-            try:
-                s3.download_file(
-                    Bucket=AWS_S3_BUCKET,
-                    Key=key + ".ckpt",
-                    Filename=local_path + ".ckpt",
-                )
-            except Exception:
-                log.warning(f"No checkpoint file found for {key}")
-            log.info(f"loading model: {key}")
-            model = model_class.load(local_path, map_location=torch.device("cpu"))
-        return model
-
-    ts_mixer_forecasting_models = [
-        load_model_from_s3(TSMixerModel, m) for m in get_checkpoints("tsmixer_")
-    ]
-    tide_forecasting_models = [
-        load_model_from_s3(TiDEModel, m) for m in get_checkpoints("tide_")
-    ]
-    tft_forecasting_models = [
-        load_model_from_s3(TFTModel, m) for m in get_checkpoints("tft_")
-    ]
-
-    forecasting_models = (
-        ts_mixer_forecasting_models
-        + tide_forecasting_models
-        + tft_forecasting_models
-    )
-    return (forecasting_models,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Create ensemble model and test predictions
-    """)
-    return
+    log.info("downloading checkpoints and building ensemble for test")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        utils.download_checkpoints(artifact_folder, tmpdir)
+        loaded_model, _train_timestamp = load_ensemble_from_dir(tmpdir)
+    return (loaded_model,)
 
 
 @app.cell
 def _(
-    NaiveEnsembleModel,
     all_series,
-    forecasting_models,
+    loaded_model,
     futr_cov,
     log,
     parameters,
     past_cov,
     pd,
 ):
-    log.info("loading model from checkpoints")
-    loaded_model = NaiveEnsembleModel(
-        forecasting_models=forecasting_models,
-        train_forecasting_models=False,
-    )
 
     log.info("test getting predictions")
     plot_ind = 3

@@ -18,10 +18,12 @@ Dependencies:
 """
 
 import os
+import pickle
 import sys
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Any
+import torch
+from typing import List, Optional, Any, Tuple
 
 
 
@@ -31,7 +33,8 @@ from darts.utils.likelihood_models import QuantileRegression
 from darts.models import (
     TFTModel,
     TiDEModel,
-    TSMixerModel
+    TSMixerModel,
+    NaiveEnsembleModel,
 )
 
 
@@ -524,3 +527,74 @@ def get_ci_err(
         ci_cover_err += [100 * np.abs(cover - 0.8)]
 
     return ci_cover_err
+
+
+# ── Model checkpoint name → Darts model class mapping ────────────────────
+# Used by load_ensemble_from_dir to identify which class to use for each
+# checkpoint file based on substrings in the filename.
+MODEL_CLASS_MAP = {
+    'tsmixer': TSMixerModel,
+    'tide_': TiDEModel,
+    'tft': TFTModel,
+}
+
+
+def load_ensemble_from_dir(
+    model_dir: str,
+) -> Tuple[NaiveEnsembleModel, pd.Timestamp]:
+    """Load all model checkpoints from a local directory and build an ensemble.
+
+    Scans ``model_dir`` for ``.pt`` files, classifies each by filename
+    substring (tsmixer / tide_ / tft), loads them with the corresponding
+    Darts model class, and combines them into a ``NaiveEnsembleModel``.
+
+    Also loads the ``TRAIN_TIMESTAMP.pkl`` file that records when the
+    champion models were trained.
+
+    Args:
+        model_dir: Path to a directory containing ``.pt`` checkpoint files
+            and a ``TRAIN_TIMESTAMP.pkl`` metadata file.
+
+    Returns:
+        A tuple of (ensemble_model, train_timestamp).
+    """
+    local_files = os.listdir(model_dir)
+
+    # Filter to only main .pt checkpoint files (exclude .ckpt companions
+    # and the TRAIN_TIMESTAMP.pkl metadata file).
+    pt_files = [
+        f for f in local_files
+        if '.pt' in f
+        and '.ckpt' not in f
+        and 'TRAIN_TIMESTAMP.pkl' not in f
+    ]
+
+    # Load each checkpoint with the appropriate Darts model class,
+    # determined by matching filename substrings.
+    forecasting_models = []
+    for pt_file in pt_files:
+        for name_pattern, model_class in MODEL_CLASS_MAP.items():
+            if name_pattern in pt_file:
+                log.info(f'loading {model_class.__name__}: {pt_file}')
+                model = model_class.load(
+                    os.path.join(model_dir, pt_file),
+                    map_location=torch.device('cpu'),
+                )
+                forecasting_models.append(model)
+                break
+
+    # Combine all individual models into a NaiveEnsembleModel that
+    # averages their predictions at inference time.
+    ensemble = NaiveEnsembleModel(
+        forecasting_models=forecasting_models,
+        train_forecasting_models=False,
+    )
+    log.info(f'built ensemble with {len(forecasting_models)} models')
+
+    # Load the timestamp recording when these models were trained.
+    timestamp_file = os.path.join(model_dir, 'TRAIN_TIMESTAMP.pkl')
+    with open(timestamp_file, 'rb') as handle:
+        train_timestamp = pickle.load(handle)
+    log.info(f'TRAIN_TIMESTAMP: {train_timestamp}')
+
+    return ensemble, train_timestamp

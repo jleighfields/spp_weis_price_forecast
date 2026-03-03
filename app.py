@@ -5,9 +5,8 @@ Shiny for Python interface for SPP Weis LMP forecasting endpoint
 # pylint: disable=W0621,C0103,W1203
 
 # base imports
-import os
+import asyncio
 import random
-import pickle
 import logging
 from pathlib import Path
 from typing import List
@@ -15,7 +14,6 @@ from typing import List
 # data
 import numpy as np
 import pandas as pd
-import boto3
 
 # user interface
 from shiny import App, reactive, render, ui
@@ -26,17 +24,11 @@ import shinyswatch
 # forecasting data
 import torch
 
-from darts.models import (
-    TFTModel,
-    TiDEModel,
-    TSMixerModel,
-    NaiveEnsembleModel,
-)
-
 # custom modules
 import src.data_engineering as de
 from src import utils
 from src import plotting
+from src.modeling import load_ensemble_from_dir
 
 # max absolute value for LMPs in given to forecast
 MAX_LMP = 200.0
@@ -182,148 +174,80 @@ def server(input, output, session):
     fcast_time_val = reactive.Value(None)
 
     ###############################################################
-    # Load data on startup and on refresh
+    # Load data and models on startup (parallel), refresh reloads data only
     ###############################################################
 
-    @reactive.effect
-    def _load_data():
-        # dependency on refresh button; also runs on startup (value starts at 0)
-        input.refresh_data()
+    def _do_load_data():
+        '''Blocking: connect to DuckDB/R2 and return (all_df_pd, lmp_pd).'''
+        log.info('getting lmp data from R2')
+        con = de.create_database()
+        log.info('finished getting data from R2')
 
-        with ui.Progress(min=0, max=3) as p:
-            p.set(message="Loading data...")
+        log.info('preparing all_df_pd')
+        all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
+        log.info('preparing lmp')
+        lmp_result = de.prep_lmp(con)
+        log.info('preparing lmp_pd_df')
+        lmp_pd = lmp_result.to_pandas().set_index('timestamp_mst')
+        con.close()
+        return all_df_pd, lmp_pd
 
-            p.set(1, detail="Connecting to data in Cloudflare R2...")
-            log.info('getting lmp data from R2')
-            con = de.create_database()
-            log.info('finished getting data from R2')
-
-            p.set(2, detail="Preparing data...")
-            log.info('preparing all_df_pd')
-            all_df_pd_val.set(de.all_df_to_pandas(de.prep_all_df(con)))
-            log.info('preparing lmp')
-            lmp_result = de.prep_lmp(con)
-            log.info('preparing lmp_pd_df')
-            lmp_pd = lmp_result.to_pandas().set_index('timestamp_mst')
-            lmp_pd_df_val.set(lmp_pd)
-            con.close()
-
-            p.set(3, detail="Done")
-
-        ui.notification_show("Done loading and preparing data", type="message")
-
-    ###############################################################
-    # Load models once on startup
-    ###############################################################
-
-    @reactive.effect
-    def _load_models():
-        if loaded_model_val() is not None:
-            return
-
-        import json
+    def _do_load_models():
+        '''Blocking: download champion checkpoints from R2 and return (model, train_timestamp).'''
         import tempfile
 
+        with tempfile.TemporaryDirectory() as tmpdir:
+            utils.download_champion_checkpoints(tmpdir)
+            return load_ensemble_from_dir(tmpdir)
+
+    @reactive.effect
+    async def _load_startup():
+        """Load data and models on startup; reload only data on refresh.
+
+        On first load, data fetching (DuckDB/R2) and model loading (S3
+        checkpoint download + PyTorch) run in parallel via asyncio.gather,
+        roughly halving startup time. On subsequent refreshes, only data
+        is reloaded since models are already in memory.
+
+        Uses asyncio.to_thread to run blocking I/O off the event loop so
+        the Shiny UI stays responsive during loading.
+        """
+        # Take a reactive dependency on the refresh button.
+        # Also fires once on startup because the button value starts at 0.
+        input.refresh_data()
+
+        # Use reactive.isolate() to check the model state without
+        # subscribing — otherwise setting loaded_model_val below would
+        # immediately re-trigger this effect and cause a second load.
+        with reactive.isolate():
+            need_models = loaded_model_val() is None
+
         with ui.Progress(min=0, max=2) as p:
-            p.set(message="Loading models from Cloudflare R2...")
+            p.set(
+                message="Loading data and models..."
+                if need_models
+                else "Refreshing data...",
+            )
+            p.set(1, detail="Loading from R2...")
 
-            AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-            AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
-            s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
-
-            # load champion.json to find the current champion model folder
-            champion_key = AWS_S3_FOLDER + "S3_models/champion.json"
-            log.info(f'loading champion config from: {champion_key}')
-            response = s3_client.get_object(Bucket=AWS_S3_BUCKET, Key=champion_key)
-            champion_config = json.loads(response['Body'].read().decode('utf-8'))
-            log.info(f'champion_config: {champion_config}')
-
-            champion_folder = champion_config['champion_artifact_folder']
-            log.info(f'downloading model checkpoints from: {champion_folder}')
-            loaded_models_list = utils.get_loaded_models(champion_folder)
-            log.info(f'loaded_models: {loaded_models_list}')
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                for lm in loaded_models_list:
-                    local_file = os.path.join(tmpdir, lm.split('/')[-1])
-                    log.info(f'downloading: {lm} to {local_file}')
-                    s3_client.download_file(
-                        Bucket=AWS_S3_BUCKET, Key=lm, Filename=local_file
-                    )
-
-                p.set(1, detail="Loading model weights...")
-
-                local_files = os.listdir(tmpdir)
-
-                tsmixer_ckpts = [
-                    f for f in local_files
-                    if 'tsmixer' in f and '.pt' in f
-                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-                ]
-                tsmixer_forecasting_models = []
-                for m_ckpt in tsmixer_ckpts:
-                    log.info(f'loading model: {m_ckpt}')
-                    tsmixer_forecasting_models.append(
-                        TSMixerModel.load(
-                            os.path.join(tmpdir, m_ckpt),
-                            map_location=torch.device('cpu'),
-                        )
-                    )
-
-                tide_ckpts = [
-                    f for f in local_files
-                    if 'tide_' in f and '.pt' in f
-                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-                ]
-                tide_forecasting_models = []
-                for m_ckpt in tide_ckpts:
-                    log.info(f'loading model: {m_ckpt}')
-                    tide_forecasting_models.append(
-                        TiDEModel.load(
-                            os.path.join(tmpdir, m_ckpt),
-                            map_location=torch.device('cpu'),
-                        )
-                    )
-
-                tft_ckpts = [
-                    f for f in local_files
-                    if 'tft' in f and '.pt' in f
-                    and '.ckpt' not in f and 'TRAIN_TIMESTAMP.pkl' not in f
-                ]
-                tft_forecasting_models = []
-                for m_ckpt in tft_ckpts:
-                    log.info(f'loading model: {m_ckpt}')
-                    tft_forecasting_models.append(
-                        TFTModel.load(
-                            os.path.join(tmpdir, m_ckpt),
-                            map_location=torch.device('cpu'),
-                        )
-                    )
-
-                forecasting_models = (
-                    tsmixer_forecasting_models
-                    + tide_forecasting_models
-                    + tft_forecasting_models
+            if need_models:
+                # First startup: run data and model loading concurrently.
+                # Each helper is blocking I/O, so we push them to threads.
+                data_result, model_result = await asyncio.gather(
+                    asyncio.to_thread(_do_load_data),
+                    asyncio.to_thread(_do_load_models),
                 )
-                model = NaiveEnsembleModel(
-                    forecasting_models=forecasting_models,
-                    train_forecasting_models=False,
-                )
+                loaded_model_val.set(model_result[0])
+                train_timestamp_val.set(str(model_result[1]))
+            else:
+                # Refresh click: models already loaded, just reload data.
+                data_result = await asyncio.to_thread(_do_load_data)
 
-                log.info(f'loaded_model: {model}')
-                loaded_model_val.set(model)
-
-                # get model training timestamp
-                timestamp_file = os.path.join(tmpdir, 'TRAIN_TIMESTAMP.pkl')
-                with open(timestamp_file, 'rb') as handle:
-                    TRAIN_TIMESTAMP = pickle.load(handle)
-
-                log.info(f'TRAIN_TIMESTAMP: {TRAIN_TIMESTAMP}')
-                train_timestamp_val.set(str(TRAIN_TIMESTAMP))
-
+            all_df_pd_val.set(data_result[0])
+            lmp_pd_df_val.set(data_result[1])
             p.set(2, detail="Done")
 
-        ui.notification_show("Done loading models", type="message")
+        ui.notification_show("Done loading data and models", type="message")
 
     ###############################################################
     # Update sidebar inputs when data is loaded

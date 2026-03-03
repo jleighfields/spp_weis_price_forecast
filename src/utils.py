@@ -6,6 +6,7 @@ including listing bucket contents and retrieving trained model file paths.
 These utilities support the migration from hardcoded S3 paths to configurable
 bucket/folder locations via environment variables.
 """
+import json
 import os
 from typing import List
 import boto3
@@ -78,6 +79,63 @@ def get_loaded_models(search_folder: str='S3_models/') -> List[str]:
     log.info(f'loaded_models: {loaded_models}')
 
     return loaded_models
+
+def download_checkpoints(s3_folder: str, dest_dir: str) -> None:
+    """Download model checkpoint files from an S3 folder to a local directory.
+
+    Lists all model files (.pt, .ckpt, .pkl) in the given S3 folder using
+    ``get_loaded_models`` and downloads them into ``dest_dir``. Works with
+    any model folder — champion, challenger, or historical.
+
+    Environment Variables:
+        AWS_S3_BUCKET: The S3 bucket name.
+        S3_ENDPOINT_URL: Endpoint URL for S3-compatible storage (e.g. Cloudflare R2).
+
+    Args:
+        s3_folder: S3 folder path containing checkpoint files
+            (e.g. ``"S3_models/2026-03-01_12-00-00/"``).
+        dest_dir: Local directory to download checkpoint files into.
+    """
+    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+    s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
+
+    log.info(f'downloading model checkpoints from: {s3_folder}')
+    model_keys = get_loaded_models(s3_folder)
+    log.info(f'model files to download: {model_keys}')
+
+    for key in model_keys:
+        local_file = os.path.join(dest_dir, key.split('/')[-1])
+        log.info(f'downloading: {key} to {local_file}')
+        s3_client.download_file(Bucket=AWS_S3_BUCKET, Key=key, Filename=local_file)
+
+
+def download_champion_checkpoints(dest_dir: str) -> None:
+    """Download the current champion model's checkpoint files from S3.
+
+    Reads ``S3_models/champion.json`` to determine which model folder is
+    the current champion, then delegates to ``download_checkpoints``.
+
+    Environment Variables:
+        AWS_S3_BUCKET: The S3 bucket name.
+        AWS_S3_FOLDER: The folder prefix within the bucket.
+        S3_ENDPOINT_URL: Endpoint URL for S3-compatible storage (e.g. Cloudflare R2).
+
+    Args:
+        dest_dir: Local directory to download checkpoint files into.
+    """
+    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
+    AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
+    s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
+
+    champion_key = AWS_S3_FOLDER + "S3_models/champion.json"
+    log.info(f'loading champion config from: {champion_key}')
+    response = s3_client.get_object(Bucket=AWS_S3_BUCKET, Key=champion_key)
+    champion_config = json.loads(response['Body'].read().decode('utf-8'))
+    log.info(f'champion_config: {champion_config}')
+
+    champion_folder = champion_config['champion_artifact_folder']
+    download_checkpoints(champion_folder, dest_dir)
+
 
 def get_parquet_files() -> List[str]:
     """
