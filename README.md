@@ -71,12 +71,19 @@ Historical and future covariates are declared in the fit function. Input and out
 │   ├── data_collection.py    # Scheduled data collection (hourly + daily)
 │   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
+│   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
 │   ├── data_collection.py    # ETL functions for SPP data
 │   ├── data_engineering.py   # Feature engineering, train/test splits
-│   ├── modeling.py           # Model training (TiDE, TSMixer, TFT)
+│   ├── modeling.py           # Model training and loading (TiDE, TSMixer, TFT)
 │   ├── parameters.py         # Hyperparameters and configuration
 │   ├── plotting.py           # Forecast visualization
 │   └── utils.py              # R2/S3 and utility functions
+├── tests/                        # Unit tests (pytest)
+│   ├── test_app.py           # Shiny app tests
+│   ├── test_data_collection.py
+│   ├── test_data_engineering.py
+│   ├── test_modeling_load.py # Model loading helper tests
+│   └── test_utils_s3.py     # S3/R2 utility tests
 ├── scripts/
 │   └── r2_move_objects.py    # R2 object move/copy/delete utility
 ├── notebooks/                    # Marimo notebooks (.py) — run with `marimo edit` or `python`
