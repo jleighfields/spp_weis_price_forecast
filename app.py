@@ -335,67 +335,75 @@ def server(input, output, session):
         log.info(f'\tfcast_time: {fcast_time}')
         log.info(f'\tn_days: {n_days}')
 
-        with ui.Progress(min=0, max=2) as p:
-            p.set(message="Running forecast...")
+        try:
+            with ui.Progress(min=0, max=2) as p:
+                p.set(message="Running forecast...")
 
-            # get prices for user selected node
-            idx = df.unique_id == node_name
-            price_df = df[idx]
+                # get prices for user selected node
+                idx = df.unique_id == node_name
+                price_df = df[idx]
 
-            # get covariates for user selected node
-            idx = all_df.unique_id == node_name
-            plot_cov_df = all_df[idx]
+                # get covariates for user selected node
+                idx = all_df.unique_id == node_name
+                plot_cov_df = all_df[idx]
 
-            # prepare data for getting predictions
-            trimmed_price_df = price_df.copy()
-            trimmed_price_df.loc[
-                trimmed_price_df.LMP > MAX_LMP, 'LMP'
-            ] = MAX_LMP
-            trimmed_price_df.loc[
-                trimmed_price_df.LMP < -MAX_LMP, 'LMP'
-            ] = -MAX_LMP
-            log.info(f'max trimmed lmp: {trimmed_price_df.LMP.max()}')
-            plot_series = de.get_series(trimmed_price_df)[0]
-            future_cov_series = de.get_futr_cov(plot_cov_df)[0]
-            past_cov_series = de.get_past_cov(plot_cov_df)[0]
-            node_series = plot_series
-            if fcast_time <= node_series.end_time():
-                node_series = node_series.drop_after(fcast_time)
+                # prepare data for getting predictions
+                trimmed_price_df = price_df.copy()
+                trimmed_price_df.loc[
+                    trimmed_price_df.LMP > MAX_LMP, 'LMP'
+                ] = MAX_LMP
+                trimmed_price_df.loc[
+                    trimmed_price_df.LMP < -MAX_LMP, 'LMP'
+                ] = -MAX_LMP
+                log.info(f'max trimmed lmp: {trimmed_price_df.LMP.max()}')
+                plot_series = de.get_series(trimmed_price_df)[0]
+                future_cov_series = de.get_futr_cov(plot_cov_df)[0]
+                past_cov_series = de.get_past_cov(plot_cov_df)[0]
+                node_series = plot_series
+                if fcast_time <= node_series.end_time():
+                    node_series = node_series.drop_after(fcast_time)
 
-            p.set(1, detail="Generating predictions...")
+                p.set(1, detail="Generating predictions...")
 
-            log.info(f'n_days: {n_days}')
-            torch.manual_seed(0)
-            random.seed(0)
-            np.random.seed(0)
-            preds = model.predict(
-                series=node_series,
-                past_covariates=past_cov_series,
-                future_covariates=future_cov_series,
-                n=n_days * 24,
-                num_samples=500,
+                log.info(f'n_days: {n_days}')
+                torch.manual_seed(0)
+                random.seed(0)
+                np.random.seed(0)
+                preds = model.predict(
+                    series=node_series,
+                    past_covariates=past_cov_series,
+                    future_covariates=future_cov_series,
+                    n=n_days * 24,
+                    num_samples=500,
+                )
+
+                cov_df = future_cov_series.to_dataframe()
+                cov_df['re_ratio'] = (
+                    (cov_df.Wind_Forecast_MW + cov_df.Solar_Forecast_MW)
+                    / cov_df.MTLF
+                )
+                cov_df = (
+                    cov_df
+                    .reset_index()
+                    .rename(columns={
+                        'timestamp_mst': 'time',
+                        're_ratio': 'Ratio',
+                    })
+                )
+
+                preds_val.set(preds)
+                plot_cov_df_val.set(cov_df)
+
+                p.set(2, detail="Done")
+
+            ui.notification_show("Forecast complete", type="message")
+        except (IndexError, ValueError, Exception) as e:
+            log.error(f'Forecast failed for {node_name}: {e}')
+            ui.notification_show(
+                f"Forecast failed for {node_name}: insufficient data or unsupported node.",
+                type="error",
+                duration=10,
             )
-
-            cov_df = future_cov_series.to_dataframe()
-            cov_df['re_ratio'] = (
-                (cov_df.Wind_Forecast_MW + cov_df.Solar_Forecast_MW)
-                / cov_df.MTLF
-            )
-            cov_df = (
-                cov_df
-                .reset_index()
-                .rename(columns={
-                    'timestamp_mst': 'time',
-                    're_ratio': 'Ratio',
-                })
-            )
-
-            preds_val.set(preds)
-            plot_cov_df_val.set(cov_df)
-
-            p.set(2, detail="Done")
-
-        ui.notification_show("Forecast complete", type="message")
 
     ###############################################################
     # Shared computed forecast data

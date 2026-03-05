@@ -572,8 +572,6 @@ def all_df_to_pandas(all_df: pl.DataFrame) -> pd.DataFrame:
     all_df_pd = all_df.to_pandas()
     all_df_pd.set_index('timestamp_mst', inplace=True)
     all_df_pd = all_df_pd[IDS + Y + PAST_COLS + FUTR_COLS]
-    all_df_pd = all_df_pd[~all_df_pd.unique_id.isin(parameters.IDS_TO_REMOVE)]
-    
     return all_df_pd
 
 
@@ -622,13 +620,6 @@ def get_train_test_all(
     train_all = lmp_all[train_idx]
     test_all = lmp_all[test_idx]
     train_test_all = lmp_all[all_idx]
-
-    # some BAA (ids) don't have enough training data
-    # so they need to be removed
-    lmp_all = lmp_all[~lmp_all.unique_id.isin(parameters.IDS_TO_REMOVE)]
-    train_all = train_all[~train_all.unique_id.isin(parameters.IDS_TO_REMOVE)]
-    test_all = test_all[~test_all.unique_id.isin(parameters.IDS_TO_REMOVE)]
-    train_test_all = train_test_all[~train_test_all.unique_id.isin(parameters.IDS_TO_REMOVE)]
 
     return lmp_all, train_all, test_all, train_test_all
 
