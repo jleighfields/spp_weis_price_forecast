@@ -175,13 +175,32 @@ The Shiny app is deployed to [Posit Connect](https://posit.co/products/enterpris
 
 ### Generating the manifest and requirements
 
-The `rsconnect` CLI generates both `manifest.json` and `requirements.txt` from the current virtual environment. Run this after dependency changes to keep both files in sync:
+The `rsconnect` CLI generates both `manifest.json` and `requirements.txt` from the current virtual environment. Run this after dependency changes to keep both files in sync. The `-x` flags exclude dev/CI files so only app runtime files are bundled:
 
 ```bash
-rsconnect write-manifest shiny -o -g -e app.py .
+uv run rsconnect write-manifest shiny -o -g -e app.py \
+  -x '.claude/**' \
+  -x '.pytest_cache/**' \
+  -x 'model_checkpoints/**' \
+  -x 'optuna/**' \
+  -x 'deprecated/**' \
+  -x 'env/**' \
+  -x 'plans/**' \
+  -x 'tests/**' \
+  -x 'notebooks/**' \
+  -x 'modal_jobs/**' \
+  -x 'scripts/**' \
+  -x 'src/__pycache__/**' \
+  -x '.env' \
+  -x '.gitattributes' \
+  -x '.gitignore' \
+  -x 'uv.lock' \
+  -x 'pyproject.toml' \
+  -x '.python-version' \
+  .
 ```
 
-The `-g` flag force-regenerates `requirements.txt`. Alternatively, you can regenerate just the requirements file with `uv pip freeze > requirements.txt`.
+The `-g` flag force-regenerates `requirements.txt`.
 
 Commit and push both files — Posit Connect will detect the updated `requirements.txt` and rebuild the environment on the next deploy.
 
