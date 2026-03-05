@@ -416,7 +416,10 @@ class TestPlottingIntegration:
         from darts import TimeSeries
 
         # Create a simple TimeSeries with multiple samples
-        dates = pd.date_range(start='2023-08-01', periods=24, freq='h')
+        dates = pd.DatetimeIndex(
+            pd.date_range(start='2023-08-01', periods=24, freq='h'),
+            name='timestamp_mst',
+        )
         values = np.random.uniform(20, 50, (24, 1, 100))  # 100 samples
 
         ts = TimeSeries.from_times_and_values(
@@ -439,7 +442,10 @@ class TestPlottingIntegration:
         from darts import TimeSeries
 
         # Create a simple TimeSeries with multiple samples
-        dates = pd.date_range(start='2023-08-01', periods=24, freq='h')
+        dates = pd.DatetimeIndex(
+            pd.date_range(start='2023-08-01', periods=24, freq='h'),
+            name='timestamp_mst',
+        )
         values = np.random.uniform(20, 50, (24, 1, 100))  # 100 samples
 
         ts = TimeSeries.from_times_and_values(
@@ -540,7 +546,10 @@ class TestGetPlotDfIntegration:
         from darts import TimeSeries
 
         # Create prediction TimeSeries
-        dates = pd.date_range(start='2023-08-01 12:00', periods=24, freq='h')
+        dates = pd.DatetimeIndex(
+            pd.date_range(start='2023-08-01 12:00', periods=24, freq='h'),
+            name='timestamp_mst',
+        )
         values = np.random.uniform(20, 50, (24, 1, 50))
 
         preds = TimeSeries.from_times_and_values(
@@ -562,7 +571,10 @@ class TestGetPlotDfIntegration:
         from src.plotting import get_plot_df
         from darts import TimeSeries
 
-        dates = pd.date_range(start='2023-08-01 12:00', periods=24, freq='h')
+        dates = pd.DatetimeIndex(
+            pd.date_range(start='2023-08-01 12:00', periods=24, freq='h'),
+            name='timestamp_mst',
+        )
         values = np.random.uniform(20, 50, (24, 1, 50))
 
         preds = TimeSeries.from_times_and_values(
