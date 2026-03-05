@@ -85,7 +85,6 @@ def get_hour_list(fcast_date, lmp_pd_df: pd.DataFrame) -> List[str]:
 ###############################################################
 
 app_ui = ui.page_sidebar(
-    ui.busy_indicators.use(),
     ui.sidebar(
         ui.h4("Select forecast start date"),
         ui.input_date("fcast_date", "Forecast date"),
@@ -123,6 +122,7 @@ app_ui = ui.page_sidebar(
         src="wind_farm.png",
         style="width: 100%; max-height: 400px; object-fit: cover; display: block;",
     ),
+    ui.busy_indicators.use(),
     ui.div(
         ui.br(),
         ui.row(
