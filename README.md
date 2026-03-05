@@ -78,12 +78,17 @@ Historical and future covariates are declared in the fit function. Input and out
 │   ├── parameters.py         # Hyperparameters and configuration
 │   ├── plotting.py           # Forecast visualization
 │   └── utils.py              # R2/S3 and utility functions
-├── tests/                        # Unit tests (pytest)
-│   ├── test_app.py           # Shiny app tests
-│   ├── test_data_collection.py
-│   ├── test_data_engineering.py
-│   ├── test_modeling_load.py # Model loading helper tests
-│   └── test_utils_s3.py     # S3/R2 utility tests
+├── tests/
+│   ├── unit/                 # Fast unit tests (no network/browser needed)
+│   │   ├── test_app.py       # App helper function tests
+│   │   ├── test_data_collection.py
+│   │   ├── test_data_engineering.py
+│   │   ├── test_modeling_load.py
+│   │   └── test_utils_s3.py
+│   └── e2e/                  # Playwright browser tests (requires chromium)
+│       ├── conftest.py       # Shiny app fixture
+│       ├── app_for_test.py   # Lightweight app with mock data/models
+│       └── test_app_e2e.py   # UI lifecycle tests
 ├── scripts/
 │   └── r2_move_objects.py    # R2 object move/copy/delete utility
 ├── notebooks/                    # Marimo notebooks (.py) — run with `marimo edit` or `python`
@@ -190,6 +195,30 @@ uv run marimo edit notebooks/model_training/model_retrain.py
 
 # Headless execution (runs all cells top-to-bottom)
 uv run marimo run notebooks/data_collection/data_collection_hourly.py
+```
+
+## Testing
+
+Tests are split into two directories:
+
+* **`tests/unit/`** — fast unit tests for helper functions, data processing, and model loading. No network or browser required.
+* **`tests/e2e/`** — [Playwright](https://playwright.dev/python/) browser tests that launch the Shiny app and verify the full UI lifecycle: sidebar renders, inputs populate, forecasts generate, stale results clear, and downloads work.
+
+The E2E tests use a lightweight test app (`tests/e2e/app_for_test.py`) that monkeypatches the heavy startup loaders (`_do_load_data`, `_do_load_models`) with synthetic fixture data, so no R2/S3 credentials or model checkpoints are needed.
+
+```bash
+# Install dev dependencies and Playwright browser
+uv sync --group dev
+uv run playwright install chromium
+
+# Run all tests
+uv run pytest -v
+
+# Run only unit tests
+uv run pytest tests/unit -v
+
+# Run only E2E tests
+uv run pytest tests/e2e -v
 ```
 
 ## Local development
