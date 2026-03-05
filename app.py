@@ -8,6 +8,7 @@ Shiny for Python interface for SPP Weis LMP forecasting endpoint
 import asyncio
 import random
 import logging
+import tempfile
 from pathlib import Path
 from typing import List
 
@@ -79,18 +80,12 @@ def get_hour_list(fcast_date, lmp_pd_df: pd.DataFrame) -> List[str]:
     return hour_list
 
 
-def get_fcast_time(fcast_date: str, fcast_hour: str) -> str:
-    '''
-    get the forecast time string
-    '''
-    return f'{fcast_date}T{fcast_hour}:00:00.000000000'
-
-
 ###############################################################
 # UI Layout
 ###############################################################
 
 app_ui = ui.page_sidebar(
+    ui.busy_indicators.use(),
     ui.sidebar(
         ui.h4("Select forecast start date"),
         ui.input_date("fcast_date", "Forecast date"),
@@ -118,7 +113,7 @@ app_ui = ui.page_sidebar(
         ),
         ui.hr(),
         ui.markdown("**NOTES:**"),
-        ui.markdown("Data is updated every 6 hours"),
+        ui.markdown("Data is updated every 4 hours"),
         ui.markdown("Model last trained:"),
         ui.output_ui("train_timestamp_display"),
         width=300,
@@ -130,7 +125,6 @@ app_ui = ui.page_sidebar(
     ),
     ui.div(
         ui.br(),
-        # ui.h1("SPP Weis Nodal Price Forecast"),
         ui.row(
             ui.column(2, ui.input_action_button("refresh_data", "Refresh data")),
             ui.column(
@@ -196,8 +190,6 @@ def server(input, output, session):
 
     def _do_load_models():
         '''Blocking: download champion checkpoints from R2 and return (model, train_timestamp).'''
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             utils.download_champion_checkpoints(tmpdir)
             return load_ensemble_from_dir(tmpdir)
@@ -303,6 +295,20 @@ def server(input, output, session):
         return ui.div()
 
     ###############################################################
+    # Clear stale forecast when inputs change
+    ###############################################################
+
+    @reactive.effect
+    def _clear_stale_forecast():
+        # Take dependency on all forecast inputs
+        input.node_name()
+        input.n_days()
+        input.fcast_date()
+        input.fcast_hour()
+        # Clear previous results so stale data doesn't persist
+        preds_val.set(None)
+
+    ###############################################################
     # Run forecast on button click
     ###############################################################
 
@@ -324,8 +330,7 @@ def server(input, output, session):
         fcast_date = input.fcast_date()
         fcast_hour = input.fcast_hour()
 
-        fcast_time = get_fcast_time(fcast_date, fcast_hour)
-        fcast_time = pd.Timestamp(fcast_time) + pd.Timedelta('1h')
+        fcast_time = pd.Timestamp(fcast_date) + pd.Timedelta(hours=int(fcast_hour) + 1)
         fcast_node_name_val.set(node_name)
         fcast_time_val.set(fcast_time)
         log.info(f'fcast_time: {fcast_time}')
@@ -397,7 +402,7 @@ def server(input, output, session):
                 p.set(2, detail="Done")
 
             ui.notification_show("Forecast complete", type="message")
-        except (IndexError, ValueError, Exception) as e:
+        except Exception as e:
             log.error(f'Forecast failed for {node_name}: {e}')
             ui.notification_show(
                 f"Forecast failed for {node_name}: insufficient data or unsupported node.",
@@ -511,10 +516,8 @@ def server(input, output, session):
         display_data = display_data.loc[:, download_cols].copy()
         # rename float quantile columns to strings for Shiny DataGrid compatibility
         display_data = display_data.rename(columns={0.1: 'q10', 0.5: 'q50', 0.9: 'q90'})
-        # round numeric columns to 2 decimal places
-        numeric_cols = display_data.select_dtypes(include='number').columns
-        for col in numeric_cols:
-            display_data[col] = display_data[col].map(lambda x: f'{x:.2f}' if pd.notna(x) else '')
+        # round numeric columns to 2 decimal places (keep as numbers for sortability)
+        display_data = display_data.round(2)
         log.info(f'display_data.columns: {display_data.columns}')
         return display_data
 
@@ -527,7 +530,7 @@ def server(input, output, session):
 
     @render.download(
         filename=lambda: (
-            f"price-forecast-{fcast_node_name_val()}-{fcast_time_val()}.csv"
+            f"price-forecast-{fcast_node_name_val()}-{fcast_time_val().strftime('%Y-%m-%dT%H-%M')}.csv"
         )
     )
     def download_data():
