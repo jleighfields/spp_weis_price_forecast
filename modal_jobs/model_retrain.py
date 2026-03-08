@@ -26,7 +26,7 @@ image = (
         "joblib",
         "torch==2.5.1",
         "darts==0.41.0",
-        "pytorch-lightning",
+        "lightning>=2.6.0",
         "scikit-learn",
         "marimo",
         "python-dotenv",
