@@ -1,0 +1,388 @@
+# Migration Plan: SPP WEIS → SPP RTO West (Integrated Marketplace)
+
+## Current state (updated 2026-07-05)
+
+Where things stand on `feature/rto-west-migration`, for picking up in a fresh session:
+
+**Done**
+- **Phase 0** feed/schema verification for the four core feeds (the table below was
+  re-verified with live pulls on 2026-07-05).
+- Plan reviewed and corrected: West filtering moved downstream (store both BAAs at
+  collection), daily-LMP rollup flagged unverified, gen-capacity dropped as dead code,
+  PCM coverage numbers derived from live data.
+- **App copy updated** (`app.py`, `src/plotting.py`): WEIS labels/links → IM West
+  equivalents. This is the app half of Phase 3; the settlement-location universe still
+  pends the Phase 3 data-engineering work.
+- **Node-geometry prototypes** copied into `scripts/node_geometry_prototype/` (seeds for
+  Phase 3b `src/geometry.py`).
+- Dev tooling landed: `.claude/` skills (`code-quality`, `comment-docstring`,
+  `security-scan`, `simplify-audit`) + `code-reviewer`/`simplify-auditor` agents, repo
+  `CLAUDE.md`, ruff per-file ignores, detect-secrets baseline, and `.env.example`
+  documenting the R2 env keys. The R2 bucket is **`spp-weis-forecast`**.
+
+**Not started**
+- Phase 1 (IM collectors) onward — no IM collection code exists yet.
+
+**Next actions**
+1. Resolve the daily-LMP question (Open questions #1): find the IM daily rollup
+   slug/filename or drop the daily collector and derive daily from 5-min files.
+2. **Phase 1**: build the IM collectors (`data_im/` prefix, both BAAs, new filename
+   parsing, DST `…d.csv` handling) with unit tests against real sample CSVs.
+3. **Phase 2**: backfill 2026-04-01 → present into `data_im/`.
+
+## Background / why this is needed
+
+SPP's **Western Energy Imbalance Service (WEIS)** — the real-time-only transitional
+market this project forecasts — was **permanently terminated on April 1, 2026**. On the
+same date SPP launched full **RTO operations in the Western Interconnection** ("RTO West"),
+absorbing all former WEIS participants into the SPP **Integrated Marketplace (IM)** — the full
+RTO market SPP now runs across both interconnections. Throughout this plan **IM** denotes the new
+Integrated Marketplace feeds/artifacts (SPP's own term), in contrast to the legacy WEIS feeds. SPP is
+the first US grid operator to run organized markets across both interconnections, now
+operating two balancing authority areas (BAAs): **SPP East** and **SPP West** (the West BAA
+is reported as `SWPW` / `SPPISO-West`).
+
+**Consequences for this project:**
+
+1. All WEIS data feeds (`portal.spp.org/file-browser-api/download/*-weis`, files prefixed
+   `WEIS-`) stopped publishing new data after 2026-04-01. **Data collection is currently
+   dead** — the hourly/daily Modal jobs are fetching URLs that no longer receive updates.
+2. The replacement data lives in the **Integrated Marketplace** feeds (no `-weis` slug, no
+   `WEIS-` filename prefix). These feeds now include **both** East and West nodes,
+   distinguished by a new **BAA column**. We must filter to the West BAA.
+3. The market design changed materially (a **Day-Ahead Market** now exists alongside RTBM;
+   new resources, new settlement locations, ~300 new tradable West nodes). The forecast
+   target's statistical behavior will shift, so **the model must be retrained on RTO West
+   data** — and there is a hard data discontinuity at 2026-04-01.
+
+Sources:
+[SPP RTO West launch (Apr 1 2026)](https://kilowattlogic.com/news/spp-rto-west-launches-april-2026-dual-interconnection),
+[SPP RTO Expansion](https://www.spp.org/western-services/rto-expansion/),
+[Yes Energy – Preparing for SPP's RTO Expansion](https://www.yesenergy.com/blog/preparing-for-spps-rto-expansion),
+[SPP Western Services](https://www.spp.org/western-services/),
+[RTBM LMP by settlement location](https://portal.spp.org/pages/rtbm-lmp-by-location).
+
+---
+
+## What changes conceptually (WEIS → IM)
+
+| Concept | WEIS (old) | RTO West / Integrated Marketplace (new) |
+|---|---|---|
+| Market scope | West-only, real-time only | Full RTO, Day-Ahead + Real-Time (RTBM), East **and** West |
+| Endpoint slug | `…-weis` (e.g. `lmp-by-settlement-location-weis`) | no suffix (e.g. `rtbm-lmp-by-location`) |
+| CSV filename prefix | `WEIS-RTBM-LMP-SL-…`, `WEIS-OP-MTLF-…`, `WEIS-OP-MTRF-…` | `RTBM-LMP-SL-…`, `OP-MTLF-…`, `OP-MTRF-…` |
+| Geographic filter | implicit (all WEIS = West) | **explicit BAA filter required** (`SWPW`/`SPPISO-West`) |
+| Load forecast (MTLF) | system-wide (== West) | published **per BAA**; take West BAA only |
+| Resource forecast (MTRF) | West wind/solar | per BAA; take West |
+| DST files | single file per interval | interval files + a `…d.csv` duplicate-hour variant on fall-back |
+
+> ⚠️ **Semantic subtlety:** the old WEIS MTLF/MTRF were inherently West-only. The IM
+> "system-wide" objects are being retired in favor of BAA-level objects (`SPPISO-East` /
+> `SPPISO-West`). We must select the **West BAA** rows or the load/resource covariates will
+> silently become whole-RTO aggregates and corrupt the model.
+
+---
+
+## Phase 0 — feeds & schema (VERIFIED 2026-07-05)
+
+All IM feeds were confirmed by pulling live sample files from `portal.spp.org`. The IM CSVs
+are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `BAA == 'SWPW'`
+(East is `SPP`). Confirmed old→new mapping:
+
+| Feed | IM slug | Path | Filename | Columns (new = `BAA`) |
+|---|---|---|---|---|
+| RTBM 5-min LMP | `rtbm-lmp-by-location` | `/{Y}/{M}/By_Interval/{D}/` | `RTBM-LMP-SL-{YYYYMMDDHHMM}.csv` | `Interval,GMTIntervalEnd,Settlement Location,Pnode,LMP,MLC,MCC,MEC,BAA` |
+| Load (MTLF) | `mtlf-vs-actual` | `/{Y}/{M}/{D}/` | `OP-MTLF-{YYYYMMDDHH}00.csv` | `Interval,GMTIntervalEnd,MTLF,Averaged Actual,BAA` |
+| Wind/Solar (MTRF) | `midterm-resource-forecast` | `/{Y}/{M}/{D}/` | `OP-MTRF-{YYYYMMDDHH}00.csv` | `Interval,GMTIntervalEnd,Wind Forecast MW,Solar Forecast MW,BAA` |
+| Resource by Reserve Zone | `resource-forecast-by-reserve-zone` | `/{Y}/{M}/{D}/` | `RF_RESERVE_ZONE-{YYYYMMDDHH}00.csv` | `IntervalEnd,GMTIntervalEnd,BAA,ReserveZone,WindForecastMW,WindActualMW,SolarForecastMW,SolarActualMW` |
+
+- **Column parity:** identical to WEIS after `format_df_colnames`, so existing processors work
+  almost verbatim — the real deltas are (1) URL slug, (2) `WEIS-` prefix gone → rework the
+  `url.split('WEIS-')` filename parse, (3) keep the new `BAA` column at collection; the
+  `BAA == 'SWPW'` West filter is applied **downstream** in data engineering (see Decisions).
+- **Blank-`BAA` rows:** live files (esp. MTRF and `RF_RESERVE_ZONE`) carry leading rows with
+  empty `BAA` and empty forecast values — future intervals not yet populated. The downstream
+  `BAA == 'SWPW'` filter drops them naturally; include such rows in test fixtures.
+  (`RF_RESERVE_ZONE` headers also have leading spaces — `format_df_colnames` already strips them.)
+- **Timestamps** remain Central-time-based (SPP operates on CPT); the `America/Chicago` ceil
+  and `-7h` MST offset are still correct.
+- **DST:** interval LMP files add a `…d.csv` duplicate-hour variant on fall-back — handle it.
+- **West node universe:** ~302 distinct `SWPW` settlement locations (vs 348 WEIS). Only **42
+  match WEIS by exact name** (~12%); the rest are renamed or new (see Stitching, below).
+- **Resource by Reserve Zone** (`RF_RESERVE_ZONE`, hourly, +7 days) is **included** — it is
+  the only feed carrying wind/solar **actuals** (MTRF has forecasts only). Store **all** zones
+  (consistent with both-BAA storage); **`ReserveZone == 21`** (= the entire West BAA) is a
+  downstream filter. Note the West is a *single* reserve zone, so this adds **no sub-BAA
+  geographic detail** — its value is the actuals, not finer geography.
+- **Daily LMP rollup — NOT yet verified.** WEIS published
+  `/{Y}/{M}/By_Day/WEIS-RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under the same slug as the 5-min
+  files; the analogous IM path (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under
+  `rtbm-lmp-by-location`) returns **404** (checked 2026-07-05), as do the obvious slug/filename
+  variants. Before Phase 1: find the IM daily rollup's real slug/filename, **or drop the daily
+  collector** and derive daily data from the 5-min files.
+- **Other granular forecasts not used:** STLF (5-min load, ±10 min) and STRF (5-min wind/solar,
+  +4 h) — horizons far too short for the 120-hour price forecast.
+- **Gen-capacity-by-fuel: DROPPED.** `get_gen_cap_url` is dead code — nothing calls it (the
+  Modal jobs don't collect it, and `prep_gen_cap` is referenced only by tests). No IM slug
+  needed; delete the collector + tests during the sweep.
+
+---
+
+## Code touch points (concrete)
+
+`grep` finds ~70 `weis`/`WEIS` references across 20 files. The load-bearing ones:
+
+**1. `src/data_collection.py` — URL builders (the core change).**
+Five URL builders hardcode WEIS slugs + `WEIS-` prefixes, and four processors parse filenames
+via `url.split('WEIS-')[-1]`:
+- `get_hourly_mtlf_url`, `get_hourly_mtrf_url`, `get_5min_lmp_url`, `get_daily_lmp_url` —
+  swap base URLs/paths to IM feeds (`get_daily_lmp_url`: IM daily slug/path still unverified —
+  see Phase 0). `get_gen_cap_url` is **deleted**, not migrated (dead code — see Phase 0).
+- `get_process_mtlf` / `get_process_mtrf` / `get_process_5min_lmp` / `get_process_daily_lmp`
+  — the `url.split('WEIS-')[-1]` filename parsing breaks (no `WEIS-` prefix); rework to the
+  new prefix. Keep the `BAA` column and store **both** BAAs — no West filter at collection;
+  West filtering happens downstream in data engineering (see Decisions).
+- Handle the new DST `…d.csv` filename variant in the 5-min/daily LMP URL builders.
+- Column mapping: confirm IM CSVs still expose `Settlement_Location`/`Pnode`/`LMP/MLC/MCC/MEC`
+  and `MTLF`/`Averaged_Actual`/`Wind_Forecast_MW`/`Solar_Forecast_MW`, or update the renames
+  and `.cast()`s accordingly.
+- **New collector — Resource by Reserve Zone** (`RF_RESERVE_ZONE`): no WEIS equivalent. Add a
+  URL builder + processor (store **all** zones; `ReserveZone == 21` = West is a downstream
+  filter), a consolidated `rf_reserve_zone.parquet` target, and wire it into the hourly job —
+  it supplies wind/solar **actuals**.
+- **New collector — Day-Ahead LMP** (likely `da-lmp-by-location`, verify slug/schema): collect
+  to `data_im/da_lmp/` (both BAAs) for history accrual. **Not** consumed by the model yet
+  (deferred); reserved for a future RT covariate or standalone DA forecasting model.
+
+**2. `src/data_engineering.py` — location filtering & feature build.**
+- **The West-BAA filter lands here** (not at collection): filter `BAA == 'SWPW'` in the LMP /
+  MTLF / MTRF prep and `ReserveZone == 21` for the reserve-zone feed. This also drops the
+  blank-`BAA` rows present in live files.
+- `proc_lmp()` filters `Settlement_Location_Name` by `loc_filter` and drops `_ARPA`; the West
+  node naming convention may differ — revisit `loc_filter` and the `_ARPA` exclusion.
+- `unique_id` universe (line ~461) is derived from whatever LMP data is present — will
+  auto-populate from West nodes once collection is fixed, but the model's trained id set won't
+  match until retrain.
+- Timezone: `timestamp_mst` (GMT `-7h`) is fine for the West; keep, but re-verify against IM.
+
+**3. Modal jobs & marimo notebooks** (`modal_jobs/data_collection.py`,
+`notebooks/data_collection/*.py`, `notebooks/model_training/*.py`): mostly import the `src`
+functions, but several contain WEIS strings in comments/paths and the backfill/rebuild
+notebooks reference WEIS URLs. Sweep after `src` is done.
+
+**4. `app.py` / `src/plotting.py`**: user-facing "WEIS" labels, links to WEIS marketplace
+pages, and the settlement-location dropdown. Update copy, links, and the location universe.
+*Status: label/link updates already underway on this branch (uncommitted working-tree edits);
+the location universe still depends on Phase 3.*
+
+**5. `src/parameters.py`, `src/modeling.py`**: no URL logic. New IM/West artifacts get new
+names — set `MODEL_NAME='spp_west'` and new West checkpoint paths (leave the WEIS artifacts as-is; no
+repo/deploy rename now — future refactor).
+
+**6. R2 storage layout:** Reuse the **existing `spp-weis-forecast`** (no new bucket now — see
+below). IM data lands in a **new, separate prefix `data_im/`** within it (`data_im/mtlf/`,
+`data_im/mtrf/`, `data_im/lmp_*`, `data_im/rf_reserve_zone/`, `data_im/da_lmp/`, plus
+consolidated `data_im/*.parquet`), leaving the WEIS `data/` folder untouched so both pipelines
+run in parallel. Stored data keeps **both BAAs**; West filtering happens downstream.
+
+> **Bucket naming — deferred.** Cloudflare R2 **cannot rename a bucket in place** (names are
+> immutable, like S3); "renaming" means create `spp-im-bucket` → copy all objects
+> (`scripts/r2_move_objects.py`) → repoint the `aws-secret` Modal secret + Posit deploy →
+> delete the old bucket. That's a full copy-migration, so it's bundled into the **later rename
+> refactor** (repo + Modal apps + deploy + bucket together), **not** this migration. For now the
+> `weis` in the bucket name is a harmless cosmetic artifact; keeping one bucket also keeps the
+> stitch step simple (WEIS `data/` + IM `data_im/` side by side, no cross-bucket reads).
+
+---
+
+## The hard data-science problem: retraining across the regime break
+
+This is not just a plumbing swap. WEIS history ends 2026-04-01; RTO West history begins
+2026-04-01 under a **different market design** (day-ahead market present, new resources, new
+congestion patterns, new node set). Implications:
+
+- **The current champion model is stale** — trained on WEIS prices for WEIS/PSCO nodes, which
+  are being dropped. A full retrain on the new hub/BA node set is required.
+- **Chosen approach (see Decisions locked): STITCH.** Each hub/BA node's WEIS history is glued
+  onto its IM history into one continuous series, with a **structural-break indicator covariate
+  at 2026-04-01**, trained on a **365-day window**. This gives a full-lookback model *now*
+  rather than waiting until ~2027-04 for clean West-only history.
+- **Stitching verdict (verified crosswalk):** clean **only for hub/BA-level nodes**, which match
+  on **exact name** — so no Pnode crosswalk is needed (the renamed nodes were all out-of-scope
+  resource/load points; PSCO substations matched 0/10 but are dropped anyway).
+- **Mixed-length series:** ~40 BA-level nodes get long stitched histories; the new IM hub
+  constructs (`SWPW_HUB`, `CRSP_HUB`, `LAP_HUB`, `WACM_*` hubs) have no WEIS predecessor and run
+  on West-only (short) history — lower-confidence until it matures. The global ensemble handles
+  varying series lengths.
+- Re-run the **Optuna** hyperparameter study on the stitched West data; current `TIDE_PARAMS`
+  were tuned on WEIS/PSCO.
+- **Day-Ahead LMP:** collected now but **not** modeled yet (deferred) — a candidate RT covariate
+  and/or a future standalone DA forecasting model.
+
+---
+
+## Node geometry / map coordinates (lat-lon)
+
+**Goal:** plot West hub/BA nodes on a map (and enable any geospatial features). SPP does **not**
+publish settlement-location/pnode coordinates in the marketplace CSV feeds, and public GIS
+layers (HIFLD control areas) are BA-polygon-only, hard to reach programmatically from here
+(primary host down; reachable copies are regional clips), and need a fragile full-name→code
+crosswalk. **Rejected** in favor of the authoritative source below.
+
+**Authoritative source — SPP Price Contour Map ArcGIS service.** SPP's own price map
+(`pricecontourmap.spp.org/pricecontourmap`) plots hubs, interfaces, and DC ties from a public
+ArcGIS REST service keyed by **`SETTLEMENT_LOCATION`** — the exact same names as the LMP feed,
+so it's a **direct join, no crosswalk**:
+
+- Base: `https://pricecontourmap.spp.org/arcgis/rest/services/PCM/RTBM_Features/MapServer`
+  (also `DA_Features`, `DELTA_Features`; `RTBM_Features` is real-time)
+- Point layers: `1` DC Ties, `2` Hubs, `3` Interfaces, `4` M2M Constraints,
+  `5` Binding Constraints; `6` Reserve Zones (polygons)
+- Query: `/{layer}/query?where=1=1&outFields=SETTLEMENT_LOCATION,PNODETYPE,DESCRIPTION&returnGeometry=true&outSR=4326&f=json`
+  (`outSR=4326` returns WGS84 lat/lon directly)
+
+**Coverage (verified 2026-07-05):** 51 plotted points (3 hubs, 42 interfaces, 6 DC ties). For
+the West hub/BA scope this gives authoritative lat/lon for:
+- `SWPW_HUB` (40.65, −105.75)
+- Internal West BA interfaces: `PSCO, PNM, PACE, WALC, BHBA, GRID, GWA, LAMW`
+- External-seam interfaces: `AESO, AZPS, BPA, CISO, IPCO, NEVP, NWMT, PGE, SCE`
+- All 6 East↔West DC ties (`…STEGALL`, `…SIDNEY`, `…MILES_CITY`)
+
+→ **18 of 64** hub/BA nodes. (21 of the full 302 SWPW settlement locations match PCM points:
+the 18 above plus the 3 West-side DC-tie endpoints `WACM.TSPM.STEGALL`, `WACM.LAP.SIDNEY`,
+`WAUW.UGPW.MILES_CITY`, which sit outside the hub/BA model scope.)
+
+**Gaps + fallback tiers.** SPP plots only a curated subset. Not covered as PCM points: the
+financial/settlement hubs (`CRSP_HUB`, `LAP_HUB`, `WACM_*` interchange hubs, `LAPT.*.FSE`/
+`CRSP.*.FSE`, `TSPM_SOURCEHUB`, `MEAI_CRG_HUB`, `PRPM.CRAIG1`) and several neighbor BAs
+(`AVA, LADWP, SDGE, SRP, TEPC, TID, TPWR, PSEI, SCL, PACW, BANC, IID, VEA`). Resolve in order:
+1. **Reserve-zone polygon centroid** (layer 6; zone 21 = West) for zone-level placement.
+2. **Parent-BA coordinate** — map a settlement location to its owning BA's point by name prefix
+   (e.g. `WACM_*` → `WACM`, `LAPT.*` → `LAP_HUB`).
+3. **Manual** lat/lon for the handful that remain.
+
+**Functionalize + document (maintenance utility, NOT per-run).** Geometries change rarely —
+only when SPP adds/moves nodes — so this is an occasional refresh, not part of hourly
+collection:
+- Add `src/geometry.py` with `fetch_pcm_geometries() -> pl.DataFrame` that queries the PCM
+  layers, applies the fallback tiers, and returns
+  `settlement_location, lat, lon, pnode_type, source ('pcm'|'reserve_zone'|'parent_ba'|'manual')`.
+- Persist to a checked-in reference file (`src/reference/node_geometry.csv`) so the app/plots
+  read a static file, never the live service at request time.
+- Provide a re-runnable refresh script/notebook
+  (`notebooks/data_collection/refresh_node_geometry.py`) that documents the process and logs
+  added/moved/removed nodes on each refresh.
+- The app map reads the reference file; a node missing from it falls back to its BA centroid,
+  logged.
+
+Scoped as **Phase 3b** below — depends only on the confirmed node universe, independent of
+retrain. Prototype scripts live in `scripts/node_geometry_prototype/` (`pcm_all.py` →
+`west_hub_nodes_latlon.csv`, plus `west_hub_nodes.csv` and `swpw_nodes_classified.csv`) and
+can seed `src/geometry.py`.
+
+---
+
+## Phased execution plan
+
+**Phase 0 — Feeds & schema. ✅ DONE for the four core feeds** (verified 2026-07-05; see the
+verified table above). Still open: the **daily LMP rollup** slug/filename (analogous IM path
+404s — confirm it or drop the daily collector) and the **DA LMP** slug when its collector is
+built. Gen-capacity is dropped (dead code).
+
+**Phase 1 — Build the parallel IM collector.** New IM collection code (alongside WEIS, writing
+to `data_im/`) with new filename parsing and DST-variant handling. **Store both BAAs** (keep the
+`BAA` column; no West filter at collection — West filtering is downstream). Collectors: RTBM
+5-min LMP, daily LMP (only if the IM daily feed is confirmed — see Phase 0), MTLF, MTRF,
+`RF_RESERVE_ZONE` (store all zones; supplies wind/solar actuals), and DA LMP. Unit-test each
+`get_*_url` and processor against a real sample CSV; run one collection end-to-end to `data_im/`.
+
+**Phase 2 — Backfill history into `data_im/`.** Pull all available IM data from 2026-04-01 →
+present into `data_im/` (both BAAs). This provides the IM half of the stitched training series.
+
+**Phase 3 — Data engineering & app.** Add the downstream West filters (`BAA == 'SWPW'`,
+`ReserveZone == 21`); replace `proc_lmp`'s `loc_filter='PSCO_'` with the **West hub/BA node
+list** (PSCO is being dropped); refresh the app's settlement-location universe, labels, and
+marketplace links. Update/repair unit + e2e tests (fixtures currently assume WEIS schema;
+include blank-`BAA` rows, which occur in live files).
+
+**Phase 3b — Node geometry reference.** Build `src/geometry.py::fetch_pcm_geometries()` +
+`src/reference/node_geometry.csv` + a refresh notebook, per the "Node geometry" section.
+Independent of retrain; can run as soon as the node universe is fixed.
+
+**Phase 4 — Stitch, retrain & re-tune.** Build the stitched WEIS+IM series per hub/BA node
+(exact-name join) with the 2026-04-01 **break indicator**; set `MODEL_NAME='spp_west'`; re-run
+Optuna; evaluate against a West holdout; promote a new champion.
+
+**Phase 5 — Deploy, decommission WEIS jobs, docs.** Deploy the IM Modal jobs and confirm they
+run on schedule; **then remove/undeploy the WEIS Modal collection jobs** (`collect_hourly`,
+`collect_daily`) — the WEIS feed is dead so they collect nothing. **Keep** the WEIS historical
+R2 data (`data/`) for stitching. Update `README.md` and sweep IM notebooks. (Full rename —
+repo, Modal apps, Posit deploy, **and R2 bucket `spp-weis-forecast`→`spp-im-bucket`** via
+copy-migration — is a **later refactor**, not now.)
+
+**Suggested sequencing:** all work on the **feature branch**. Phase 1 → 2 → 3/3b restore +
+enrich the data pipeline and can proceed now. Phase 4 (stitch + retrain) follows once the
+backfill and node-geometry reference land. Merge to `main` after the IM pipeline is validated;
+Phase 5 decommissions the WEIS jobs.
+
+---
+
+## Decisions locked (interview 2026-07-05)
+
+**Infrastructure & scope**
+- **Storage scope:** collect + store **both BAAs** (`SWPW` + `SPP`), keeping the `BAA` column;
+  filter to West downstream. Future-proofs an East expansion with no re-backfill. Same
+  principle for `RF_RESERVE_ZONE`: store **all** reserve zones; `ReserveZone == 21` (= West)
+  is a downstream filter.
+- **Model scope:** **West hub/BA-level nodes** — both the SWPW-internal hubs/BAs **and** the
+  ~25 external-seam neighbor interfaces (`CISO`, `BPA`, `AESO`, `AZPS`…) as additional forecast
+  series (global model benefits + seam prices drive West prices). `SWPW_HUB` is the flagship
+  target. **PSCO substation focus is dropped** — replace `loc_filter='PSCO_'` with the hub/BA
+  node list.
+- **Feature branch:** do **all** of this work on a dedicated feature branch (e.g.
+  `feature/rto-west-migration`), not `main`. Merge only once the IM pipeline is validated.
+- **Parallel pipeline → then decommission WEIS jobs:** build the IM collector **alongside** WEIS
+  (separate R2 prefix `data_im/`, WEIS code untouched) so nothing breaks during the build.
+  Because the **WEIS feed is dead** (no new data since 2026-04-01), once the IM collection jobs
+  are deployed and confirmed running, **remove/undeploy the WEIS Modal collection jobs** — they
+  collect nothing. **Keep** the WEIS historical R2 data (`data/`); it's needed for stitching.
+
+**Timeline & training**
+- **Timeline:** build-it-right migration, **no hard date, open-ended**. No external pressure →
+  no throwaway interim model needed.
+- **Training-data strategy: STITCH** each hub/BA node's WEIS history onto its IM history into one
+  continuous series, with a **structural-break indicator covariate at 2026-04-01**. Use a
+  **1-year (365-day) training window** (`TRAIN_START='365D'`, unchanged) — stitching makes a
+  full lookback achievable now instead of waiting until ~2027-04.
+  - **No Pnode crosswalk needed:** hub/BA nodes stitch on **exact name**; the renamed nodes were
+    all out-of-scope resource/load points.
+  - **Mixed-length caveat:** stitching only helps the ~40 BA-level nodes with WEIS predecessors.
+    New IM hub constructs (`SWPW_HUB`, `CRSP_HUB`, `LAP_HUB`, `WACM_*` hubs) have **no WEIS
+    history** → West-only (short) series; their forecasts are lower-confidence until history
+    matures. The global ensemble handles mixed-length series fine.
+- Re-run the **Optuna** study on the stitched West data once the pipeline lands; current
+  `TIDE_PARAMS` were tuned on WEIS/PSCO.
+
+**Day-Ahead market**
+- **Collect DA LMP now, DEFER modeling it.** Add a DA LMP collector to the IM pipeline (both
+  BAAs, `data_im/`) so history accrues, but do **not** wire it into the RT model yet. Possible
+  future work: a **standalone DA price-forecasting model**.
+
+**Naming (option a — new names for new things; full rename deferred)**
+- New IM/West artifacts get clear names: `MODEL_NAME='spp_west'`, R2 prefix `data_im/`
+  **inside the existing `spp-weis-forecast`**, Modal `spp-im-*` apps. **Do not** rename the repo,
+  the running WEIS pipeline, the R2 bucket, or the Posit Connect deploy now.
+- **Bucket stays `spp-weis-forecast`:** R2 can't rename in place, so moving to `spp-im-bucket`
+  is a create-new + copy-migrate + secret/deploy repoint — bundled into the **future rename
+  refactor** (repo + Modal + deploy + bucket together), not this migration.
+
+## Open questions
+
+All **decisions** are resolved (2026-07-05 interview above). Two **verification items**
+remain open, both blocking only their own collectors:
+
+1. **Daily LMP rollup feed** — the WEIS-analogous IM path under `rtbm-lmp-by-location`
+   (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv`) returns 404, as do obvious slug
+   variants. Find the real slug/filename, or drop the daily collector and derive daily data
+   from the 5-min files.
+2. **DA LMP slug/schema** — likely `da-lmp-by-location`; verify when the DA collector is built.
