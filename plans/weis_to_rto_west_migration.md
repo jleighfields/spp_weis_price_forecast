@@ -27,8 +27,10 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
 1. Resolve the daily-LMP question (Open questions #1): find the IM daily rollup
    slug/filename or drop the daily collector and derive daily from 5-min files.
 2. **Phase 1**: build the IM collectors (`data_im/` prefix, both BAAs, new filename
-   parsing, DST `…d.csv` handling) with unit tests against real sample CSVs.
-3. **Phase 2**: backfill 2026-04-01 → present into `data_im/`.
+   parsing, DST `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files)
+   with unit tests against real sample CSVs.
+3. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
+   2026-04-01 get `BAA='SPP'`; both BAAs after — a year of East history plus all IM-era data).
 
 ## Background / why this is needed
 
@@ -104,6 +106,10 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
   empty `BAA` and empty forecast values — future intervals not yet populated. The downstream
   `BAA == 'SWPW'` filter drops them naturally; include such rows in test fixtures.
   (`RF_RESERVE_ZONE` headers also have leading spaces — `format_df_colnames` already strips them.)
+- **Pre-launch files have NO `BAA` column** (verified 2026-07-05 on 2025-07 samples): the same
+  slugs/filenames publish East-only IM data going back years, with the `BAA` column added only
+  at RTO West launch. Processors must tolerate the missing column and fill `BAA='SPP'` for
+  pre-2026-04-01 files (matters for the Phase 2 East backfill).
 - **Timestamps** remain Central-time-based (SPP operates on CPT); the `America/Chicago` ceil
   and `-7h` MST offset are still correct.
 - **DST:** interval LMP files add a `…d.csv` duplicate-hour variant on fall-back — handle it.
@@ -293,11 +299,20 @@ built. Gen-capacity is dropped (dead code).
 to `data_im/`) with new filename parsing and DST-variant handling. **Store both BAAs** (keep the
 `BAA` column; no West filter at collection — West filtering is downstream). Collectors: RTBM
 5-min LMP, daily LMP (only if the IM daily feed is confirmed — see Phase 0), MTLF, MTRF,
-`RF_RESERVE_ZONE` (store all zones; supplies wind/solar actuals), and DA LMP. Unit-test each
-`get_*_url` and processor against a real sample CSV; run one collection end-to-end to `data_im/`.
+`RF_RESERVE_ZONE` (store all zones; supplies wind/solar actuals), and DA LMP. Processors must
+tolerate the missing `BAA` column in pre-launch files (fill `BAA='SPP'` — see Phase 0/Phase 2).
+Unit-test each `get_*_url` and processor against a real sample CSV (one pre-launch, one
+post-launch); run one collection end-to-end to `data_im/`.
 
-**Phase 2 — Backfill history into `data_im/`.** Pull all available IM data from 2026-04-01 →
-present into `data_im/` (both BAAs). This provides the IM half of the stitched training series.
+**Phase 2 — Backfill history into `data_im/`.** Two segments, same slugs/filenames throughout:
+- **IM era (2026-04-01 → present), both BAAs:** provides the IM half of the stitched West
+  training series. Files carry the `BAA` column.
+- **Pre-launch East era (2025-04-01 → 2026-03-31):** the same feeds have years of East-only
+  history (verified live 2026-07-05) — backfill one year before the seam so the East BAA also
+  has ≥365 days of training data from day one (per the East-expansion rationale in Decisions).
+  **Schema caveat:** pre-launch files have **no `BAA` column** (it was added at RTO West
+  launch) — the processors must tolerate the missing column and fill `BAA='SPP'` (pre-launch
+  IM was East-only; the "system-wide" MTLF/MTRF of that era are the East series).
 
 **Phase 3 — Data engineering & app.** Add the downstream West filters (`BAA == 'SWPW'`,
 `ReserveZone == 21`); replace `proc_lmp`'s `loc_filter='PSCO_'` with the **West hub/BA node
@@ -334,6 +349,9 @@ Phase 5 decommissions the WEIS jobs.
   filter to West downstream. Future-proofs an East expansion with no re-backfill. Same
   principle for `RF_RESERVE_ZONE`: store **all** reserve zones; `ReserveZone == 21` (= West)
   is a downstream filter.
+- **East history too:** the Phase 2 backfill reaches back to **2025-04-01** (one year before
+  the seam) so the East BAA also starts with ≥365 days of training data — pre-launch files are
+  East-only and lack the `BAA` column; processors fill `BAA='SPP'`.
 - **Model scope:** **West hub/BA-level nodes** — both the SWPW-internal hubs/BAs **and** the
   ~25 external-seam neighbor interfaces (`CISO`, `BPA`, `AESO`, `AZPS`…) as additional forecast
   series (global model benefits + seam prices drive West prices). `SWPW_HUB` is the flagship
