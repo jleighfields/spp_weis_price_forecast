@@ -30,7 +30,9 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
    parsing, DST `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files)
    with unit tests against real sample CSVs.
 3. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
-   2026-04-01 get `BAA='SPP'`; both BAAs after — a year of East history plus all IM-era data).
+   2026-04-01 get `BAA='SPP'`; both BAAs after), then run the one-time **WEIS stitch-fill**
+   (WEIS history → `data_im/` consolidated tables, `BAA='SWPW'`, `source='weis'`) so both
+   BAAs have ≥365 days of continuous training data.
 
 ## Background / why this is needed
 
@@ -212,7 +214,10 @@ congestion patterns, new node set). Implications:
 - **Chosen approach (see Decisions locked): STITCH.** Each hub/BA node's WEIS history is glued
   onto its IM history into one continuous series, with a **structural-break indicator covariate
   at 2026-04-01**, trained on a **365-day window**. This gives a full-lookback model *now*
-  rather than waiting until ~2027-04 for clean West-only history.
+  rather than waiting until ~2027-04 for clean West-only history. The stitch is **materialized
+  in storage** during the Phase 2 backfill (WEIS rows copied into the `data_im/` consolidated
+  tables with `BAA='SWPW'` and a `source` column), so training just reads one continuous
+  dataset — no per-retrain join.
 - **Stitching verdict (verified crosswalk):** clean **only for hub/BA-level nodes**, which match
   on **exact name** — so no Pnode crosswalk is needed (the renamed nodes were all out-of-scope
   resource/load points; PSCO substations matched 0/10 but are dropped anyway).
@@ -304,15 +309,29 @@ tolerate the missing `BAA` column in pre-launch files (fill `BAA='SPP'` — see 
 Unit-test each `get_*_url` and processor against a real sample CSV (one pre-launch, one
 post-launch); run one collection end-to-end to `data_im/`.
 
-**Phase 2 — Backfill history into `data_im/`.** Two segments, same slugs/filenames throughout:
-- **IM era (2026-04-01 → present), both BAAs:** provides the IM half of the stitched West
-  training series. Files carry the `BAA` column.
+**Phase 2 — Backfill history into `data_im/`.** Three segments; after this phase the
+`data_im/` consolidated tables are one continuous training dataset with ≥365 days for both
+BAAs, and Phase 4 needs no join/stitch logic:
+- **IM era (2026-04-01 → present), both BAAs:** pulled from the IM feeds. Files carry the
+  `BAA` column.
 - **Pre-launch East era (2025-04-01 → 2026-03-31):** the same feeds have years of East-only
   history (verified live 2026-07-05) — backfill one year before the seam so the East BAA also
   has ≥365 days of training data from day one (per the East-expansion rationale in Decisions).
   **Schema caveat:** pre-launch files have **no `BAA` column** (it was added at RTO West
   launch) — the processors must tolerate the missing column and fill `BAA='SPP'` (pre-launch
   IM was East-only; the "system-wide" MTLF/MTRF of that era are the East series).
+- **WEIS West stitch-fill (≤ 2026-03-31): materialize the stitch in storage.** One-time
+  backfill script that copies the WEIS history from the existing `data/` consolidated
+  parquets into the `data_im/` consolidated tables with `BAA='SWPW'` filled (WEIS was by
+  definition West; its system-wide MTLF/MTRF are the West series). Copy **all** WEIS nodes,
+  no pre-scoping — non-matching names simply become series that end at the seam, and the
+  downstream hub/BA node-list filter excludes them; the ~42 exact-name hub/BA nodes become
+  continuous series automatically. Because the WEIS feed is dead, this runs once; the hourly
+  upsert then only ever appends IM data.
+- **Provenance guardrails:** the raw `data/` (WEIS) and `data_im/` file prefixes stay
+  separate and untouched — the merge happens only in the consolidated training tables, which
+  carry a **`source` column (`'weis'` / `'im'`)** so every row is traceable and the stitch is
+  re-runnable from raw if the seam treatment ever changes.
 
 **Phase 3 — Data engineering & app.** Add the downstream West filters (`BAA == 'SWPW'`,
 `ReserveZone == 21`); replace `proc_lmp`'s `loc_filter='PSCO_'` with the **West hub/BA node
@@ -324,9 +343,11 @@ include blank-`BAA` rows, which occur in live files).
 `src/reference/node_geometry.csv` + a refresh notebook, per the "Node geometry" section.
 Independent of retrain; can run as soon as the node universe is fixed.
 
-**Phase 4 — Stitch, retrain & re-tune.** Build the stitched WEIS+IM series per hub/BA node
-(exact-name join) with the 2026-04-01 **break indicator**; set `MODEL_NAME='spp_west'`; re-run
-Optuna; evaluate against a West holdout; promote a new champion.
+**Phase 4 — Retrain & re-tune.** The stitched series already exist in storage (Phase 2
+materialized WEIS history into the `data_im/` tables), so no join logic is needed here: add
+the 2026-04-01 **break-indicator covariate** (a date threshold in data engineering); set
+`MODEL_NAME='spp_west'`; re-run Optuna; evaluate against a West holdout; promote a new
+champion.
 
 **Phase 5 — Deploy, decommission WEIS jobs, docs.** Deploy the IM Modal jobs and confirm they
 run on schedule; **then remove/undeploy the WEIS Modal collection jobs** (`collect_hourly`,
@@ -336,7 +357,7 @@ repo, Modal apps, Posit deploy, **and R2 bucket `spp-weis-forecast`→`spp-im-bu
 copy-migration — is a **later refactor**, not now.)
 
 **Suggested sequencing:** all work on the **feature branch**. Phase 1 → 2 → 3/3b restore +
-enrich the data pipeline and can proceed now. Phase 4 (stitch + retrain) follows once the
+enrich the data pipeline and can proceed now. Phase 4 (retrain) follows once the
 backfill and node-geometry reference land. Merge to `main` after the IM pipeline is validated;
 Phase 5 decommissions the WEIS jobs.
 
@@ -372,6 +393,10 @@ Phase 5 decommissions the WEIS jobs.
   continuous series, with a **structural-break indicator covariate at 2026-04-01**. Use a
   **1-year (365-day) training window** (`TRAIN_START='365D'`, unchanged) — stitching makes a
   full lookback achievable now instead of waiting until ~2027-04.
+  - **Materialized in storage, not joined at train time:** the Phase 2 backfill copies WEIS
+    history into the `data_im/` consolidated tables (`BAA='SWPW'`, `source='weis'`), copying
+    all WEIS nodes and letting the downstream node-list filter scope them. Raw `data/` and
+    `data_im/` file prefixes stay separate for provenance; the stitch is re-runnable from raw.
   - **No Pnode crosswalk needed:** hub/BA nodes stitch on **exact name**; the renamed nodes were
     all out-of-scope resource/load points.
   - **Mixed-length caveat:** stitching only helps the ~40 BA-level nodes with WEIS predecessors.
