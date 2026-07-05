@@ -72,16 +72,20 @@ Historical and future covariates are declared in the fit function. Input and out
 │   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
 │   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
-│   ├── data_collection.py    # ETL functions for SPP data
+│   ├── data_collection.py    # ETL functions for SPP data (legacy WEIS feeds)
+│   ├── data_collection_im.py # ETL functions for the Integrated Marketplace feeds
 │   ├── data_engineering.py   # Feature engineering, train/test splits
 │   ├── modeling.py           # Model training and loading (TiDE, TSMixer, TFT)
+│   ├── node_list.py          # Stored/modeled hub & BA settlement-location node lists
 │   ├── parameters.py         # Hyperparameters and configuration
 │   ├── plotting.py           # Forecast visualization
 │   └── utils.py              # R2/S3 and utility functions
 ├── tests/
 │   ├── unit/                 # Fast unit tests (no network/browser needed)
+│   │   ├── fixtures/         # Trimmed real portal CSVs for the IM collector tests
 │   │   ├── test_app.py       # App helper function tests
 │   │   ├── test_data_collection.py
+│   │   ├── test_data_collection_im.py
 │   │   ├── test_data_engineering.py
 │   │   ├── test_modeling_load.py
 │   │   └── test_utils_s3.py

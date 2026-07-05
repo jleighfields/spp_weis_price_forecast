@@ -30,15 +30,25 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   `CLAUDE.md`, ruff per-file ignores, detect-secrets baseline, and `.env.example`
   documenting the R2 env keys. The R2 bucket is **`spp-weis-forecast`**.
 
+**Done (continued)**
+- **Phase 1 collector code built** (`src/data_collection_im.py` + `src/node_list.py`): all
+  six collectors (RTBM 5-min LMP, daily LMP with the 5-day-lag-aware window, MTLF, MTRF,
+  `RF_RESERVE_ZONE`, DA LMP — slug verified as `da-lmp-by-settlement-location`), DST
+  `…d.csv` handling, pre-launch missing-`BAA` tolerance, LMP filtered to the hub/BA node
+  list at storage, and `BAA` in every upsert dedup key. Unit-tested against real trimmed
+  portal CSVs (`tests/unit/test_data_collection_im.py`, `tests/unit/fixtures/`), passed
+  the `code-reviewer` gate, and **validated end-to-end live**: one small collection ran
+  through all six feeds into `data_im/` on R2 — all five consolidated tables written with
+  both BAAs, all 66 stored nodes present, zero dedup-key duplicates.
+
 **Not started**
-- Phase 1 (IM collectors) onward — no IM collection code exists yet.
+- Phase 1's remaining step (wire the collectors into IM Modal jobs / marimo notebooks)
+  and Phase 2 onward.
 
 **Next actions**
-1. **Phase 1**: build the IM collectors (`data_im/` prefix, new filename parsing, DST
-   `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files, **LMP rows
-   filtered to the hub/BA node list at storage**, **`BAA` added to every upsert dedup
-   key**) with unit tests against real sample CSVs. The daily-LMP collector is confirmed
-   (feed verified 2026-07-05) — build it with the **5-day-lag-aware window**.
+1. **Phase 1 wrap-up**: create the IM collection marimo notebooks + `spp-im-*` Modal job
+   wrappers (hourly: MTLF/MTRF/RF/5-min LMP; daily: daily-LMP repair sweep + DA LMP) and
+   deploy them.
 2. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
    2026-04-01 get `BAA='SPP'`; both BAAs after; LMP keeps hub/BA node rows only), then run
    the one-time **WEIS stitch-fill** (WEIS hub/BA history → `data_im/` consolidated tables,
@@ -192,9 +202,10 @@ via `url.split('WEIS-')[-1]`:
   URL builder + processor (store **all** zones; `ReserveZone == 21` = West is a downstream
   filter), a consolidated `rf_reserve_zone.parquet` target, and wire it into the hourly job —
   it supplies wind/solar **actuals**.
-- **New collector — Day-Ahead LMP** (likely `da-lmp-by-location`, verify slug/schema): collect
+- **New collector — Day-Ahead LMP** (slug verified: `da-lmp-by-settlement-location`): collect
   to `data_im/da_lmp/` (both BAAs, hub/BA node rows only — same LMP storage rule) for history
-  accrual. **Not** consumed by the model yet
+  accrual. Files mix timestamp formats with/without seconds — handled by
+  `convert_datetime_cols_flex`. **Not** consumed by the model yet
   (deferred); reserved for a future RT covariate or standalone DA forecasting model.
 
 **2. `src/data_engineering.py` — location filtering & feature build.**
@@ -337,8 +348,8 @@ can seed `src/geometry.py`.
 
 **Phase 0 — Feeds & schema. ✅ DONE for the five core feeds** (verified 2026-07-05; see the
 verified table above — the daily LMP rollup was confirmed via the listing API; the earlier
-404s were its 5-day publication lag). Still open: the **DA LMP** slug when its collector is
-built. Gen-capacity is dropped (dead code).
+404s were its 5-day publication lag). The **DA LMP** slug is verified too
+(`da-lmp-by-settlement-location`). Gen-capacity is dropped (dead code).
 
 **Phase 1 — Build the parallel IM collector.** New IM collection code (alongside WEIS, writing
 to `data_im/`) with new filename parsing and DST-variant handling. Keep the `BAA` column, both
@@ -488,17 +499,19 @@ Phase 5 decommissions the WEIS jobs.
 
 ## Open questions
 
-All **decisions** are resolved (2026-07-05 interviews above). Three **verification items**
-remain open, each blocking only its own collector/segment:
+All **decisions** are resolved (2026-07-05 interviews above). One **verification item**
+remains open:
 
-1. **DA LMP slug/schema** — likely `da-lmp-by-location`; verify when the DA collector is built
-   (the file-browser listing API in Phase 0 makes this quick).
-2. **East hub settlement-location names** — confirm the exact names (`SPPNORTH_HUB`,
-   `SPPSOUTH_HUB`, …) from a live post-launch file; they seed the East side of the stored
-   hub/BA node list.
-3. **`RF_RESERVE_ZONE` pre-launch availability** — the East-era backfill assumes the feed
-   publishes pre-launch history; verify, and decide whether East-era zone data is needed
-   at all (the actuals matter for the West model, not East).
+1. **East-era `RF_RESERVE_ZONE` need** — the feed's pre-launch availability is verified
+   (real 2025-07-01 file in `tests/unit/fixtures/`), but decide whether East-era zone data
+   is needed at all (the actuals matter for the West model, not East).
+
+~~DA LMP slug/schema~~ — **RESOLVED**: slug is `da-lmp-by-settlement-location`; schema
+handled in `src/data_collection_im.py` (mixed timestamp formats).
+
+~~East hub settlement-location names~~ — **RESOLVED 2026-07-05**: `SPPNORTH_HUB` and
+`SPPSOUTH_HUB` confirmed from a live post-launch LMP file; encoded as
+`node_list.EAST_HUB_NODES`.
 
 ~~Daily LMP rollup feed~~ — **RESOLVED 2026-07-05**: exists at the WEIS-analogous `By_Day`
 path with a 5-day publication lag (see Phase 0); collector kept, lag-aware window.
