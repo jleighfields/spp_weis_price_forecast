@@ -10,6 +10,12 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
 - Plan reviewed and corrected: West filtering moved downstream (store both BAAs at
   collection), daily-LMP rollup flagged unverified, gen-capacity dropped as dead code,
   PCM coverage numbers derived from live data.
+- **Plan re-review + interview (2026-07-05):** code touch points verified against source;
+  decisions amended — **LMP storage narrowed to hub/BA node rows only (both BAAs)**,
+  **`BAA` added to every upsert dedup key** (clobber bug otherwise), break indicator
+  pinned as a *future* covariate with a drop date, and the daily-LMP question given a
+  resolution path (listing-API search, else widen the 5-min re-pull). Details inline
+  below and in "Decisions locked".
 - **App copy updated** (`app.py`, `src/plotting.py`): WEIS labels/links → IM West
   equivalents. This is the app half of Phase 3; the settlement-location universe still
   pends the Phase 3 data-engineering work.
@@ -24,15 +30,19 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
 - Phase 1 (IM collectors) onward — no IM collection code exists yet.
 
 **Next actions**
-1. Resolve the daily-LMP question (Open questions #1): find the IM daily rollup
-   slug/filename or drop the daily collector and derive daily from 5-min files.
-2. **Phase 1**: build the IM collectors (`data_im/` prefix, both BAAs, new filename
-   parsing, DST `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files)
-   with unit tests against real sample CSVs.
+1. Resolve the daily-LMP question (Open questions #1): search the portal file-browser
+   **listing API** for the IM daily rollup slug/filename; if it truly doesn't exist, drop
+   the daily collector and **widen the hourly job's 5-min re-pull window** (the daily
+   file's real role is a trailing-7-day repair sweep). A pre-launch daily file would also
+   cut the Phase 2 East backfill from ~105k 5-min pulls to ~365 daily pulls.
+2. **Phase 1**: build the IM collectors (`data_im/` prefix, new filename parsing, DST
+   `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files, **LMP rows
+   filtered to the hub/BA node list at storage**, **`BAA` added to every upsert dedup
+   key**) with unit tests against real sample CSVs.
 3. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
-   2026-04-01 get `BAA='SPP'`; both BAAs after), then run the one-time **WEIS stitch-fill**
-   (WEIS history → `data_im/` consolidated tables, `BAA='SWPW'`, `source='weis'`) so both
-   BAAs have ≥365 days of continuous training data.
+   2026-04-01 get `BAA='SPP'`; both BAAs after; LMP keeps hub/BA node rows only), then run
+   the one-time **WEIS stitch-fill** (WEIS hub/BA history → `data_im/` consolidated tables,
+   `BAA='SWPW'`, `source='weis'`) so both BAAs have ≥365 days of continuous training data.
 
 ## Background / why this is needed
 
@@ -102,8 +112,10 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
 
 - **Column parity:** identical to WEIS after `format_df_colnames`, so existing processors work
   almost verbatim — the real deltas are (1) URL slug, (2) `WEIS-` prefix gone → rework the
-  `url.split('WEIS-')` filename parse, (3) keep the new `BAA` column at collection; the
-  `BAA == 'SWPW'` West filter is applied **downstream** in data engineering (see Decisions).
+  `url.split('WEIS-')` filename parse, (3) keep the new `BAA` column at collection; **LMP
+  rows are scoped to the hub/BA node list at storage** (amended 2026-07-05), the other
+  feeds are stored whole with the `BAA == 'SWPW'` West filter applied **downstream** in
+  data engineering (see Decisions).
 - **Blank-`BAA` rows:** live files (esp. MTRF and `RF_RESERVE_ZONE`) carry leading rows with
   empty `BAA` and empty forecast values — future intervals not yet populated. The downstream
   `BAA == 'SWPW'` filter drops them naturally; include such rows in test fixtures.
@@ -126,8 +138,14 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
   `/{Y}/{M}/By_Day/WEIS-RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under the same slug as the 5-min
   files; the analogous IM path (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under
   `rtbm-lmp-by-location`) returns **404** (checked 2026-07-05), as do the obvious slug/filename
-  variants. Before Phase 1: find the IM daily rollup's real slug/filename, **or drop the daily
-  collector** and derive daily data from the 5-min files.
+  variants. **Why it matters:** the daily file is not a separate data product — daily and
+  5-min files upsert into the *same* consolidated `lmp` table; the daily collector is a
+  trailing-7-day **repair sweep** (7 requests/run vs ~2,000 to replay from 5-min files).
+  **Resolution path (decided 2026-07-05):** search the portal **file-browser listing API**
+  for the real slug/filename; if it truly doesn't exist, drop the daily collector and
+  **widen the hourly job's 5-min re-pull window** (e.g. 48 h) as the repair mechanism.
+  A pre-launch daily file would also shrink the Phase 2 East-era backfill (~365 daily
+  pulls vs ~105k 5-min pulls).
 - **Other granular forecasts not used:** STLF (5-min load, ±10 min) and STRF (5-min wind/solar,
   +4 h) — horizons far too short for the 120-hour price forecast.
 - **Gen-capacity-by-fuel: DROPPED.** `get_gen_cap_url` is dead code — nothing calls it (the
@@ -148,9 +166,19 @@ via `url.split('WEIS-')[-1]`:
   see Phase 0). `get_gen_cap_url` is **deleted**, not migrated (dead code — see Phase 0).
 - `get_process_mtlf` / `get_process_mtrf` / `get_process_5min_lmp` / `get_process_daily_lmp`
   — the `url.split('WEIS-')[-1]` filename parsing breaks (no `WEIS-` prefix); rework to the
-  new prefix. Keep the `BAA` column and store **both** BAAs — no West filter at collection;
-  West filtering happens downstream in data engineering (see Decisions).
-- Handle the new DST `…d.csv` filename variant in the 5-min/daily LMP URL builders.
+  new prefix. Keep the `BAA` column, both BAAs. **LMP processors filter rows to the hub/BA
+  node list at storage** (amended 2026-07-05 — the node list lives in ONE home,
+  `src/parameters.py` or a `src/reference/` file, shared with data engineering); MTLF/MTRF
+  are stored whole, with West filtering downstream (see Decisions).
+- **`upsert_mtlf_mtrf_lmp` dedup keys MUST gain `BAA`.** The mtlf/mtrf key is currently
+  `GMTIntervalEnd` alone — with both BAAs stored, East and West rows for the same interval
+  clobber each other (the upsert keeps whichever file wrote last, silently dropping one
+  BAA). New keys: mtlf/mtrf → `(GMTIntervalEnd, BAA)`; lmp → add `BAA` alongside
+  `(GMTIntervalEnd_HE, Settlement_Location_Name, PNODE_Name)`; new `rf_reserve_zone` →
+  `(GMTIntervalEnd, BAA, ReserveZone)`.
+- Handle the new DST `…d.csv` filename variant — the fix lives in the **range generation**
+  (`get_range_data` must emit one extra fetch for the duplicated hour on fall-back days),
+  not just the URL builders; `GMTIntervalEnd` disambiguates the rows downstream.
 - Column mapping: confirm IM CSVs still expose `Settlement_Location`/`Pnode`/`LMP/MLC/MCC/MEC`
   and `MTLF`/`Averaged_Actual`/`Wind_Forecast_MW`/`Solar_Forecast_MW`, or update the renames
   and `.cast()`s accordingly.
@@ -159,15 +187,20 @@ via `url.split('WEIS-')[-1]`:
   filter), a consolidated `rf_reserve_zone.parquet` target, and wire it into the hourly job —
   it supplies wind/solar **actuals**.
 - **New collector — Day-Ahead LMP** (likely `da-lmp-by-location`, verify slug/schema): collect
-  to `data_im/da_lmp/` (both BAAs) for history accrual. **Not** consumed by the model yet
+  to `data_im/da_lmp/` (both BAAs, hub/BA node rows only — same LMP storage rule) for history
+  accrual. **Not** consumed by the model yet
   (deferred); reserved for a future RT covariate or standalone DA forecasting model.
 
 **2. `src/data_engineering.py` — location filtering & feature build.**
-- **The West-BAA filter lands here** (not at collection): filter `BAA == 'SWPW'` in the LMP /
+- **The West-BAA filter lands here** for the whole-stored feeds: `BAA == 'SWPW'` in the
   MTLF / MTRF prep and `ReserveZone == 21` for the reserve-zone feed. This also drops the
-  blank-`BAA` rows present in live files.
+  blank-`BAA` rows present in live files. LMP arrives already scoped to the hub/BA node
+  list (amended 2026-07-05); selecting the West model universe from it is still a
+  downstream `BAA`/node-list step.
 - `proc_lmp()` filters `Settlement_Location_Name` by `loc_filter` and drops `_ARPA`; the West
-  node naming convention may differ — revisit `loc_filter` and the `_ARPA` exclusion.
+  node naming convention may differ — revisit `loc_filter` and the `_ARPA` exclusion. The
+  hub/BA **node list gets one home** (`src/parameters.py` or `src/reference/`) shared by the
+  collector-side filter and `proc_lmp` — don't declare it twice.
 - `unique_id` universe (line ~461) is derived from whatever LMP data is present — will
   auto-populate from West nodes once collection is fixed, but the model's trained id set won't
   match until retrain.
@@ -180,8 +213,8 @@ notebooks reference WEIS URLs. Sweep after `src` is done.
 
 **4. `app.py` / `src/plotting.py`**: user-facing "WEIS" labels, links to WEIS marketplace
 pages, and the settlement-location dropdown. Update copy, links, and the location universe.
-*Status: label/link updates already underway on this branch (uncommitted working-tree edits);
-the location universe still depends on Phase 3.*
+*Status: label/link updates committed (`1e61c9f`); the location universe still depends on
+Phase 3.*
 
 **5. `src/parameters.py`, `src/modeling.py`**: no URL logic. New IM/West artifacts get new
 names — set `MODEL_NAME='spp_west'` and new West checkpoint paths (leave the WEIS artifacts as-is; no
@@ -191,7 +224,8 @@ repo/deploy rename now — future refactor).
 below). IM data lands in a **new, separate prefix `data_im/`** within it (`data_im/mtlf/`,
 `data_im/mtrf/`, `data_im/lmp_*`, `data_im/rf_reserve_zone/`, `data_im/da_lmp/`, plus
 consolidated `data_im/*.parquet`), leaving the WEIS `data/` folder untouched so both pipelines
-run in parallel. Stored data keeps **both BAAs**; West filtering happens downstream.
+run in parallel. Stored data keeps **both BAAs**; LMP is scoped to the hub/BA node list at
+storage (amended 2026-07-05), the other feeds are stored whole with West filtering downstream.
 
 > **Bucket naming — deferred.** Cloudflare R2 **cannot rename a bucket in place** (names are
 > immutable, like S3); "renaming" means create `spp-im-bucket` → copy all objects
@@ -301,8 +335,10 @@ verified table above). Still open: the **daily LMP rollup** slug/filename (analo
 built. Gen-capacity is dropped (dead code).
 
 **Phase 1 — Build the parallel IM collector.** New IM collection code (alongside WEIS, writing
-to `data_im/`) with new filename parsing and DST-variant handling. **Store both BAAs** (keep the
-`BAA` column; no West filter at collection — West filtering is downstream). Collectors: RTBM
+to `data_im/`) with new filename parsing and DST-variant handling. Keep the `BAA` column, both
+BAAs; **LMP stores hub/BA node rows only** (amended 2026-07-05), MTLF/MTRF/`RF_RESERVE_ZONE`
+store whole (one row per BAA/zone per interval — tiny), West filtering downstream. **Add `BAA`
+to every upsert dedup key** (see touch points — clobber bug otherwise). Collectors: RTBM
 5-min LMP, daily LMP (only if the IM daily feed is confirmed — see Phase 0), MTLF, MTRF,
 `RF_RESERVE_ZONE` (store all zones; supplies wind/solar actuals), and DA LMP. Processors must
 tolerate the missing `BAA` column in pre-launch files (fill `BAA='SPP'` — see Phase 0/Phase 2).
@@ -313,21 +349,26 @@ post-launch); run one collection end-to-end to `data_im/`.
 `data_im/` consolidated tables are one continuous training dataset with ≥365 days for both
 BAAs, and Phase 4 needs no join/stitch logic:
 - **IM era (2026-04-01 → present), both BAAs:** pulled from the IM feeds. Files carry the
-  `BAA` column.
+  `BAA` column; LMP keeps hub/BA node rows only, same as ongoing collection.
 - **Pre-launch East era (2025-04-01 → 2026-03-31):** the same feeds have years of East-only
   history (verified live 2026-07-05) — backfill one year before the seam so the East BAA also
   has ≥365 days of training data from day one (per the East-expansion rationale in Decisions).
-  **Schema caveat:** pre-launch files have **no `BAA` column** (it was added at RTO West
-  launch) — the processors must tolerate the missing column and fill `BAA='SPP'` (pre-launch
-  IM was East-only; the "system-wide" MTLF/MTRF of that era are the East series).
+  **LMP keeps East hub rows only** (`SPPNORTH_HUB`/`SPPSOUTH_HUB` — verify exact names from a
+  live file). Note the hub filter shrinks *storage*, not *downloads*: the East year is still
+  ~105k 5-min file pulls unless the daily rollup exists pre-launch (see the daily-LMP item —
+  ~365 daily pulls if so). **Schema caveat:** pre-launch files have **no `BAA` column** (it
+  was added at RTO West launch) — the processors must tolerate the missing column and fill
+  `BAA='SPP'` (pre-launch IM was East-only; the "system-wide" MTLF/MTRF of that era are the
+  East series). Verify `RF_RESERVE_ZONE` actually publishes pre-launch history — and whether
+  East-era zone data is needed at all — before including it in this segment.
 - **WEIS West stitch-fill (≤ 2026-03-31): materialize the stitch in storage.** One-time
   backfill script that copies the WEIS history from the existing `data/` consolidated
   parquets into the `data_im/` consolidated tables with `BAA='SWPW'` filled (WEIS was by
-  definition West; its system-wide MTLF/MTRF are the West series). Copy **all** WEIS nodes,
-  no pre-scoping — non-matching names simply become series that end at the seam, and the
-  downstream hub/BA node-list filter excludes them; the ~42 exact-name hub/BA nodes become
-  continuous series automatically. Because the WEIS feed is dead, this runs once; the hourly
-  upsert then only ever appends IM data.
+  definition West; its system-wide MTLF/MTRF are the West series). Copy the **hub/BA
+  node-list rows** (the consolidated tables are hub-scoped — amended 2026-07-05); the ~42
+  exact-name hub/BA nodes become continuous series automatically, and the stitch stays
+  re-runnable from raw `data/` if scope ever widens. Because the WEIS feed is dead, this
+  runs once; the hourly upsert then only ever appends IM data.
 - **Provenance guardrails:** the raw `data/` (WEIS) and `data_im/` file prefixes stay
   separate and untouched — the merge happens only in the consolidated training tables, which
   carry a **`source` column (`'weis'` / `'im'`)** so every row is traceable and the stitch is
@@ -345,9 +386,11 @@ Independent of retrain; can run as soon as the node universe is fixed.
 
 **Phase 4 — Retrain & re-tune.** The stitched series already exist in storage (Phase 2
 materialized WEIS history into the `data_im/` tables), so no join logic is needed here: add
-the 2026-04-01 **break-indicator covariate** (a date threshold in data engineering); set
-`MODEL_NAME='spp_west'`; re-run Optuna; evaluate against a West holdout; promote a new
-champion.
+the 2026-04-01 **break-indicator covariate** — a Darts **future covariate** (it must be known
+over the 120-h forecast horizon; trivially constant 1 post-seam), *not* a past covariate.
+**Lifecycle:** drop it at the first retrain whose 365-day training window no longer spans the
+seam (~2027-04), when it degenerates to a constant. Set `MODEL_NAME='spp_west'`; re-run
+Optuna; evaluate against a West holdout; promote a new champion.
 
 **Phase 5 — Deploy, decommission WEIS jobs, docs.** Deploy the IM Modal jobs and confirm they
 run on schedule; **then remove/undeploy the WEIS Modal collection jobs** (`collect_hourly`,
@@ -366,10 +409,25 @@ Phase 5 decommissions the WEIS jobs.
 ## Decisions locked (interview 2026-07-05)
 
 **Infrastructure & scope**
-- **Storage scope:** collect + store **both BAAs** (`SWPW` + `SPP`), keeping the `BAA` column;
-  filter to West downstream. Future-proofs an East expansion with no re-backfill. Same
-  principle for `RF_RESERVE_ZONE`: store **all** reserve zones; `ReserveZone == 21` (= West)
-  is a downstream filter.
+- **Storage scope (amended in the 2026-07-05 plan-review interview):** both BAAs, keeping the
+  `BAA` column — but **LMP stores hub/BA node rows only** (the West hub/BA/seam list + the
+  East hubs), not the full location universes. MTLF/MTRF and `RF_RESERVE_ZONE` are stored
+  whole (all BAAs / all reserve zones — one row per BAA/zone per interval, so tiny);
+  `BAA == 'SWPW'` / `ReserveZone == 21` remain downstream filters. Rationale for the LMP
+  narrowing: a year of full-universe East 5-min LMP (thousands of locations vs WEIS's ~348)
+  is a large storage/consolidation footprint with no current use, and the portal keeps years
+  of history — widening scope later is a re-backfill, not data loss. The hub/BA node list
+  gets **one home** (`src/parameters.py` or `src/reference/`) shared by collection and
+  engineering.
+- **Upsert dedup keys gain `BAA`** (2026-07-05 review): mtlf/mtrf currently key on
+  `GMTIntervalEnd` alone, so two stored BAAs would silently clobber each other. New keys:
+  mtlf/mtrf `(GMTIntervalEnd, BAA)`; lmp adds `BAA` to `(GMTIntervalEnd_HE,
+  Settlement_Location_Name, PNODE_Name)`; `rf_reserve_zone` `(GMTIntervalEnd, BAA,
+  ReserveZone)`.
+- **Daily LMP resolution path** (2026-07-05 review): search the portal file-browser listing
+  API for the IM daily rollup; if absent, drop the daily collector and widen the hourly
+  5-min re-pull window — the daily file is a trailing-7-day repair sweep into the same
+  consolidated `lmp` table, not a distinct product.
 - **East history too:** the Phase 2 backfill reaches back to **2025-04-01** (one year before
   the seam) so the East BAA also starts with ≥365 days of training data — pre-launch files are
   East-only and lack the `BAA` column; processors fill `BAA='SPP'`.
@@ -390,13 +448,15 @@ Phase 5 decommissions the WEIS jobs.
 - **Timeline:** build-it-right migration, **no hard date, open-ended**. No external pressure →
   no throwaway interim model needed.
 - **Training-data strategy: STITCH** each hub/BA node's WEIS history onto its IM history into one
-  continuous series, with a **structural-break indicator covariate at 2026-04-01**. Use a
-  **1-year (365-day) training window** (`TRAIN_START='365D'`, unchanged) — stitching makes a
-  full lookback achievable now instead of waiting until ~2027-04.
+  continuous series, with a **structural-break indicator covariate at 2026-04-01** (a Darts
+  *future* covariate, dropped once the training window is fully post-seam — see Phase 4). Use
+  a **1-year (365-day) training window** (`TRAIN_START='365D'`, unchanged) — stitching makes
+  a full lookback achievable now instead of waiting until ~2027-04.
   - **Materialized in storage, not joined at train time:** the Phase 2 backfill copies WEIS
     history into the `data_im/` consolidated tables (`BAA='SWPW'`, `source='weis'`), copying
-    all WEIS nodes and letting the downstream node-list filter scope them. Raw `data/` and
-    `data_im/` file prefixes stay separate for provenance; the stitch is re-runnable from raw.
+    the hub/BA node-list rows (the tables are hub-scoped — amended 2026-07-05). Raw `data/`
+    and `data_im/` file prefixes stay separate for provenance; the stitch is re-runnable from
+    raw if scope widens.
   - **No Pnode crosswalk needed:** hub/BA nodes stitch on **exact name**; the renamed nodes were
     all out-of-scope resource/load points.
   - **Mixed-length caveat:** stitching only helps the ~40 BA-level nodes with WEIS predecessors.
@@ -421,11 +481,18 @@ Phase 5 decommissions the WEIS jobs.
 
 ## Open questions
 
-All **decisions** are resolved (2026-07-05 interview above). Two **verification items**
-remain open, both blocking only their own collectors:
+All **decisions** are resolved (2026-07-05 interviews above). Four **verification items**
+remain open, each blocking only its own collector/segment:
 
 1. **Daily LMP rollup feed** — the WEIS-analogous IM path under `rtbm-lmp-by-location`
    (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv`) returns 404, as do obvious slug
-   variants. Find the real slug/filename, or drop the daily collector and derive daily data
-   from the 5-min files.
+   variants. **Resolution path decided:** search the portal file-browser listing API; if
+   absent, drop the daily collector and widen the hourly 5-min re-pull window. (A pre-launch
+   daily file would also shrink the Phase 2 East backfill from ~105k pulls to ~365.)
 2. **DA LMP slug/schema** — likely `da-lmp-by-location`; verify when the DA collector is built.
+3. **East hub settlement-location names** — confirm the exact names (`SPPNORTH_HUB`,
+   `SPPSOUTH_HUB`, …) from a live post-launch file; they seed the East side of the stored
+   hub/BA node list.
+4. **`RF_RESERVE_ZONE` pre-launch availability** — the East-era backfill assumes the feed
+   publishes pre-launch history; verify, and decide whether East-era zone data is needed
+   at all (the actuals matter for the West model, not East).
