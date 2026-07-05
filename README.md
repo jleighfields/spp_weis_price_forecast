@@ -68,7 +68,8 @@ Historical and future covariates are declared in the fit function. Input and out
 ├── app.py                    # Shiny web app
 ├── pyproject.toml            # Python dependencies
 ├── modal_jobs/
-│   ├── data_collection.py    # Scheduled data collection (hourly + daily)
+│   ├── data_collection.py    # Scheduled WEIS data collection (hourly + daily)
+│   ├── data_collection_im.py # Scheduled Integrated Marketplace collection (hourly + daily)
 │   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
 │   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
@@ -110,8 +111,10 @@ Modal jobs are thin wrappers that import and run the corresponding [marimo](http
 
 | Job | File | Notebook | Resources | Schedule | Est. Runtime | Description |
 |-----|------|----------|-----------|----------|--------------|-------------|
-| `collect_hourly` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects MTLF, MTRF, 5-min LMP data |
-| `collect_daily` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects daily LMP settlement data |
+| `collect_hourly` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects WEIS MTLF, MTRF, 5-min LMP data |
+| `collect_daily` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects WEIS daily LMP settlement data |
+| `collect_im_hourly` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects IM MTLF, MTRF, RF reserve zone, 5-min LMP data |
+| `collect_im_daily` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_daily.py` | 16 CPU, 4 GiB | Daily | ~1 min | Runs the daily-LMP repair sweep and collects Day-Ahead LMP data |
 | `model_retrain_weekly` | `modal_jobs/model_retrain.py` | `notebooks/model_training/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~15 min | Retrains ensemble model |
 
 Runtimes are estimates based on current resource configuration.

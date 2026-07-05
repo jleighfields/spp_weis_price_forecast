@@ -41,14 +41,21 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   through all six feeds into `data_im/` on R2 — all five consolidated tables written with
   both BAAs, all stored nodes present, zero dedup-key duplicates.
 
+- **Phase 1 wrap-up wired** (`notebooks/data_collection/data_collection_im_hourly.py`,
+  `data_collection_im_daily.py` + `modal_jobs/data_collection_im.py`, Modal app
+  `spp-im-data-collection`): thin marimo notebooks calling the IM collectors, wrapped by
+  two Modal jobs — `collect_im_hourly` (MTLF/MTRF/RF/5-min LMP, every 4h) and
+  `collect_im_daily` (daily-LMP repair sweep + DA LMP, daily). Both **run live end-to-end**
+  as scripts (2026-07-05): all five `data_im/` tables written, both BAAs, all 10 East hubs
+  present, zero dedup-key duplicates. **Not yet `modal deploy`-ed.**
+
 **Not started**
-- Phase 1's remaining step (wire the collectors into IM Modal jobs / marimo notebooks)
-  and Phase 2 onward.
+- `modal deploy modal_jobs/data_collection_im.py` (schedules the two IM jobs), and Phase 2
+  onward.
 
 **Next actions**
-1. **Phase 1 wrap-up**: create the IM collection marimo notebooks + `spp-im-*` Modal job
-   wrappers (hourly: MTLF/MTRF/RF/5-min LMP; daily: daily-LMP repair sweep + DA LMP) and
-   deploy them.
+1. **Deploy the IM jobs**: `modal deploy modal_jobs/data_collection_im.py`. (The WEIS
+   `spp-weis-data-collection` jobs keep running in parallel until Phase 5 decommission.)
 2. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
    2026-04-01 get `BAA='SPP'`; both BAAs after; LMP keeps hub/BA node rows only), then run
    the one-time **WEIS stitch-fill** (WEIS hub/BA history → `data_im/` consolidated tables,

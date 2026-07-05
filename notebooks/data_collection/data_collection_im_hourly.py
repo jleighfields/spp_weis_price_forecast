@@ -1,0 +1,159 @@
+# Hourly data collection for SPP RTO West / Integrated Marketplace (IM).
+#
+# Collects MTLF, MTRF, RF_RESERVE_ZONE, and 5-min LMP data into data_im/.
+# Parallel to data_collection_hourly.py (the WEIS pipeline); see
+# plans/weis_to_rto_west_migration.md.
+#
+# Usage:
+#   Interactive: marimo edit notebooks/data_collection/data_collection_im_hourly.py
+#   Script:      python notebooks/data_collection/data_collection_im_hourly.py
+#   Modal:       modal run modal_jobs/data_collection_im.py::collect_im_hourly
+
+import marimo
+
+__generated_with = "0.20.2"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    import marimo as mo
+
+    return (mo,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    # IM data collection — hourly
+    Gather public SPP Integrated Marketplace data from https://portal.spp.org
+    """
+    )
+    return
+
+
+@app.cell
+def _():
+    import os
+    import sys
+    import pathlib
+    import pandas as pd
+    import logging
+
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("py4j").setLevel(logging.ERROR)
+    log = logging.getLogger(__name__)
+
+    # Add project root to sys.path for src/ imports
+    _project_root = str(pathlib.Path(__file__).resolve().parent.parent.parent)
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
+
+    return log, pd
+
+
+@app.cell
+def _():
+    import src.data_collection_im as dcim
+
+    return (dcim,)
+
+
+@app.cell
+def _(pd):
+    end_ts = pd.Timestamp.now("UTC").tz_convert("America/Chicago").tz_localize(None)
+    end_ts
+    return (end_ts,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Mid Term Load Forecast""")
+    return
+
+
+@app.cell
+def _(dcim, end_ts):
+    mtlf_range = dcim.get_range_data_mtlf(end_ts=end_ts, n_periods=24)
+    mtlf_parquet = [pf for pf in mtlf_range if pf.endswith(".parquet")]
+    mtlf_parquet[:10]
+    return (mtlf_parquet,)
+
+
+@app.cell
+def _(dcim, mtlf_parquet):
+    if mtlf_parquet:
+        dcim.upsert_im(mtlf_parquet, target="mtlf")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Mid Term Resource Forecast""")
+    return
+
+
+@app.cell
+def _(dcim, end_ts):
+    mtrf_range = dcim.get_range_data_mtrf(end_ts=end_ts, n_periods=24)
+    mtrf_parquet = [pf for pf in mtrf_range if pf.endswith(".parquet")]
+    mtrf_parquet[:10]
+    return (mtrf_parquet,)
+
+
+@app.cell
+def _(dcim, mtrf_parquet):
+    if mtrf_parquet:
+        dcim.upsert_im(mtrf_parquet, target="mtrf")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Resource forecast by reserve zone (wind/solar)""")
+    return
+
+
+@app.cell
+def _(dcim, end_ts):
+    rf_range = dcim.get_range_data_rf_reserve_zone(end_ts=end_ts, n_periods=24)
+    rf_parquet = [pf for pf in rf_range if pf.endswith(".parquet")]
+    rf_parquet[:10]
+    return (rf_parquet,)
+
+
+@app.cell
+def _(dcim, rf_parquet):
+    if rf_parquet:
+        dcim.upsert_im(rf_parquet, target="rf_reserve_zone")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## LMP settlement location prices (5-min intervals)""")
+    return
+
+
+@app.cell
+def _(dcim, end_ts):
+    # 24 hours x 12 five-minute intervals
+    lmp_range = dcim.get_range_data_5min_lmp(end_ts=end_ts, n_periods=24 * 12)
+    lmp_parquet = [pf for pf in lmp_range if pf.endswith(".parquet")]
+    lmp_parquet[:10]
+    return (lmp_parquet,)
+
+
+@app.cell
+def _(dcim, lmp_parquet):
+    if lmp_parquet:
+        dcim.upsert_im(lmp_parquet, target="lmp")
+    return
+
+
+if __name__ == "__main__":
+    app.run()
