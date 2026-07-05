@@ -1,5 +1,5 @@
 '''
-Shiny for Python interface for SPP Weis LMP forecasting endpoint
+Shiny for Python interface for SPP IM West LMP forecasting endpoint
 '''
 
 # pylint: disable=W0621,C0103,W1203
@@ -130,11 +130,11 @@ app_ui = ui.page_sidebar(
             ui.column(
                 10,
                 ui.HTML(
-                    '<strong><a href="https://pricecontourmap.spp.org/pricecontourmapwest/" target="_blank">SPP Weis price map</a></strong>'
+                    '<strong><a href="https://pricecontourmap.spp.org/pricecontourmap/" target="_blank">SPP IM price map</a></strong>'
                     ' &nbsp;|&nbsp; '
-                    '<strong><a href="https://portal.spp.org/pages/weis-forecast-summary" target="_blank">SPP Weis load and resource forecasts</a></strong>'
+                    '<strong><a href="https://portal.spp.org/pages/integrated-marketplace-swpw-forecast-vs.-actual" target="_blank">SPP IM West load forecast</a></strong>'
                     ' &nbsp;|&nbsp; '
-                    '<strong><a href="https://portal.spp.org/pages/weis-generation-mix" target="_blank">SPP Weis generation mix</a></strong>'
+                    '<strong><a href="https://portal.spp.org/pages/integrated-marketplace-swpw-generation-mix" target="_blank">SPP IM West generation mix</a></strong>'
                 ),
                 style="display: flex; align-items: center;",
             ),
@@ -147,7 +147,7 @@ app_ui = ui.page_sidebar(
         ui.output_ui("forecast_data_section"),
         style="padding-left: 2rem; padding-right: 2rem;",
     ),
-    title="SPP Weis Nodal Price Forecast",
+    title="SPP IM West Nodal Price Forecast",
     fillable=False,
     theme=shinyswatch.theme.flatly(),
 )
