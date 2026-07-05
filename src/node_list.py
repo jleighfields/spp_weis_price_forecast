@@ -39,6 +39,10 @@ WEST_SEAM_NODES = [
 
 WEST_HUB_BA_NODES = WEST_INTERNAL_NODES + WEST_SEAM_NODES
 
+# The SPP West balancing authority area code (the modeled BAA). Single home
+# for the value; the data-engineering West filters read it.
+WEST_BAA = 'SWPW'
+
 # SPP East BAA trading hubs (the only East series stored). The two
 # SPPNORTH/SPPSOUTH aggregates plus the eight member-area trading hubs;
 # all verified present (exact match) in a live post-launch LMP file on

@@ -51,10 +51,21 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   `spp-weis-data-collection` jobs were **stopped** (feeds dead since 2026-04-01). A `source`
   column (`'im'`/`'weis'`) was added to the IM writes for stitch provenance.
 
-- **Phase 2 backfill built + running** (`notebooks/data_collection/data_collection_im_backfill.py`
-  + `scripts/weis_stitch_fill.py`): one-pass backfill of MTLF/MTRF/RF (hourly) and LMP (daily
-  rollup) from 2025-04-01 → present, plus post-launch DA LMP; the WEIS West stitch is a
-  separate one-time script.
+- **Phase 2 backfill + stitch done** (`notebooks/data_collection/data_collection_im_backfill.py`
+  + `scripts/weis_stitch_fill.py`, committed): backfilled MTLF/MTRF/RF + LMP + DA 2025-04-01 →
+  present and materialized the WEIS West stitch. Validated live: `lmp` 1,021,935 rows, both
+  BAAs, `im`/`weis` source split, 0 dup keys; `SWPW_HUB` continuous 886 d across the seam.
+  Backfill surfaced+fixed three robustness bugs (whole-file schema inference, one flexible
+  datetime parser for all feeds, skip-and-log malformed files with a batch-failure warning).
+
+- **Phase 3 data engineering + app + tests done** (`src/data_engineering.py`, committed):
+  `create_database` reads `data_im/`; `prep_lmp`/`prep_mtlf`/`prep_mtrf` filter `BAA=='SWPW'`
+  and `prep_lmp` swaps `loc_filter='PSCO_'` for `node_list.WEST_HUB_BA_NODES` (dropping the
+  WEIS `_ARPA` exclusion). App labels/links already read "SPP IM West"; the location universe
+  flows from `prep_lmp` so it auto-updates. Unit + e2e fixtures repaired (BAA column, West
+  node names, IM West title). Validated live: `prep_lmp` → 64 West nodes over a 365-day window
+  across the seam; West-only `MTLF` (not whole-RTO). `ReserveZone==21` is deferred — RF is not
+  a covariate yet (see open question below).
 
 **Data-quality finding (2026-07-05) — stitch continuity by exact node name:**
 Checking the 64 West nodes against the WEIS history: **seam 25/25 present, internal only
@@ -68,13 +79,16 @@ nodes), tagged `source='weis'`. The 6 nodes originally suspected of missing data
 their only issue is redundancy (≈0.9997 corr to `SWPW_HUB`) — a feature-selection question.
 
 **Next actions**
-1. Finish the running backfill, run `scripts/weis_stitch_fill.py`, validate the consolidated
-   `data_im/` tables (continuous ≥365 d for both BAAs; `SWPW_HUB` has pre-launch proxy;
-   `source` split; zero key dups), then redeploy the IM jobs with the `source` change.
-2. Decide whether the other missing aggregated hubs (`CRSP_HUB`, `LAP_HUB`, …) also need a
-   proxy or stay post-launch-only; and whether West `RF_RESERVE_ZONE` (zone 21, post-launch
-   only) matters as a covariate.
-3. **Phase 3+**: downstream West filters, app refresh, retrain/re-tune on the stitched data.
+1. **Phase 3b — node geometry** (independent; can run now that the West node universe is
+   fixed): build `src/geometry.py::fetch_pcm_geometries()` + `src/reference/node_geometry.csv`
+   + a refresh notebook.
+2. **Phase 4 — retrain & re-tune** on the stitched West data: add the 2026-04-01
+   break-indicator future covariate, set `MODEL_NAME='spp_west'`, re-run Optuna, evaluate on a
+   West holdout, promote a champion. (The WEIS `spp-weis-model-retrain` app is now stopped.)
+3. Open decisions: whether the other missing aggregated hubs (`CRSP_HUB`, `LAP_HUB`, …) also
+   need a WACM-style proxy or stay post-launch-only; and whether West `RF_RESERVE_ZONE` (zone
+   21, post-launch only) is worth adding as a covariate (its `ReserveZone==21` filter is ready
+   to wire in if so).
 
 ## Background / why this is needed
 
