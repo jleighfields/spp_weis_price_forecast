@@ -62,7 +62,9 @@ from data_collection import (  # noqa: E402
     get_csv_from_url,
     set_he,
 )
-from node_list import STORED_NODES  # noqa: E402
+# RTO_WEST_LAUNCH is re-exported here for existing callers (backfill
+# notebook, stitch script); its single home is node_list.
+from node_list import RTO_WEST_LAUNCH, STORED_NODES  # noqa: E402, F401
 
 from joblib import delayed  # noqa: E402
 
@@ -70,11 +72,6 @@ PORTAL_DOWNLOAD = 'https://portal.spp.org/file-browser-api/download/'
 
 # The daily LMP rollup for operating day D publishes at ~18:00 on D+5.
 DAILY_LMP_LAG_DAYS = 5
-
-# RTO West go-live / WEIS→IM seam: files carry the BAA column from this date
-# on, and the West BAA's own market data starts here. Single home for the
-# date; the backfill notebook and the WEIS stitch script both read it.
-RTO_WEST_LAUNCH = pd.Timestamp('2026-04-01')
 
 # Dedup keys for the consolidated data_im/ tables. Every key includes BAA:
 # both BAAs share timestamps, so without it East and West rows clobber

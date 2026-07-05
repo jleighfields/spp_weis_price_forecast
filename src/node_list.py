@@ -8,12 +8,22 @@ universe from the same lists — neither redeclares them.
 
 Kept separate from src/parameters.py on purpose: parameters.py imports
 sklearn/darts, which the Modal data-collection image does not install.
+This module holds only pandas-level West-scoping constants, so both the
+collectors and the modeling pipeline can import it.
 
 Provenance: WEST_HUB_BA_NODES comes from the classified SWPW universe in
 scripts/node_geometry_prototype/west_hub_nodes.csv; all 64 names were
 verified present (exact match) in a live post-launch LMP file on
 2026-07-05, as were the two East trading hubs.
 """
+
+import pandas as pd
+
+# RTO West go-live / WEIS→IM seam. Files carry the BAA column from this
+# date on, the West BAA's own market data starts here, and modeling uses it
+# for the break-indicator covariate. Single home; data_collection_im and
+# data_engineering both read it (data_collection_im re-exports it).
+RTO_WEST_LAUNCH = pd.Timestamp('2026-04-01')
 
 # SPP West BAA (SWPW) internal hubs and BA-level nodes, plus the
 # East<->West seam constructs (SWPW_HUB is the flagship forecast target).
