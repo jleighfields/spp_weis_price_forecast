@@ -39,7 +39,7 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   portal CSVs (`tests/unit/test_data_collection_im.py`, `tests/unit/fixtures/`), passed
   the `code-reviewer` gate, and **validated end-to-end live**: one small collection ran
   through all six feeds into `data_im/` on R2 — all five consolidated tables written with
-  both BAAs, all 66 stored nodes present, zero dedup-key duplicates.
+  both BAAs, all stored nodes present, zero dedup-key duplicates.
 
 **Not started**
 - Phase 1's remaining step (wire the collectors into IM Modal jobs / marimo notebooks)
@@ -371,8 +371,9 @@ BAAs, and Phase 4 needs no join/stitch logic:
 - **Pre-launch East era (2025-04-01 → 2026-03-31):** the same feeds have years of East-only
   history (verified live 2026-07-05) — backfill one year before the seam so the East BAA also
   has ≥365 days of training data from day one (per the East-expansion rationale in Decisions).
-  **LMP keeps East hub rows only** (`SPPNORTH_HUB`/`SPPSOUTH_HUB` — verify exact names from a
-  live file). **Pull the LMP year via the daily rollup** — the pre-launch `By_Day` files
+  **LMP keeps East hub rows only** (the 10 `node_list.EAST_HUB_NODES`: the `SPPNORTH_HUB`/
+  `SPPSOUTH_HUB` aggregates plus the 8 member-area trading hubs). **Pull the LMP year via the
+  daily rollup** — the pre-launch `By_Day` files
   exist (verified 2026-07-05), so this era is ~365 daily pulls (~47 MB each), not ~105k
   5-min pulls. **Schema caveat:** pre-launch files have **no `BAA` column** (it
   was added at RTO West launch) — the processors must tolerate the missing column and fill
@@ -509,9 +510,13 @@ remains open:
 ~~DA LMP slug/schema~~ — **RESOLVED**: slug is `da-lmp-by-settlement-location`; schema
 handled in `src/data_collection_im.py` (mixed timestamp formats).
 
-~~East hub settlement-location names~~ — **RESOLVED 2026-07-05**: `SPPNORTH_HUB` and
-`SPPSOUTH_HUB` confirmed from a live post-launch LMP file; encoded as
-`node_list.EAST_HUB_NODES`.
+~~East hub settlement-location names~~ — **RESOLVED 2026-07-05**: the East scope is the 10
+hub-level nodes in `node_list.EAST_HUB_NODES` — the `SPPNORTH_HUB`/`SPPSOUTH_HUB` aggregates
+plus the 8 member-area trading hubs (`CSWS_HUB`, `ETEC_HUB`, `GRDA_HUB`, `GSEC_HUB`,
+`HAST_TNSK_HUB`, `KCPL_GMOC_HUB`, `LES_HUB`, `SECI_HUB`), all confirmed present in a live
+post-launch LMP file. Scoped at the hub level, not by reserve zone: SPP publishes **no
+node↔reserve-zone crosswalk** in the file-browser feeds (the `RF_RESERVE_ZONE` feed labels
+East zones as bare integers 1–5 with no node membership; likely reference slugs 404).
 
 ~~Daily LMP rollup feed~~ — **RESOLVED 2026-07-05**: exists at the WEIS-analogous `By_Day`
 path with a 5-day publication lag (see Phase 0); collector kept, lag-aware window.

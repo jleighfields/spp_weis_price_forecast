@@ -39,8 +39,16 @@ WEST_SEAM_NODES = [
 
 WEST_HUB_BA_NODES = WEST_INTERNAL_NODES + WEST_SEAM_NODES
 
-# SPP East BAA trading hubs (the only East series stored; verified names).
-EAST_HUB_NODES = ['SPPNORTH_HUB', 'SPPSOUTH_HUB']
+# SPP East BAA trading hubs (the only East series stored). The two
+# SPPNORTH/SPPSOUTH aggregates plus the eight member-area trading hubs;
+# all verified present (exact match) in a live post-launch LMP file on
+# 2026-07-05. SPP publishes no node<->reserve-zone crosswalk, so the East
+# is scoped at the hub level rather than by reserve zone.
+EAST_HUB_NODES = [
+    'SPPNORTH_HUB', 'SPPSOUTH_HUB',
+    'CSWS_HUB', 'ETEC_HUB', 'GRDA_HUB', 'GSEC_HUB',
+    'HAST_TNSK_HUB', 'KCPL_GMOC_HUB', 'LES_HUB', 'SECI_HUB',
+]
 
 # What the IM collectors keep from LMP files (both BAAs).
 STORED_NODES = WEST_HUB_BA_NODES + EAST_HUB_NODES

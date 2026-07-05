@@ -59,10 +59,13 @@ class TestNodeList:
 
     def test_shapes_and_membership(self):
         assert len(WEST_HUB_BA_NODES) == 64
-        assert len(STORED_NODES) == 66
+        assert len(STORED_NODES) == 74
         assert 'SWPW_HUB' in STORED_NODES
         assert 'CISO' in STORED_NODES
-        assert set(EAST_HUB_NODES) == {'SPPNORTH_HUB', 'SPPSOUTH_HUB'}
+        assert set(EAST_HUB_NODES) == {
+            'SPPNORTH_HUB', 'SPPSOUTH_HUB', 'CSWS_HUB', 'ETEC_HUB', 'GRDA_HUB',
+            'GSEC_HUB', 'HAST_TNSK_HUB', 'KCPL_GMOC_HUB', 'LES_HUB', 'SECI_HUB',
+        }
         assert len(set(STORED_NODES)) == len(STORED_NODES)
 
 
