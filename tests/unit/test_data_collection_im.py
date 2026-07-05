@@ -178,21 +178,24 @@ class TestUrlBuilders:
 
 
 # ============================================================
-# convert_datetime_cols_flex
+# convert_datetime_cols
 # ============================================================
 
-class TestConvertDatetimeColsFlex:
+class TestConvertDatetimeCols:
 
     def test_handles_both_da_formats(self):
-        df = pl.DataFrame({'Interval': ['6/1/2026 01:00', '07/05/2026 06:00:00']})
-        out = dcim.convert_datetime_cols_flex(df, ['Interval'])
+        # seconded, seconds-less, and unpadded (older daily-rollup) forms
+        df = pl.DataFrame(
+            {'Interval': ['6/1/2026 01:00', '07/05/2026 06:00:00', '3/20/2026 0:05']}
+        )
+        out = dcim.convert_datetime_cols(df, ['Interval'])
         assert out['Interval'].dtype == pl.Datetime
         assert out['Interval'].null_count() == 0
 
     def test_raises_on_unknown_format(self):
         df = pl.DataFrame({'Interval': ['2026-06-01T01:00:00Z']})
         with pytest.raises(ValueError, match='no known datetime format'):
-            dcim.convert_datetime_cols_flex(df, ['Interval'])
+            dcim.convert_datetime_cols(df, ['Interval'])
 
 
 # ============================================================
@@ -225,6 +228,7 @@ class TestMtlfMtrfProcessors:
         assert df['MTLF'].dtype == pl.Float32
         assert df['GMTIntervalEnd'].dtype == pl.Datetime
         assert 'timestamp_mst' in df.columns
+        assert df['source'].unique().to_list() == ['im']
 
     def test_mtlf_pre_launch_fills_spp(self, out_dir):
         tc = tc_for('7/1/2025 09:30:00')
@@ -276,6 +280,16 @@ class TestLmpProcessors:
         tc = tc_for('7/1/2025')
         df = run_processor(dcim.get_process_daily_lmp, 'RTBM-LMP-DAILY-SL-20250701.csv', tc, out_dir)
         assert df['BAA'].unique().to_list() == ['SPP']
+
+    def test_daily_unpadded_datetime_format(self, out_dir):
+        # Older daily-rollup files use an unpadded, seconds-less timestamp
+        # (e.g. '3/20/2026 0:05'); the LMP path must parse it, not just the
+        # zero-padded seconded format. Regression for the backfill failure.
+        tc = tc_for('3/20/2026')
+        df = run_processor(dcim.get_process_daily_lmp, 'RTBM-LMP-DAILY-SL-20260320.csv', tc, out_dir)
+        assert df['GMTIntervalEnd_HE'].dtype == pl.Datetime
+        assert df['GMTIntervalEnd_HE'].null_count() == 0
+        assert 'SWPW_HUB' in df['Settlement_Location_Name'].unique().to_list()
 
     def test_da_lmp_post_launch(self, out_dir):
         tc = tc_for('6/1/2026')

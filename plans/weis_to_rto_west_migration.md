@@ -45,21 +45,36 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   `data_collection_im_daily.py` + `modal_jobs/data_collection_im.py`, Modal app
   `spp-im-data-collection`): thin marimo notebooks calling the IM collectors, wrapped by
   two Modal jobs — `collect_im_hourly` (MTLF/MTRF/RF/5-min LMP, every 4h) and
-  `collect_im_daily` (daily-LMP repair sweep + DA LMP, daily). Both **run live end-to-end**
+  `collect_im_daily` (daily-LMP repair sweep + DA LMP, every 3 days). Both **run live end-to-end**
   as scripts (2026-07-05): all five `data_im/` tables written, both BAAs, all 10 East hubs
-  present, zero dedup-key duplicates. **Not yet `modal deploy`-ed.**
+  present, zero dedup-key duplicates. **Deployed 2026-07-05** (`modal deploy`); the WEIS
+  `spp-weis-data-collection` jobs were **stopped** (feeds dead since 2026-04-01). A `source`
+  column (`'im'`/`'weis'`) was added to the IM writes for stitch provenance.
 
-**Not started**
-- `modal deploy modal_jobs/data_collection_im.py` (schedules the two IM jobs), and Phase 2
-  onward.
+- **Phase 2 backfill built + running** (`notebooks/data_collection/data_collection_im_backfill.py`
+  + `scripts/weis_stitch_fill.py`): one-pass backfill of MTLF/MTRF/RF (hourly) and LMP (daily
+  rollup) from 2025-04-01 → present, plus post-launch DA LMP; the WEIS West stitch is a
+  separate one-time script.
+
+**Data-quality finding (2026-07-05) — stitch continuity by exact node name:**
+Checking the 64 West nodes against the WEIS history: **seam 25/25 present, internal only
+15/39**. The 24 missing internal nodes include the flagship target **`SWPW_HUB`**, `PSCO`,
+`CRSP_HUB`, `LAP_HUB`, and the aggregate `.FSE` constructs — because WEIS priced *granular
+pnodes* (`PSCO.*`, `WACM.*`) while RTO West introduced *aggregated* hubs with no exact WEIS
+name. Decision (2026-07-05): **proxy `SWPW_HUB`'s pre-launch history from the per-interval
+mean of all WEIS `WACM*` nodes** (validated: mean ≈ $22/MWh, comparable to real matched West
+nodes), tagged `source='weis'`. The 6 nodes originally suspected of missing data
+(`DEAA/DOPD/EPE/GCPD/GRID/GWA`) are in fact fully covered on **both** sides of the seam;
+their only issue is redundancy (≈0.9997 corr to `SWPW_HUB`) — a feature-selection question.
 
 **Next actions**
-1. **Deploy the IM jobs**: `modal deploy modal_jobs/data_collection_im.py`. (The WEIS
-   `spp-weis-data-collection` jobs keep running in parallel until Phase 5 decommission.)
-2. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
-   2026-04-01 get `BAA='SPP'`; both BAAs after; LMP keeps hub/BA node rows only), then run
-   the one-time **WEIS stitch-fill** (WEIS hub/BA history → `data_im/` consolidated tables,
-   `BAA='SWPW'`, `source='weis'`) so both BAAs have ≥365 days of continuous training data.
+1. Finish the running backfill, run `scripts/weis_stitch_fill.py`, validate the consolidated
+   `data_im/` tables (continuous ≥365 d for both BAAs; `SWPW_HUB` has pre-launch proxy;
+   `source` split; zero key dups), then redeploy the IM jobs with the `source` change.
+2. Decide whether the other missing aggregated hubs (`CRSP_HUB`, `LAP_HUB`, …) also need a
+   proxy or stay post-launch-only; and whether West `RF_RESERVE_ZONE` (zone 21, post-launch
+   only) matters as a covariate.
+3. **Phase 3+**: downstream West filters, app refresh, retrain/re-tune on the stitched data.
 
 ## Background / why this is needed
 
@@ -212,7 +227,8 @@ via `url.split('WEIS-')[-1]`:
 - **New collector — Day-Ahead LMP** (slug verified: `da-lmp-by-settlement-location`): collect
   to `data_im/da_lmp/` (both BAAs, hub/BA node rows only — same LMP storage rule) for history
   accrual. Files mix timestamp formats with/without seconds — handled by
-  `convert_datetime_cols_flex`. **Not** consumed by the model yet
+  `convert_datetime_cols` (the single flexible parser now shared by every IM
+  feed). **Not** consumed by the model yet
   (deferred); reserved for a future RT covariate or standalone DA forecasting model.
 
 **2. `src/data_engineering.py` — location filtering & feature build.**
@@ -424,6 +440,16 @@ run on schedule; **then remove/undeploy the WEIS Modal collection jobs** (`colle
 R2 data (`data/`) for stitching. Update `README.md` and sweep IM notebooks. (Full rename —
 repo, Modal apps, Posit deploy, **and R2 bucket `spp-weis-forecast`→`spp-im-bucket`** via
 copy-migration — is a **later refactor**, not now.)
+
+> **Partially done early (2026-07-05):** the WEIS `spp-weis-data-collection` Modal app is
+> **stopped**, and the six WEIS market-collection notebooks + the WEIS Modal wrapper were
+> moved to **`deprecated/weis/`** (`git mv`, history preserved). **`src/data_collection.py`
+> stays in place** — it is still the home of the shared collection helpers (`get_csv_from_url`,
+> `_s3_storage_options`, `set_he`, `ProgressParallel`, …) that `data_collection_im.py` imports.
+> Fully retiring it means first extracting those helpers into a neutral module
+> (e.g. `src/collection_utils.py`); that extraction is the remaining Phase 5 cleanup.
+> `notebooks/data_collection/data_collection_weather.py` also stays — weather is a live model
+> covariate (used in `data_engineering.py`), independent of the market migration.
 
 **Suggested sequencing:** all work on the **feature branch**. Phase 1 → 2 → 3/3b restore +
 enrich the data pipeline and can proceed now. Phase 4 (retrain) follows once the

@@ -68,12 +68,11 @@ Historical and future covariates are declared in the fit function. Input and out
 ├── app.py                    # Shiny web app
 ├── pyproject.toml            # Python dependencies
 ├── modal_jobs/
-│   ├── data_collection.py    # Scheduled WEIS data collection (hourly + daily)
 │   ├── data_collection_im.py # Scheduled Integrated Marketplace collection (hourly + daily)
 │   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
 │   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
-│   ├── data_collection.py    # ETL functions for SPP data (legacy WEIS feeds)
+│   ├── data_collection.py    # Shared collection helpers + legacy WEIS ETL (imported by data_collection_im)
 │   ├── data_collection_im.py # ETL functions for the Integrated Marketplace feeds
 │   ├── data_engineering.py   # Feature engineering, train/test splits
 │   ├── modeling.py           # Model training and loading (TiDE, TSMixer, TFT)
@@ -95,12 +94,14 @@ Historical and future covariates are declared in the fit function. Input and out
 │       ├── app_for_test.py   # Lightweight app with mock data/models
 │       └── test_app_e2e.py   # UI lifecycle tests
 ├── scripts/
-│   └── r2_move_objects.py    # R2 object move/copy/delete utility
+│   ├── r2_move_objects.py    # R2 object move/copy/delete utility
+│   └── weis_stitch_fill.py   # One-time WEIS→data_im West stitch-fill (Phase 2)
 ├── notebooks/                    # Marimo notebooks (.py) — run with `marimo edit` or `python`
-│   ├── data_collection/      # Data collection notebooks
+│   ├── data_collection/      # IM collection notebooks (im_hourly/im_daily/im_backfill) + weather
 │   ├── model_training/       # Model training and tuning notebooks
 │   └── app/                  # App testing notebooks
-└── deprecated/               # Archived Databricks config and old Streamlit app
+└── deprecated/               # Archived Databricks config, old Streamlit app
+    └── weis/                 # Retired WEIS market-collection notebooks + Modal wrapper
 ```
 
 ## Modal jobs
@@ -111,13 +112,14 @@ Modal jobs are thin wrappers that import and run the corresponding [marimo](http
 
 | Job | File | Notebook | Resources | Schedule | Est. Runtime | Description |
 |-----|------|----------|-----------|----------|--------------|-------------|
-| `collect_hourly` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects WEIS MTLF, MTRF, 5-min LMP data |
-| `collect_daily` | `modal_jobs/data_collection.py` | `notebooks/data_collection/data_collection_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~24 sec | Collects WEIS daily LMP settlement data |
 | `collect_im_hourly` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects IM MTLF, MTRF, RF reserve zone, 5-min LMP data |
-| `collect_im_daily` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_daily.py` | 16 CPU, 4 GiB | Daily | ~1 min | Runs the daily-LMP repair sweep and collects Day-Ahead LMP data |
+| `collect_im_daily` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~1 min | Runs the daily-LMP repair sweep and collects Day-Ahead LMP data |
 | `model_retrain_weekly` | `modal_jobs/model_retrain.py` | `notebooks/model_training/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~15 min | Retrains ensemble model |
 
-Runtimes are estimates based on current resource configuration.
+Runtimes are estimates based on current resource configuration. The retired WEIS
+market-collection jobs and notebooks live under `deprecated/weis/` (feeds dead since
+2026-04-01); `src/data_collection.py` stays put — it still hosts the shared collection
+helpers imported by `data_collection_im.py`.
 
 ### Estimated monthly cost
 

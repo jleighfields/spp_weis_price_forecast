@@ -58,7 +58,6 @@ from data_collection import (  # noqa: E402
     _s3_storage_options,
     add_timestamp_mst,
     check_file_exists_client,
-    convert_datetime_cols,
     format_df_colnames,
     get_csv_from_url,
     set_he,
@@ -71,6 +70,11 @@ PORTAL_DOWNLOAD = 'https://portal.spp.org/file-browser-api/download/'
 
 # The daily LMP rollup for operating day D publishes at ~18:00 on D+5.
 DAILY_LMP_LAG_DAYS = 5
+
+# RTO West go-live / WEIS→IM seam: files carry the BAA column from this date
+# on, and the West BAA's own market data starts here. Single home for the
+# date; the backfill notebook and the WEIS stitch script both read it.
+RTO_WEST_LAUNCH = pd.Timestamp('2026-04-01')
 
 # Dedup keys for the consolidated data_im/ tables. Every key includes BAA:
 # both BAAs share timestamps, so without it East and West rows clobber
@@ -205,13 +209,14 @@ def ensure_baa(df: pl.DataFrame) -> pl.DataFrame:
     return df.drop_nulls(subset=['BAA'])
 
 
-def convert_datetime_cols_flex(df: pl.DataFrame, dt_cols: List[str]) -> pl.DataFrame:
+def convert_datetime_cols(df: pl.DataFrame, dt_cols: List[str]) -> pl.DataFrame:
     """
     Convert string datetime columns that mix two timestamp formats.
 
-    The DA LMP feed uses both '%m/%d/%Y %H:%M:%S' and '%m/%d/%Y %H:%M'
-    across files, so each value is tried against both formats and the
-    first match wins.
+    IM feeds vary in timestamp format across their history — some files use
+    '%m/%d/%Y %H:%M:%S' and others the seconds-less '%m/%d/%Y %H:%M' (also
+    unpadded, e.g. '3/20/2026 0:05'). This is the single datetime parser for
+    every IM feed: each value is tried against both formats, first match wins.
 
     Args:
         df: DataFrame with datetime strings.
@@ -243,10 +248,13 @@ def _parquet_output_path(url: str, base_path: str, data_category: str) -> str:
 
 
 def _stamp_and_write(df: pl.DataFrame, tc: dict, url: str, output_path: str) -> str:
-    """Add provenance columns, then write the parquet and return its path."""
+    """Add provenance columns (file_create_time_utc, url, source='im'), then
+    write the parquet and return its path. The WEIS stitch-fill writes
+    source='weis' rows separately so the consolidated tables stay traceable."""
     df = df.with_columns(
         pl.lit(tc['timestamp_utc']).alias('file_create_time_utc'),
         pl.lit(url).alias('url'),
+        pl.lit('im').alias('source'),
     )
     df.unique().write_parquet(output_path, storage_options=_s3_storage_options())
     return output_path
@@ -354,7 +362,7 @@ def get_range_data_im(
         do_parallel: If True, use parallel processing with joblib.
 
     Returns:
-        List of file paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for files that failed to download or process.
     """
     five_min_ceil = freq == '5min'
     time_str_list = [str(dt) for dt in pd.date_range(end=end_ts, periods=n_periods, freq=freq)]
@@ -382,6 +390,18 @@ def get_range_data_im(
         for tc in tqdm.tqdm(tc_list):
             results += [get_process_func(tc, base_path=base_path)]
 
+    # Surface the batch success rate so a systematic break (every file
+    # missing or failing to parse) is distinguishable from one bad file:
+    # skip-and-log per file would otherwise let a whole feed silently
+    # collect nothing while the job still "succeeds".
+    n_success = sum(1 for r in results if r.endswith('.parquet'))
+    if results and not n_success:
+        log.warning(
+            f'{get_process_func.__name__}: collected 0/{len(results)} files — '
+            'every fetch missed (feed outage or schema change?)'
+        )
+    else:
+        log.info(f'{get_process_func.__name__}: collected {n_success}/{len(results)} files')
     return results
 
 
@@ -404,7 +424,7 @@ def _get_process_feed(
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     if base_path is None:
         base_path = get_s3_base_path_im()
@@ -414,7 +434,14 @@ def _get_process_feed(
     if df.shape[0] == 0:
         return url
 
-    df = transform(df)
+    # Skip an isolated malformed file (e.g. SPP's DA file for 2026-06-04
+    # shipped an all-caps header) rather than aborting the whole batch;
+    # the caller filters on the .parquet suffix, so a returned URL is a miss.
+    try:
+        df = transform(df)
+    except Exception as e:
+        log.error(f'transform failed, skipping {url}: {e}')
+        return url
     return _stamp_and_write(df, tc, url, _parquet_output_path(url, base_path, data_category))
 
 
@@ -422,7 +449,7 @@ def _transform_mtlf(df: pl.DataFrame) -> pl.DataFrame:
     """Normalize one MTLF file: BAA fill/drop, datetimes, Float32 casts."""
     format_df_colnames(df)
     df = ensure_baa(df)
-    df = convert_datetime_cols(df)
+    df = convert_datetime_cols(df, ['Interval', 'GMTIntervalEnd'])
     df = add_timestamp_mst(df)
     return df.with_columns(
         pl.col.MTLF.cast(pl.Float32),
@@ -434,7 +461,7 @@ def _transform_mtrf(df: pl.DataFrame) -> pl.DataFrame:
     """Normalize one MTRF file: BAA fill/drop, datetimes, Float32 casts."""
     format_df_colnames(df)
     df = ensure_baa(df)
-    df = convert_datetime_cols(df)
+    df = convert_datetime_cols(df, ['Interval', 'GMTIntervalEnd'])
     df = add_timestamp_mst(df)
     return df.with_columns(
         pl.col.Wind_Forecast_MW.cast(pl.Float32),
@@ -455,7 +482,7 @@ def get_process_mtlf(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     return _get_process_feed(tc, get_hourly_mtlf_url, 'mtlf', _transform_mtlf, base_path)
 
@@ -473,7 +500,7 @@ def get_process_mtrf(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     return _get_process_feed(tc, get_hourly_mtrf_url, 'mtrf', _transform_mtrf, base_path)
 
@@ -484,7 +511,9 @@ def _process_lmp(df: pl.DataFrame, rename_map: dict) -> pl.DataFrame:
     df = df.rename(rename_map)
     df = ensure_baa(df)
     df = df.filter(pl.col('Settlement_Location_Name').is_in(STORED_NODES))
-    df = convert_datetime_cols(df)
+    # Daily-rollup files across history mix seconded/unpadded timestamp
+    # formats (e.g. '3/20/2026 0:05'), so parse flexibly like the DA feed.
+    df = convert_datetime_cols(df, ['Interval', 'GMTIntervalEnd'])
     df = add_timestamp_mst(df)
     df = set_he(df)
     df = agg_lmp_im(df)
@@ -509,7 +538,7 @@ def get_process_5min_lmp(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     def transform(df: pl.DataFrame) -> pl.DataFrame:
         return _process_lmp(
@@ -533,7 +562,7 @@ def get_process_daily_lmp(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     def transform(df: pl.DataFrame) -> pl.DataFrame:
         return _process_lmp(df, rename_map={'GMT_Interval': 'GMTIntervalEnd'})
@@ -555,12 +584,12 @@ def get_process_rf_reserve_zone(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     def transform(df: pl.DataFrame) -> pl.DataFrame:
         format_df_colnames(df)
         df = ensure_baa(df)
-        df = convert_datetime_cols(df, dt_cols=['IntervalEnd', 'GMTIntervalEnd'])
+        df = convert_datetime_cols(df, ['IntervalEnd', 'GMTIntervalEnd'])
         df = add_timestamp_mst(df)
         return df.with_columns(
             pl.col.WindForecastMW.cast(pl.Float32),
@@ -586,7 +615,7 @@ def get_process_da_lmp(tc: dict, base_path: str | None = None) -> str:
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        File path if successful, or the source URL if download failed.
+        File path if successful, or the source URL if the download or the transform failed.
     """
     def transform(df: pl.DataFrame) -> pl.DataFrame:
         format_df_colnames(df)
@@ -594,7 +623,7 @@ def get_process_da_lmp(tc: dict, base_path: str | None = None) -> str:
         df = ensure_baa(df)
         df = df.filter(pl.col('Settlement_Location_Name').is_in(STORED_NODES))
         # DA files mix timestamp formats: some have seconds, some don't
-        df = convert_datetime_cols_flex(df, ['Interval', 'GMTIntervalEnd'])
+        df = convert_datetime_cols(df, ['Interval', 'GMTIntervalEnd'])
         df = add_timestamp_mst(df)
         return df.with_columns(
             pl.col.LMP.cast(pl.Float32),
@@ -640,7 +669,7 @@ def get_range_data_daily_lmp(end_ts: pd.Timestamp, n_periods: int, base_path: st
             data_im/ S3 path from AWS env vars.
 
     Returns:
-        List of file paths for successful writes, or URLs for failed downloads.
+        List of file paths for successful writes, or URLs for files that failed to download or process.
     """
     lagged_end = end_ts - pd.Timedelta(days=DAILY_LMP_LAG_DAYS)
     return get_range_data_im(lagged_end, n_periods, 'D', get_process_daily_lmp, base_path=base_path)

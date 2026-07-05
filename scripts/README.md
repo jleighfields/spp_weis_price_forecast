@@ -83,3 +83,35 @@ uv run python scripts/r2_move_objects.py "" --bucket old-bucket --delete-only
 ```bash
 uv run python scripts/r2_move_objects.py "old/models/" "new/models/" --copy --delete
 ```
+
+## weis_stitch_fill.py
+
+One-time WEIS→`data_im/` West stitch-fill (Phase 2 of the RTO West
+migration). Copies the pre-launch WEIS (`data/`) consolidated
+lmp/mtlf/mtrf West rows into the `data_im/` tables with `BAA='SWPW'` and
+`source='weis'`, giving the West BAA a continuous training series across
+the 2026-04-01 seam.
+
+- **LMP**: exact-name West nodes (`node_list.WEST_HUB_BA_NODES`) are
+  copied straight through; the flagship `SWPW_HUB` has no WEIS equivalent,
+  so its pre-launch history is proxied by the per-interval mean of all
+  WEIS `WACM*` nodes.
+- **MTLF/MTRF**: WEIS system-wide forecasts become the West BAA series.
+- **No stitch** for da_lmp / rf_reserve_zone — WEIS had neither, so West
+  values for those start at RTO launch.
+- **Idempotent**: re-running drops the prior `source='weis'` rows before
+  re-merging, and fails loud on any duplicate upsert key.
+
+### Prerequisites
+
+Same R2 environment variables as `r2_move_objects.py` above.
+
+### Usage
+
+```bash
+# Preview row counts without writing
+uv run python scripts/weis_stitch_fill.py --dry-run
+
+# Materialize the stitch into the data_im/ tables
+uv run python scripts/weis_stitch_fill.py
+```

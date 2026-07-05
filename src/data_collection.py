@@ -287,7 +287,10 @@ def get_csv_from_url(
     try:
         response = requests.get(url, timeout=timeout)
         if response.ok:
-            df = pl.read_csv(StringIO(response.text))
+            # infer dtypes from the whole file, not the default 100-row
+            # sample: price components (MCC, MLC, ...) can be integer-valued
+            # for the first rows and float later, which mis-infers as i64.
+            df = pl.read_csv(StringIO(response.text), infer_schema_length=None)
             log.debug(f'df.shape: {df.shape}')
         else:
             df = pl.DataFrame()

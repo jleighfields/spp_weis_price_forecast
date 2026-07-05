@@ -80,7 +80,8 @@ def _(mo):
 @app.cell
 def _(dcim, now):
     # get_range_data_daily_lmp applies the ~D+5 publication lag internally,
-    # so pass the current time; 7 days covers holidays and long weekends.
+    # so pass the current time. A 7-day window overlaps this job's 3-day
+    # cadence, so one missed run (or a late-publishing day) leaves no gap.
     daily_range = dcim.get_range_data_daily_lmp(end_ts=now, n_periods=7)
     daily_parquet = [pf for pf in daily_range if pf.endswith(".parquet")]
     daily_parquet[:10]
@@ -103,10 +104,11 @@ def _(mo):
 @app.cell
 def _(dcim, now, pd):
     # The DA file for operating day D publishes the prior afternoon, so
-    # look ahead one day to pick up tomorrow's file; 3 days backfills any
-    # run that was missed.
+    # look ahead one day to pick up tomorrow's file. This job runs every 3
+    # days; a 6-day window overlaps consecutive runs so one missed run leaves
+    # no gap.
     da_range = dcim.get_range_data_da_lmp(
-        end_ts=now + pd.Timedelta(days=1), n_periods=3
+        end_ts=now + pd.Timedelta(days=1), n_periods=6
     )
     da_parquet = [pf for pf in da_range if pf.endswith(".parquet")]
     da_parquet[:10]
