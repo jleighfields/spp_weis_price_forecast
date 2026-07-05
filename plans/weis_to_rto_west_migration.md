@@ -5,8 +5,8 @@
 Where things stand on `feature/rto-west-migration`, for picking up in a fresh session:
 
 **Done**
-- **Phase 0** feed/schema verification for the four core feeds (the table below was
-  re-verified with live pulls on 2026-07-05).
+- **Phase 0** feed/schema verification for all five core feeds (the table below was
+  re-verified with live pulls on 2026-07-05; the daily LMP rollup joined it last).
 - Plan reviewed and corrected: West filtering moved downstream (store both BAAs at
   collection), daily-LMP rollup flagged unverified, gen-capacity dropped as dead code,
   PCM coverage numbers derived from live data.
@@ -16,6 +16,10 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   pinned as a *future* covariate with a drop date, and the daily-LMP question given a
   resolution path (listing-API search, else widen the 5-min re-pull). Details inline
   below and in "Decisions locked".
+- **Daily-LMP question RESOLVED (2026-07-05):** the IM daily rollup exists at the
+  WEIS-analogous `By_Day` path — the earlier 404s were its **5-day publication lag**.
+  Collector kept (lag-aware window); the Phase 2 East LMP backfill uses the pre-launch
+  daily files (~365 pulls, not ~105k). See Phase 0.
 - **App copy updated** (`app.py`, `src/plotting.py`): WEIS labels/links → IM West
   equivalents. This is the app half of Phase 3; the settlement-location universe still
   pends the Phase 3 data-engineering work.
@@ -30,16 +34,12 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
 - Phase 1 (IM collectors) onward — no IM collection code exists yet.
 
 **Next actions**
-1. Resolve the daily-LMP question (Open questions #1): search the portal file-browser
-   **listing API** for the IM daily rollup slug/filename; if it truly doesn't exist, drop
-   the daily collector and **widen the hourly job's 5-min re-pull window** (the daily
-   file's real role is a trailing-7-day repair sweep). A pre-launch daily file would also
-   cut the Phase 2 East backfill from ~105k 5-min pulls to ~365 daily pulls.
-2. **Phase 1**: build the IM collectors (`data_im/` prefix, new filename parsing, DST
+1. **Phase 1**: build the IM collectors (`data_im/` prefix, new filename parsing, DST
    `…d.csv` handling, missing-`BAA`-column tolerance for pre-launch files, **LMP rows
    filtered to the hub/BA node list at storage**, **`BAA` added to every upsert dedup
-   key**) with unit tests against real sample CSVs.
-3. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
+   key**) with unit tests against real sample CSVs. The daily-LMP collector is confirmed
+   (feed verified 2026-07-05) — build it with the **5-day-lag-aware window**.
+2. **Phase 2**: backfill 2025-04-01 → present into `data_im/` (East-only files before
    2026-04-01 get `BAA='SPP'`; both BAAs after; LMP keeps hub/BA node rows only), then run
    the one-time **WEIS stitch-fill** (WEIS hub/BA history → `data_im/` consolidated tables,
    `BAA='SWPW'`, `source='weis'`) so both BAAs have ≥365 days of continuous training data.
@@ -109,6 +109,7 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
 | Load (MTLF) | `mtlf-vs-actual` | `/{Y}/{M}/{D}/` | `OP-MTLF-{YYYYMMDDHH}00.csv` | `Interval,GMTIntervalEnd,MTLF,Averaged Actual,BAA` |
 | Wind/Solar (MTRF) | `midterm-resource-forecast` | `/{Y}/{M}/{D}/` | `OP-MTRF-{YYYYMMDDHH}00.csv` | `Interval,GMTIntervalEnd,Wind Forecast MW,Solar Forecast MW,BAA` |
 | Resource by Reserve Zone | `resource-forecast-by-reserve-zone` | `/{Y}/{M}/{D}/` | `RF_RESERVE_ZONE-{YYYYMMDDHH}00.csv` | `IntervalEnd,GMTIntervalEnd,BAA,ReserveZone,WindForecastMW,WindActualMW,SolarForecastMW,SolarActualMW` |
+| RTBM daily LMP rollup | `rtbm-lmp-by-location` | `/{Y}/{M}/By_Day/` | `RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` (**publishes at D+5 ~18:00**) | `Interval,GMT Interval,Settlement Location Name,PNODE Name,LMP,MLC,MCC,MEC,BAA` |
 
 - **Column parity:** identical to WEIS after `format_df_colnames`, so existing processors work
   almost verbatim — the real deltas are (1) URL slug, (2) `WEIS-` prefix gone → rework the
@@ -134,18 +135,22 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
   (consistent with both-BAA storage); **`ReserveZone == 21`** (= the entire West BAA) is a
   downstream filter. Note the West is a *single* reserve zone, so this adds **no sub-BAA
   geographic detail** — its value is the actuals, not finer geography.
-- **Daily LMP rollup — NOT yet verified.** WEIS published
-  `/{Y}/{M}/By_Day/WEIS-RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under the same slug as the 5-min
-  files; the analogous IM path (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under
-  `rtbm-lmp-by-location`) returns **404** (checked 2026-07-05), as do the obvious slug/filename
-  variants. **Why it matters:** the daily file is not a separate data product — daily and
-  5-min files upsert into the *same* consolidated `lmp` table; the daily collector is a
-  trailing-7-day **repair sweep** (7 requests/run vs ~2,000 to replay from 5-min files).
-  **Resolution path (decided 2026-07-05):** search the portal **file-browser listing API**
-  for the real slug/filename; if it truly doesn't exist, drop the daily collector and
-  **widen the hourly job's 5-min re-pull window** (e.g. 48 h) as the repair mechanism.
-  A pre-launch daily file would also shrink the Phase 2 East-era backfill (~365 daily
-  pulls vs ~105k 5-min pulls).
+- **Daily LMP rollup — VERIFIED 2026-07-05 (via the listing API).** The feed exists at
+  exactly the WEIS-analogous path: `/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv` under
+  `rtbm-lmp-by-location`. The earlier 404s were a **~5-day publication lag**: the file for
+  operating day D lands at ~18:00 on D+5 (e.g. 06-01 published 06-06; on 07-05 the newest
+  file was 06-29), so probing recent dates always 404s. **Keep the daily collector** (it's
+  the trailing repair sweep into the same consolidated `lmp` table — 7 requests/run vs
+  ~2,000 to replay from 5-min files) but **offset its window by the lag** (pull days ending
+  at `end_ts - 5d`, not `end_ts`). Schema matches the 5-min feed: post-launch files carry
+  the trailing `BAA` column; **pre-launch files exist** (e.g. 31 files in `/2025/07/By_Day/`)
+  without `BAA` — so the Phase 2 East-era LMP backfill can use **~365 daily pulls (~47 MB
+  each) instead of ~105k 5-min pulls**. (The slug also has a `RePrice/` folder — corrected
+  LMP republications; not collected today, noted for a future repair-sweep upgrade.)
+- **File-browser listing API (used for the verification, handy for future ones):**
+  `GET https://portal.spp.org/file-browser-api/?fsName={slug}&path={path}&type=folder`
+  returns a JSON listing (name, path, size, modified) with no auth — e.g.
+  `?fsName=rtbm-lmp-by-location&path=/2026/06/By_Day`.
 - **Other granular forecasts not used:** STLF (5-min load, ±10 min) and STRF (5-min wind/solar,
   +4 h) — horizons far too short for the 120-hour price forecast.
 - **Gen-capacity-by-fuel: DROPPED.** `get_gen_cap_url` is dead code — nothing calls it (the
@@ -162,7 +167,8 @@ are **identical to the WEIS CSVs plus a trailing `BAA` column**; West rows are `
 Five URL builders hardcode WEIS slugs + `WEIS-` prefixes, and four processors parse filenames
 via `url.split('WEIS-')[-1]`:
 - `get_hourly_mtlf_url`, `get_hourly_mtrf_url`, `get_5min_lmp_url`, `get_daily_lmp_url` —
-  swap base URLs/paths to IM feeds (`get_daily_lmp_url`: IM daily slug/path still unverified —
+  swap base URLs/paths to IM feeds (`get_daily_lmp_url`: verified 2026-07-05, same By_Day
+  path; the daily *collector window* must account for the **5-day publication lag** —
   see Phase 0). `get_gen_cap_url` is **deleted**, not migrated (dead code — see Phase 0).
 - `get_process_mtlf` / `get_process_mtrf` / `get_process_5min_lmp` / `get_process_daily_lmp`
   — the `url.split('WEIS-')[-1]` filename parsing breaks (no `WEIS-` prefix); rework to the
@@ -329,9 +335,9 @@ can seed `src/geometry.py`.
 
 ## Phased execution plan
 
-**Phase 0 — Feeds & schema. ✅ DONE for the four core feeds** (verified 2026-07-05; see the
-verified table above). Still open: the **daily LMP rollup** slug/filename (analogous IM path
-404s — confirm it or drop the daily collector) and the **DA LMP** slug when its collector is
+**Phase 0 — Feeds & schema. ✅ DONE for the five core feeds** (verified 2026-07-05; see the
+verified table above — the daily LMP rollup was confirmed via the listing API; the earlier
+404s were its 5-day publication lag). Still open: the **DA LMP** slug when its collector is
 built. Gen-capacity is dropped (dead code).
 
 **Phase 1 — Build the parallel IM collector.** New IM collection code (alongside WEIS, writing
@@ -339,7 +345,8 @@ to `data_im/`) with new filename parsing and DST-variant handling. Keep the `BAA
 BAAs; **LMP stores hub/BA node rows only** (amended 2026-07-05), MTLF/MTRF/`RF_RESERVE_ZONE`
 store whole (one row per BAA/zone per interval — tiny), West filtering downstream. **Add `BAA`
 to every upsert dedup key** (see touch points — clobber bug otherwise). Collectors: RTBM
-5-min LMP, daily LMP (only if the IM daily feed is confirmed — see Phase 0), MTLF, MTRF,
+5-min LMP, daily LMP (confirmed — window must end at `end_ts - 5d` per the publication lag,
+see Phase 0), MTLF, MTRF,
 `RF_RESERVE_ZONE` (store all zones; supplies wind/solar actuals), and DA LMP. Processors must
 tolerate the missing `BAA` column in pre-launch files (fill `BAA='SPP'` — see Phase 0/Phase 2).
 Unit-test each `get_*_url` and processor against a real sample CSV (one pre-launch, one
@@ -354,9 +361,9 @@ BAAs, and Phase 4 needs no join/stitch logic:
   history (verified live 2026-07-05) — backfill one year before the seam so the East BAA also
   has ≥365 days of training data from day one (per the East-expansion rationale in Decisions).
   **LMP keeps East hub rows only** (`SPPNORTH_HUB`/`SPPSOUTH_HUB` — verify exact names from a
-  live file). Note the hub filter shrinks *storage*, not *downloads*: the East year is still
-  ~105k 5-min file pulls unless the daily rollup exists pre-launch (see the daily-LMP item —
-  ~365 daily pulls if so). **Schema caveat:** pre-launch files have **no `BAA` column** (it
+  live file). **Pull the LMP year via the daily rollup** — the pre-launch `By_Day` files
+  exist (verified 2026-07-05), so this era is ~365 daily pulls (~47 MB each), not ~105k
+  5-min pulls. **Schema caveat:** pre-launch files have **no `BAA` column** (it
   was added at RTO West launch) — the processors must tolerate the missing column and fill
   `BAA='SPP'` (pre-launch IM was East-only; the "system-wide" MTLF/MTRF of that era are the
   East series). Verify `RF_RESERVE_ZONE` actually publishes pre-launch history — and whether
@@ -424,10 +431,10 @@ Phase 5 decommissions the WEIS jobs.
   mtlf/mtrf `(GMTIntervalEnd, BAA)`; lmp adds `BAA` to `(GMTIntervalEnd_HE,
   Settlement_Location_Name, PNODE_Name)`; `rf_reserve_zone` `(GMTIntervalEnd, BAA,
   ReserveZone)`.
-- **Daily LMP resolution path** (2026-07-05 review): search the portal file-browser listing
-  API for the IM daily rollup; if absent, drop the daily collector and widen the hourly
-  5-min re-pull window — the daily file is a trailing-7-day repair sweep into the same
-  consolidated `lmp` table, not a distinct product.
+- **Daily LMP: RESOLVED — keep the collector** (2026-07-05): the listing-API search found the
+  feed at the WEIS-analogous `By_Day` path; the earlier 404s were its **5-day publication
+  lag**. Keep the daily repair-sweep collector with a lag-aware window (days ending at
+  `end_ts - 5d`), and use the pre-launch daily files for the Phase 2 East LMP backfill.
 - **East history too:** the Phase 2 backfill reaches back to **2025-04-01** (one year before
   the seam) so the East BAA also starts with ≥365 days of training data — pre-launch files are
   East-only and lack the `BAA` column; processors fill `BAA='SPP'`.
@@ -481,18 +488,17 @@ Phase 5 decommissions the WEIS jobs.
 
 ## Open questions
 
-All **decisions** are resolved (2026-07-05 interviews above). Four **verification items**
+All **decisions** are resolved (2026-07-05 interviews above). Three **verification items**
 remain open, each blocking only its own collector/segment:
 
-1. **Daily LMP rollup feed** — the WEIS-analogous IM path under `rtbm-lmp-by-location`
-   (`/{Y}/{M}/By_Day/RTBM-LMP-DAILY-SL-{YYYYMMDD}.csv`) returns 404, as do obvious slug
-   variants. **Resolution path decided:** search the portal file-browser listing API; if
-   absent, drop the daily collector and widen the hourly 5-min re-pull window. (A pre-launch
-   daily file would also shrink the Phase 2 East backfill from ~105k pulls to ~365.)
-2. **DA LMP slug/schema** — likely `da-lmp-by-location`; verify when the DA collector is built.
-3. **East hub settlement-location names** — confirm the exact names (`SPPNORTH_HUB`,
+1. **DA LMP slug/schema** — likely `da-lmp-by-location`; verify when the DA collector is built
+   (the file-browser listing API in Phase 0 makes this quick).
+2. **East hub settlement-location names** — confirm the exact names (`SPPNORTH_HUB`,
    `SPPSOUTH_HUB`, …) from a live post-launch file; they seed the East side of the stored
    hub/BA node list.
-4. **`RF_RESERVE_ZONE` pre-launch availability** — the East-era backfill assumes the feed
+3. **`RF_RESERVE_ZONE` pre-launch availability** — the East-era backfill assumes the feed
    publishes pre-launch history; verify, and decide whether East-era zone data is needed
    at all (the actuals matter for the West model, not East).
+
+~~Daily LMP rollup feed~~ — **RESOLVED 2026-07-05**: exists at the WEIS-analogous `By_Day`
+path with a 5-day publication lag (see Phase 0); collector kept, lag-aware window.
