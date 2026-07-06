@@ -1,0 +1,227 @@
+"""Rolling-origin backtest harness for the West nodal price model.
+
+Shared evaluation used by every model-improvement experiment (baseline,
+conformal intervals, IM re-tune, architecture bake-off) so candidates are
+scored on the same volatile West holdout windows. Reports, per node and
+aggregated:
+
+- **CRPS** (probabilistic accuracy — the primary metric),
+- **CI coverage** and **interval width** at a nominal interval (default the
+  90% interval, 0.05–0.95),
+- **MAE / RMSE / bias** of the median (point accuracy),
+- **tail behavior**: median error and coverage conditioned on large-magnitude
+  hours (``|actual| > tail_threshold``) and on negative-price hours.
+
+Any Darts ``GlobalForecastingModel`` that supports ``historical_forecasts``
+and probabilistic prediction works as the ``model`` argument — the served
+``NaiveEnsembleModel``, a ``ConformalQRModel`` wrapper, a re-tuned TiDE, or a
+foundation model.
+"""
+
+import logging
+
+import numpy as np
+import pandas as pd
+from darts import TimeSeries
+from darts.metrics import mae, mcrps, merr, mic, miw, rmse
+from darts.models.forecasting.forecasting_model import ForecastingModel
+
+import parameters
+
+log = logging.getLogger(__name__)
+
+
+def backtest_report(
+    model: ForecastingModel,
+    series: list[TimeSeries],
+    past_covariates: list[TimeSeries],
+    future_covariates: list[TimeSeries],
+    node_names: list[str] | None = None,
+    forecast_horizon: int = parameters.FORECAST_HORIZON,
+    holdout_days: int = 21,
+    stride: int = 24,
+    num_samples: int = 200,
+    interval: tuple[float, float] = (0.05, 0.95),
+    tail_threshold: float = 100.0,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Score a model with a rolling-origin backtest over a West holdout.
+
+    For each node, forecasts are generated at daily origins across the last
+    ``holdout_days`` of its series (each a full ``forecast_horizon`` ahead)
+    and compared against the realized LMPs.
+
+    Args:
+        model: A predict-ready Darts model supporting ``historical_forecasts``
+            and probabilistic prediction (e.g. the served ensemble).
+        series: Per-node target LMP series (e.g. ``de.get_series(lmp_all)``).
+        past_covariates: Per-node past covariates, aligned with ``series``.
+        future_covariates: Per-node future covariates, aligned with ``series``.
+        node_names: Optional per-node labels for the report index; defaults to
+            each series' static-covariate node id, else ``node_0 … node_{n-1}``.
+        forecast_horizon: Forecast length per origin, in hours.
+        holdout_days: Width of the rolling-origin window at the series end;
+            default 21 (~3 weeks of daily origins over the recent IM regime,
+            enough windows to compare candidates without scoring on stale data).
+        stride: Hours between successive origins (24 = daily).
+        num_samples: Probabilistic samples per forecast; default 200 balances
+            stable 0.05/0.95 tail quantiles against runtime (the served champion
+            uses 500).
+        interval: Nominal quantile interval scored for coverage/width.
+        tail_threshold: ``|actual|`` above which an hour counts as a tail hour.
+
+    Returns:
+        A tuple of (per-node metrics DataFrame indexed by node name, aggregate
+        metrics Series pooled across all windows and nodes). Metric columns:
+        ``crps, coverage, width, mae, rmse, bias, tail_mae, tail_coverage,
+        neg_mae, neg_coverage, n_windows, n_tail, n_neg``. Note ``n_tail`` /
+        ``n_neg`` count forecast-instance hours: with ``stride < forecast_horizon``
+        the rolling windows overlap, so a realized hour is counted once per
+        forecast that covers it, not once overall.
+    """
+    if node_names is None:
+        node_names = [
+            str(s.static_covariates_values()[0][0]) if s.has_static_covariates
+            else f'node_{i}'
+            for i, s in enumerate(series)
+        ]
+
+    q_lo, q_hi = interval
+    rows = []
+    for i, name in enumerate(node_names):
+        # Series are hourly, so the rolling-origin window is expressed in hours:
+        # back off holdout_days plus one horizon from the series end so the first
+        # origin still has a full forecast_horizon of realized LMPs to score
+        # against (with overlap_end=False no forecast runs past the series end).
+        forecasts = model.historical_forecasts(
+            series=series[i],
+            past_covariates=past_covariates[i],
+            future_covariates=future_covariates[i],
+            start=series[i].end_time()
+            - pd.Timedelta(hours=holdout_days * 24 + forecast_horizon),
+            forecast_horizon=forecast_horizon,
+            stride=stride,
+            num_samples=num_samples,
+            retrain=False,
+            last_points_only=False,
+            overlap_end=False,
+            verbose=False,
+        )
+        if not forecasts:
+            log.warning('no backtest windows for %s; skipping', name)
+            continue
+
+        actuals = [series[i].slice_intersect(f) for f in forecasts]
+        # Headline metrics via Darts (probabilistic + median-quantile point).
+        row = {
+            'node': name,
+            'crps': _reduce(mcrps(actuals, forecasts)),
+            'coverage': _reduce(mic(actuals, forecasts, q_interval=interval)),
+            'width': _reduce(miw(actuals, forecasts, q_interval=interval)),
+            'mae': _reduce(mae(actuals, forecasts, q=0.5)),
+            'rmse': _reduce(rmse(actuals, forecasts, q=0.5)),
+            # merr = mean(actual - median); positive => model under-forecasts.
+            'bias': _reduce(merr(actuals, forecasts, q=0.5)),
+            'n_windows': len(forecasts),
+        }
+        # Point-level arrays for tail conditioning (Darts metrics can't
+        # condition on the actual value).
+        av = np.concatenate([a.values().ravel() for a in actuals])
+        lo = np.concatenate([f.quantile(q_lo).values().ravel() for f in forecasts])
+        md = np.concatenate([f.quantile(0.5).values().ravel() for f in forecasts])
+        hi = np.concatenate([f.quantile(q_hi).values().ravel() for f in forecasts])
+        row.update(_tail_metrics(av, lo, md, hi, tail_threshold))
+        rows.append(row)
+
+    per_node = pd.DataFrame(rows).set_index('node')
+    aggregate = _aggregate(per_node)
+    _log_summary(per_node, aggregate, interval, tail_threshold)
+    return per_node, aggregate
+
+
+def _tail_metrics(
+    actual: np.ndarray,
+    lo: np.ndarray,
+    median: np.ndarray,
+    hi: np.ndarray,
+    tail_threshold: float,
+) -> dict[str, float]:
+    """Median error and interval coverage on tail and negative-price hours."""
+    abs_err = np.abs(actual - median)
+    covered = (actual >= lo) & (actual <= hi)
+    big = np.abs(actual) > tail_threshold
+    neg = actual < 0
+    return {
+        'tail_mae': _masked_mean(abs_err, big),
+        'tail_coverage': _masked_mean(covered, big),
+        'neg_mae': _masked_mean(abs_err, neg),
+        'neg_coverage': _masked_mean(covered, neg),
+        'n_tail': int(big.sum()),
+        'n_neg': int(neg.sum()),
+    }
+
+
+def _aggregate(per_node: pd.DataFrame) -> pd.Series:
+    """Pool per-node metrics, each weighted by its own denominator.
+
+    Whole-series metrics are weighted by ``n_windows`` (every window is one
+    forecast_horizon long, so equal weight). The tail / negative-hour metrics
+    are averages over *different* denominators, so they are weighted by
+    ``n_tail`` / ``n_neg`` — not ``n_windows`` — and nodes with no tail/neg
+    hours (whose per-node value is NaN) are dropped rather than poisoning the
+    pooled number. Counts are summed.
+    """
+    agg = {}
+    win = per_node['n_windows'].to_numpy()
+    for m in ['crps', 'coverage', 'width', 'mae', 'rmse', 'bias']:
+        agg[m] = _weighted(per_node[m].to_numpy(), win)
+    n_tail = per_node['n_tail'].to_numpy()
+    n_neg = per_node['n_neg'].to_numpy()
+    agg['tail_mae'] = _weighted(per_node['tail_mae'].to_numpy(), n_tail)
+    agg['tail_coverage'] = _weighted(per_node['tail_coverage'].to_numpy(), n_tail)
+    agg['neg_mae'] = _weighted(per_node['neg_mae'].to_numpy(), n_neg)
+    agg['neg_coverage'] = _weighted(per_node['neg_coverage'].to_numpy(), n_neg)
+    for c in ['n_windows', 'n_tail', 'n_neg']:
+        agg[c] = int(per_node[c].sum())
+    return pd.Series(agg)
+
+
+def _weighted(values: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted mean that ignores NaN values and zero/NaN weights.
+
+    Returns NaN only when no entry has both a finite value and a positive
+    weight (e.g. no node had any tail hour).
+    """
+    values = np.asarray(values, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    ok = ~np.isnan(values) & (weights > 0)
+    return float(np.average(values[ok], weights=weights[ok])) if ok.any() else float('nan')
+
+
+def _reduce(value: float | np.ndarray) -> float:
+    """Collapse a Darts metric result (scalar or per-series array) to a float."""
+    return float(np.nanmean(np.asarray(value)))
+
+
+def _masked_mean(values: np.ndarray, mask: np.ndarray) -> float:
+    """Mean of ``values`` over ``mask``; NaN when the mask is empty."""
+    return float(values[mask].mean()) if mask.any() else float('nan')
+
+
+def _log_summary(
+    per_node: pd.DataFrame,
+    aggregate: pd.Series,
+    interval: tuple[float, float],
+    tail_threshold: float,
+) -> None:
+    """Log a readable per-node table and the aggregate row."""
+    pct = int(round((interval[1] - interval[0]) * 100))
+    log.info('backtest per node:\n%s', per_node.round(2).to_string())
+    log.info(
+        'AGGREGATE  crps=%.2f  cov%d=%.2f  width=%.1f  mae=%.2f  rmse=%.2f  '
+        'bias=%.2f  tail_mae(|x|>%.0f)=%.2f  tail_cov=%.2f  neg_mae=%.2f  '
+        'neg_cov=%.2f',
+        aggregate['crps'], pct, aggregate['coverage'], aggregate['width'],
+        aggregate['mae'], aggregate['rmse'], aggregate['bias'], tail_threshold,
+        aggregate['tail_mae'], aggregate['tail_coverage'],
+        aggregate['neg_mae'], aggregate['neg_coverage'],
+    )

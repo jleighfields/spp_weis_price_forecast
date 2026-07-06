@@ -15,6 +15,10 @@ Work is underway on branch `rto-west-volatility-improvements`.
   fresh 0.45 baseline champion was retrained (4.36 min, 5×TiDE) and
   verified to load+predict via the serving path. See the Experiment 0
   section for the full findings and what changed vs. the original plan.
+- **Evaluation harness — DONE.** `src/evaluation.py::backtest_report` (rolling
+  West holdout: CRPS, coverage/width, MAE/RMSE/bias, tail). Baseline scored on
+  the staged 0.45 champion: **CRPS 61.4**, 90% coverage ~1.00 / width ~$1,412
+  — **over-dispersed** (inverts the plan's original "intervals too narrow").
 - **Experiment 2 groundwork — DONE.** `CLIP_OUTLIERS` toggle, widened
   Optuna search space, and single-source-of-truth study name landed in
   `notebooks/model_training/model.py`.
@@ -37,8 +41,12 @@ the current champion:
 1. **Under-dispersed point forecasts.** Fixed by training IM-only (forecast
    std went from ~$6 to ~$25 vs actual ~$28), but there is likely more to
    recover with better architectures / re-tuned params.
-2. **Miscalibrated intervals.** CI coverage was ~0.42 (should be ~0.90) —
-   the quantile intervals are far too narrow for the tails.
+2. **Miscalibrated intervals.** The *prior* champion under-covered (CI
+   coverage ~0.42 at the 80% interval). **Update (harness baseline, 2026-07-06):
+   the fresh IM-only 0.45 champion over-corrects — it now over-covers** (90%
+   band ≈ 1.00 coverage at ~$1,412 wide). Either way the intervals are
+   miscalibrated; the current job is to *sharpen* them. See the evaluation
+   harness section for the measured baseline.
 
 ## Current setup (baseline)
 
@@ -116,21 +124,49 @@ Sources: [Darts release notes](https://unit8co.github.io/darts/release_notes/REL
 [Darts changelog](https://github.com/unit8co/darts/blob/master/CHANGELOG.md),
 [Darts docs](https://unit8co.github.io/darts/).
 
-## Evaluation harness (build first, shared by every experiment)
+## Evaluation harness (build first, shared by every experiment) — ✅ DONE
 
-Without a fair comparison we can't tell wins from noise. Before testing
-models, stand up a West holdout backtest that reports, per node and
-aggregated:
+Built as `src/evaluation.py::backtest_report(model, series, past_covariates,
+future_covariates, ...)`: a rolling-origin backtest (daily origins over a
+configurable holdout, default 21 days; `num_samples` default 200) that scores
+any Darts model supporting `historical_forecasts`. It reports, per node and
+aggregated, using Darts 0.45 metrics (`mcrps`, `mic`, `miw`, `mae`/`rmse`/
+`merr` at `q=0.5`) plus a numpy path for the tail conditioning Darts can't do:
 
-- **CRPS / MCRPS** (probabilistic accuracy — primary metric),
-- **CI coverage** at the 90% interval (target ~0.90; today ~0.42) and
-  interval width,
+- **CRPS** (probabilistic accuracy — primary metric),
+- **CI coverage** and **interval width** at the 90% interval (0.05–0.95),
 - **MAE / RMSE / bias** of the median (point accuracy),
-- **tail behavior**: error conditioned on |actual| > some threshold and on
-  negative-price hours specifically.
+- **tail behavior**: median error and coverage conditioned on
+  `|actual| > tail_threshold` (default $100) and on negative-price hours.
 
-Backtest on a rolling origin over the IM period (e.g. last 3–4 weeks) so
-every candidate is scored on the same volatile windows.
+Unit-tested (`tests/unit/test_evaluation.py`) and wired into
+`model_retrain.py` as a non-blocking post-promote cell, so every retrain logs
+its holdout metrics. Experiments call `backtest_report` directly from the
+study notebook — there is deliberately **no standalone eval script** (it would
+be a third copy of the data-loading glue the notebooks already have).
+
+**Baseline — staged 0.45 champion `model_retrains/2026-07-06_14-34-15/`**
+(all 10 nodes, 21-day holdout, 200 samples; the number every experiment must
+beat):
+
+| Metric | Value |
+|---|---|
+| CRPS (primary) | **61.4** |
+| 90% coverage | ~1.00 |
+| 90% interval width | ~$1,412 |
+| MAE / RMSE (median) | 33.3 / 69.7 |
+| Bias | ~−0.3 |
+| Tail MAE (`|x|`>$100) / coverage | 311 / 0.77 |
+| Neg-hour MAE / coverage | 38 / ~1.00 |
+
+**Key finding — the CI problem inverted.** The fresh IM-only 0.45 baseline is
+**over-dispersed**, not under-dispersed: the 90% band covers ~100% of hours at
+~$1,412 wide (yet still misses ~23% of the >$100 spike hours). Point bias is
+essentially zero (the IM-only retrain fixed the old under-forecasting). So the
+calibration work is about **sharpening / tightening** the intervals, not
+widening them — conformal should *narrow* here. This updates the problem
+statement below, whose "intervals too narrow (0.42 coverage)" described the
+*prior* champion, measured differently (`get_ci_err` at the 80% interval).
 
 **Ordering caveat — now resolved.** `CRPS`/`MCRPS` are Darts **0.44+**
 metrics; the 0.45 upgrade (Experiment 0) is done, so `darts.metrics.crps` is
@@ -206,9 +242,11 @@ on top.
 
 ### 1. Conformal intervals — `ConformalQRModel` (highest value / lowest effort)
 Wrap the existing TiDE ensemble output in conformal quantile regression to
-fix the interval calibration. **Hypothesis:** coverage 0.42 → ~0.90 with
-honest widths, no change to the point model. **Metric:** coverage, width,
-CRPS. This is the cheapest, most direct win for the CI problem.
+fix the interval calibration. **Hypothesis (revised by the baseline):** the
+0.45 baseline *over*-covers (90% band ≈ 1.00 at ~$1,412 wide), so conformal
+should **tighten** the intervals toward honest ~0.90 coverage and much
+narrower width — while improving CRPS. **Metric:** coverage, width, CRPS on
+the harness. Still the cheapest, most direct win for the CI problem.
 
 **Works on the current ensemble, and does not need the Darts upgrade.**
 `ConformalQRModel` accepts any pre-trained `GlobalForecastingModel` and has no
@@ -306,8 +344,9 @@ explicitly modeling the negative-price regime reduces tail error.
    the bare bump, or the live app upgrades to 0.45 while champion.json still
    points at 0.41 checkpoints). See Experiment 0.
 2. **Build the evaluation harness** (CRPS + coverage + tail metrics) on a West
-   holdout — reused by everything below. Now unblocked (CRPS available on 0.45).
-   Score the staged 0.45 baseline champion first to get real baseline numbers.
+   holdout — ✅ DONE (`src/evaluation.py`). Baseline scored: CRPS 61.4, 90%
+   coverage ~1.00 / width ~$1,412 (over-dispersed), MAE 33.3, bias ~0. See the
+   evaluation-harness section.
 3. Quick wins in parallel: **conformal intervals** (fixes coverage) and the
    **IM Optuna re-tune** (fixes point accuracy — the re-tune prep is done; run
    the study, including the `CLIP_OUTLIERS` A/B) — both build on today's TiDE.
