@@ -67,28 +67,39 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   across the seam; West-only `MTLF` (not whole-RTO). `ReserveZone==21` is deferred — RF is not
   a covariate yet (see open question below).
 
+- **Phase 4 done + LIVE (2026-07-06):** added the 2026-04-01 **break-indicator future
+  covariate** (`RTO_WEST_LAUNCH` single-homed in `node_list`), set `MODEL_NAME='spp_west'`,
+  scoped modeling/app to a curated **10-node `MODEL_APP_NODES`** (8 internal West + `BPA`/`CISO`
+  — the 25 seam interfaces are one near-identical CAISO/WECC signal, so only two are kept),
+  retrained a 5-member TiDE ensemble locally on GPU (~10 s/epoch, val RMSE ≈ $9.9), and
+  **promoted** the `spp_west` champion. **Merged to `main`** (`0745d79`) → Posit Connect
+  auto-deploys the new West serving code; e2e validated the promoted champion + new code are
+  compatible (all 6 pass). Revert = point `champion.json` back to `2026-07-05_20-08-55/`.
+  Optuna re-tune was **deferred** (quick-retrain-first); current `TIDE_PARAMS` are WEIS-tuned.
+
 **Data-quality finding (2026-07-05) — stitch continuity by exact node name:**
 Checking the 64 West nodes against the WEIS history: **seam 25/25 present, internal only
 15/39**. The 24 missing internal nodes include the flagship target **`SWPW_HUB`**, `PSCO`,
 `CRSP_HUB`, `LAP_HUB`, and the aggregate `.FSE` constructs — because WEIS priced *granular
 pnodes* (`PSCO.*`, `WACM.*`) while RTO West introduced *aggregated* hubs with no exact WEIS
-name. Decision (2026-07-05): **proxy `SWPW_HUB`'s pre-launch history from the per-interval
-mean of all WEIS `WACM*` nodes** (validated: mean ≈ $22/MWh, comparable to real matched West
-nodes), tagged `source='weis'`. The 6 nodes originally suspected of missing data
-(`DEAA/DOPD/EPE/GCPD/GRID/GWA`) are in fact fully covered on **both** sides of the seam;
-their only issue is redundancy (≈0.9997 corr to `SWPW_HUB`) — a feature-selection question.
+name. **Resolution:** `scripts/weis_stitch_fill.py` carries a `PROXY_MAP` that proxies each
+aggregated hub from the per-interval mean of its WEIS constituents (domain-mapped prefix),
+tagged `source='weis'`: `SWPW_HUB←mean(WACM*)`, `PSCO←mean(PSCO.PSCM.*)`,
+`BHBA←mean(PSCO.BHCE.*)`, `WACM_CRSP_WILW←mean(WACM.CRSP.*)`. Proxy levels match the real
+post-launch nodes within ~$1–4; averaging smooths the congestion spikes (understates
+variance). The 6 nodes originally suspected of missing data (`DEAA/DOPD/EPE/GCPD/GRID/GWA`)
+are in fact fully covered on both sides of the seam.
 
-**Next actions**
-1. **Phase 3b — node geometry** (independent; can run now that the West node universe is
-   fixed): build `src/geometry.py::fetch_pcm_geometries()` + `src/reference/node_geometry.csv`
-   + a refresh notebook.
-2. **Phase 4 — retrain & re-tune** on the stitched West data: add the 2026-04-01
-   break-indicator future covariate, set `MODEL_NAME='spp_west'`, re-run Optuna, evaluate on a
-   West holdout, promote a champion. (The WEIS `spp-weis-model-retrain` app is now stopped.)
-3. Open decisions: whether the other missing aggregated hubs (`CRSP_HUB`, `LAP_HUB`, …) also
-   need a WACM-style proxy or stay post-launch-only; and whether West `RF_RESERVE_ZONE` (zone
-   21, post-launch only) is worth adding as a covariate (its `ReserveZone==21` filter is ready
-   to wire in if so).
+**Next actions (optional; the migration is live)**
+1. **Optuna re-tune** on the stitched West data → refresh `TIDE_PARAMS`, re-evaluate on a West
+   holdout, re-promote if better (to tighten the ~$9.9 RMSE from the quick retrain).
+2. **Phase 3b — node geometry**: build `src/geometry.py::fetch_pcm_geometries()` +
+   `src/reference/node_geometry.csv` + a refresh notebook (map coordinates for the app).
+3. **Phase 5 cleanup**: extract the shared collection helpers out of `src/data_collection.py`
+   into a neutral module so the legacy WEIS module can also move to `deprecated/`; optional
+   R2 bucket rename `spp-weis-forecast`→`spp-im-bucket`.
+4. Open decision: whether West `RF_RESERVE_ZONE` (zone 21, post-launch only) is worth adding
+   as a covariate (its `ReserveZone==21` filter is ready to wire in if so).
 
 ## Background / why this is needed
 
