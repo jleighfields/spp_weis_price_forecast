@@ -584,9 +584,16 @@ def load_ensemble_from_dir(
         for name_pattern, model_class in MODEL_CLASS_MAP.items():
             if name_pattern in pt_file:
                 log.info(f'loading {model_class.__name__}: {pt_file}')
+                # weights_only=False: torch 2.6+ defaults torch.load to
+                # weights_only=True, which refuses to unpickle Darts'
+                # QuantileRegression likelihood stored in the Lightning
+                # checkpoint. These checkpoints are our own artifacts pulled
+                # from our private R2 bucket (a trusted source), so full
+                # unpickling is safe here.
                 model = model_class.load(
                     os.path.join(model_dir, pt_file),
                     map_location=torch.device('cpu'),
+                    weights_only=False,
                 )
                 forecasting_models.append(model)
                 break

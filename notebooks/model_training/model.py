@@ -833,19 +833,23 @@ def _(mo):
 
 @app.cell
 def _(TFTModel, TSMixerModel, TiDEModel, best_trials, torch):
+    # weights_only=False: torch 2.6+ defaults torch.load to weights_only=True,
+    # which refuses to unpickle Darts' QuantileRegression likelihood in the
+    # Lightning checkpoint. These are our own trial checkpoints written this
+    # run to a local dir (trusted source), so full unpickling is safe.
     forecasting_models = []
     for _m in best_trials.model_path:
         if "ts_mixer" in _m.lower():
             forecasting_models += [
-                TSMixerModel.load(_m, map_location=torch.device("cpu"))
+                TSMixerModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         elif "tide" in _m.lower():
             forecasting_models += [
-                TiDEModel.load(_m, map_location=torch.device("cpu"))
+                TiDEModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         elif "tft" in _m.lower():
             forecasting_models += [
-                TFTModel.load(_m, map_location=torch.device("cpu"))
+                TFTModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         else:
             raise ValueError(f"Unsupported MODEL_TYPE: {_m}")
