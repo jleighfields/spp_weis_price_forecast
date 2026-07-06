@@ -19,14 +19,32 @@ Work is underway on branch `rto-west-volatility-improvements`.
   West holdout: CRPS, coverage/width, MAE/RMSE/bias, tail). Baseline scored on
   the staged 0.45 champion: **CRPS 61.4**, 90% coverage ~1.00 / width ~$1,412
   — **over-dispersed** (inverts the plan's original "intervals too narrow").
-- **Experiment 2 groundwork — DONE.** `CLIP_OUTLIERS` toggle, widened
-  Optuna search space, and single-source-of-truth study name landed in
-  `notebooks/model_training/model.py`.
-- **Deferred:** Posit deploy pins (`requirements.txt` / `manifest.json`)
-  are NOT yet regenerated — they target the CPU deploy host, not the local
-  cu128/aarch64 wheels, and belong to the coordinated promote-and-deploy
-  step. The live app still runs darts 0.41; do not merge to `main` until
-  the deploy pins are regenerated and a 0.45 champion is promoted together.
+- **Experiment 2 (IM re-tune) — DONE, and a big win.** Single-objective CRPS
+  study (100 trials, IM-only, `clip=True`, `n_epochs` capped 6..20); top-5
+  trials landed in `TIDE_PARAMS`. Retrained + scored on the harness vs the
+  baseline (same 21-day holdout):
+
+  | Metric | Baseline (WEIS params) | Retuned | Δ |
+  |---|---|---|---|
+  | CRPS | 61.4 | **17.2** | −72% |
+  | 90% coverage | ~1.00 | 0.85 | → nominal 0.90 |
+  | 90% width | ~$1,412 | **$99** | −93% |
+  | MAE | 33.3 | 20.4 | −39% |
+  | tail coverage (`|x|`>$100) | 0.77 | 0.19 | worse |
+
+  The old low `lr` (1.3e-5) under-trained → absurdly wide, over-covering
+  intervals; the retuned `lr`~3e-4 learns the distribution (sharp ~$99 band,
+  honest ~0.85 coverage). Remaining weakness: the tighter band **under-covers
+  the tails** — the target for conformal (Exp 1).
+- **PROMOTED (2026-07-06):** `champion.json` → the retuned 0.45 champion
+  `model_retrains/2026-07-06_17-48-05/`. **⚠️ The live app on `main` is still
+  darts 0.41 and cannot load this 0.45 checkpoint — it breaks on next reload
+  until the 0.45 deploy lands.** Revert: `python scripts/r2_promote_champion.py
+  2026-07-06_12-41-45 --promote`.
+- **URGENT / deferred:** Regenerate Posit deploy pins (`requirements.txt` /
+  `manifest.json`) for the CPU host (not local cu128/aarch64 wheels) and merge
+  the branch to `main` to redeploy the app on 0.45 — this closes the broken
+  window opened by the promotion above.
 
 Everything below the status block is the original test plan, with the
 Experiment 0 section rewritten to record the outcome.
