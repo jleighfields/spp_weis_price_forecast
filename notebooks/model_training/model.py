@@ -501,12 +501,13 @@ def _(
         temporal_hidden_size_future = trial.suggest_int(
             "temporal_hidden_size_future", 8, 32, 1
         )
-        # Bounds widened from the WEIS-era ranges (lr 1e-5..5e-5,
-        # n_epochs 6..20, dropout 0.35..0.5): the IM series is far spikier
-        # and much shorter (~3 months), so allow a faster learning rate
-        # (log scale), many more epochs, and lighter regularization.
+        # lr and dropout widened from the WEIS-era ranges (lr 1e-5..5e-5,
+        # dropout 0.35..0.5) for the spikier, shorter IM series: a faster
+        # learning rate (log scale) and lighter regularization. n_epochs stays
+        # 6..20 — the tuned value is baked into TIDE_PARAMS and drives every
+        # production retrain, so we don't want a 60-epoch champion.
         lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
-        n_epochs = trial.suggest_int("n_epochs", 6, 60)
+        n_epochs = trial.suggest_int("n_epochs", 6, 20)
         dropout = trial.suggest_float("dropout", 0.1, 0.5, step=0.05)
         encoder_key = trial.suggest_categorical(
             "encoder_key", ["rel", "rel_mon", "rel_mon_day"]

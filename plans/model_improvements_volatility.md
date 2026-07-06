@@ -301,9 +301,11 @@ experiment to run:**
    compare on the harness — MAE/CRPS **and** CI coverage/tail error. Keep
    clipping only if it still wins on IM. **This is the load-bearing
    experiment.**
-2. **Widen the search space** in `objective_tide` — ✅ DONE. Bounds widened
-   from the WEIS-era ranges to `lr` log `1e-5…1e-3`, `n_epochs 6…60`, `dropout
-   0.1…0.5`. Still TODO if desired: extend the *tuned quantile set* toward
+2. **Widen the search space** in `objective_tide` — ✅ DONE. `lr` (log
+   `1e-5…1e-3`) and `dropout` (`0.1…0.5`) widened from the WEIS-era ranges;
+   **`n_epochs` kept at `6…20`** on purpose — the tuned value is baked into
+   `TIDE_PARAMS` and drives every production retrain, so a 60-epoch champion is
+   undesirable. Still TODO if desired: extend the *tuned quantile set* toward
    wider tails (the quantile list is currently fixed in `src/modeling.py`'s
    build functions, not tuned per-trial — changing it touches the served
    model's output distribution and `get_ci_err`, so validate on the harness).
