@@ -85,12 +85,14 @@ def _():
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger(__name__)
 
-    # Add project root to sys.path
+    # Add project root and src/ to sys.path — src/ so modules like
+    # data_engineering can `import parameters` directly (matches model_retrain.py).
     import sys as _sys
 
-    _project_root = str(_pathlib.Path(__file__).resolve().parent.parent.parent)
-    if _project_root not in _sys.path:
-        _sys.path.insert(0, _project_root)
+    _root = _pathlib.Path(__file__).resolve().parent.parent.parent
+    for _p in [str(_root), str(_root / "src")]:
+        if _p not in _sys.path:
+            _sys.path.insert(0, _p)
 
     return (
         NaiveEnsembleModel,
@@ -450,7 +452,7 @@ def _(
             activation=activation,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
@@ -529,7 +531,7 @@ def _(
             encoder_key=encoder_key,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
@@ -581,7 +583,7 @@ def _(
             batch_size=64,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
