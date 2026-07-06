@@ -163,18 +163,18 @@ class TestPrepLmp:
         """The BAA filter drops non-West rows even for a West node name."""
         import data_engineering as de
 
-        # CRSP_HUB is a West hub (passes the node whitelist), so tagging this
-        # row BAA='SPP' isolates the BAA filter: only it should exclude the row.
+        # BPA is in the modeled node list (passes the node whitelist), so
+        # tagging this row BAA='SPP' isolates the BAA filter: only it excludes it.
         con = mock_duckdb_connection
         con.execute("""
             INSERT INTO lmp VALUES
             ('2023-06-01 00:00:00', '2023-06-01 06:00:00', '2023-06-01 00:00:00',
-             'CRSP_HUB', 'CRSP_HUB', 'SPP', 'im', 30.0, 1.0, 0.5, 28.5)
+             'BPA', 'BPA', 'SPP', 'im', 30.0, 1.0, 0.5, 28.5)
         """)
 
         result = de.prep_lmp(con, start_time=pd.Timestamp('2023-01-01'))
 
-        assert 'CRSP_HUB' not in result['unique_id'].unique().to_list()
+        assert 'BPA' not in result['unique_id'].unique().to_list()
 
     def test_filters_by_start_time(self, mock_duckdb_connection):
         """Test that start_time filter works."""

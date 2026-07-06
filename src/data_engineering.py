@@ -115,7 +115,8 @@ def create_database(
     """
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
-    assert AWS_S3_BUCKET
+    if not AWS_S3_BUCKET:
+        raise ValueError('AWS_S3_BUCKET env var is not set')
     log.info(f'{AWS_S3_BUCKET = }')
     log.info(f'{AWS_S3_FOLDER = }')
 
@@ -172,8 +173,8 @@ def prep_lmp(
         end_time: End of time range filter. If None, no upper bound.
         baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
             the data_im/ table holds both BAAs.
-        nodes: Settlement locations to keep. Defaults to the West hub/BA node
-            list (node_list.WEST_HUB_BA_NODES).
+        nodes: Settlement locations to keep. Defaults to the modeled/app node
+            list (node_list.MODEL_APP_NODES).
         clip_outliers: If True, clip LMP values to 0.25% and 99.75% quantiles.
 
     Returns:
@@ -182,9 +183,9 @@ def prep_lmp(
     """
     lmp = con.execute("SELECT * FROM lmp").pl()
 
-    # filter to the West BAA and its hub/BA nodes
+    # filter to the West BAA and the modeled/app nodes
     if nodes is None:
-        nodes = node_list.WEST_HUB_BA_NODES
+        nodes = node_list.MODEL_APP_NODES
     lmp = lmp.filter(
         (pl.col("BAA") == baa)
         & pl.col("Settlement_Location_Name").is_in(nodes)
@@ -441,6 +442,8 @@ def prep_all_df(
     - Renewable energy ratios and differences
     - Load net of renewable generation
     - Rolling window aggregations for price and load differences
+    - break_indicator: the 0/1 WEIS->RTO West regime flag at the
+      2026-04-01 seam (a future covariate; see FUTR_COLS)
 
     Args:
         con: DuckDB connection with required tables loaded.

@@ -66,3 +66,17 @@ EAST_HUB_NODES = [
 
 # What the IM collectors keep from LMP files (both BAAs).
 STORED_NODES = WEST_HUB_BA_NODES + EAST_HUB_NODES
+
+# The West nodes actually modeled and offered in the app — a curated subset
+# of STORED_NODES chosen for history coverage (every node here has ~365 days,
+# either an exact WEIS match or a WACM/PSCM/BHCE/CRSP stitch proxy). Storage
+# stays broad (STORED_NODES); modeling reads this. prep_lmp defaults to it.
+MODEL_APP_NODES = [
+    # internal West (EPE/PACE/PNM/WALC exact-match; PSCO/BHBA/SWPW_HUB/
+    # WACM_CRSP_WILW proxied via the WEIS stitch)
+    'SWPW_HUB', 'PSCO', 'BHBA', 'WACM_CRSP_WILW',
+    'EPE', 'PACE', 'PNM', 'WALC',
+    # external-seam representatives: the 25 WECC interfaces are near-identical
+    # (one CAISO/WECC seam signal), so keep just two — Northwest and California.
+    'BPA', 'CISO',
+]

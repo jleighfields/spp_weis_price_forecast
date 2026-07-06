@@ -8,7 +8,6 @@ is constructed.
 """
 
 import sys
-import unittest.mock as mock
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +21,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-import app as real_app
+import app as real_app  # noqa: E402  (needs the sys.path insert above)
 
 # ---------------------------------------------------------------------------
 # Synthetic data generators

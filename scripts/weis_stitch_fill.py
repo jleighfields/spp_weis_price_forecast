@@ -52,6 +52,18 @@ STITCH_SOURCE = "weis"
 # Cap defensively at the seam so no stitched row overlaps the IM era.
 SEAM = RTO_WEST_LAUNCH
 
+# RTO West aggregated hubs have no exact WEIS match, so proxy each from the
+# per-interval mean of its WEIS constituent nodes (name-prefix match). The
+# proxy tracks the real post-launch node's price level; averaging smooths the
+# congestion spikes, so it understates variance. The prefixes are domain
+# mappings (RTO West node -> WEIS sub-entity), not derivable from the feeds.
+PROXY_MAP = {
+    "SWPW_HUB": "WACM",             # SPP West hub ~ WAPA Colorado-Missouri nodes
+    "PSCO": "PSCO.PSCM.",          # Public Service Co of Colorado (PSCo market)
+    "BHBA": "PSCO.BHCE.",          # Black Hills Colorado Electric
+    "WACM_CRSP_WILW": "WACM.CRSP.",  # Colorado River Storage Project (WACM)
+}
+
 
 def _base_paths() -> tuple[str, str]:
     """Return (weis_base, im_base) S3 prefixes from the AWS env vars."""
@@ -60,21 +72,55 @@ def _base_paths() -> tuple[str, str]:
     return f"s3://{bucket}/{folder}data/", f"s3://{bucket}/{folder}data_im/"
 
 
-def build_lmp_stitch(weis_base: str, so: dict) -> pl.DataFrame:
-    """Build the West LMP stitch: exact-name matches + the SWPW_HUB proxy.
+def _build_proxy(lmp: pl.LazyFrame, node: str, prefix: str) -> pl.DataFrame:
+    """Proxy one hub from the per-interval mean of its WEIS constituents.
 
-    Reads the WEIS consolidated ``lmp.parquet``, keeps only intervals
-    before the seam, and produces the West BAA rows two ways: exact-name
-    West nodes copied straight through, and the synthetic ``SWPW_HUB``
-    proxied by the per-interval mean over all WEIS ``WACM*`` locations.
+    Args:
+        lmp: Pre-seam WEIS LMP LazyFrame.
+        node: The RTO West node name to synthesize (e.g. 'PSCO').
+        prefix: Settlement-location name prefix of its WEIS constituents
+            (e.g. 'PSCO.PSCM.'); all matching nodes are averaged.
+
+    Returns:
+        pl.DataFrame of proxy rows tagged BAA='SWPW', source='weis'.
+    """
+    return (
+        lmp.filter(pl.col("Settlement_Location_Name").str.starts_with(prefix))
+        .group_by(["Interval_HE", "GMTIntervalEnd_HE", "timestamp_mst_HE"])
+        .agg(
+            # mean promotes Float32 -> Float64; cast back to match the table
+            pl.col("LMP").mean().cast(pl.Float32),
+            pl.col("MLC").mean().cast(pl.Float32),
+            pl.col("MCC").mean().cast(pl.Float32),
+            pl.col("MEC").mean().cast(pl.Float32),
+        )
+        .with_columns(
+            pl.lit(node).alias("Settlement_Location_Name"),
+            pl.lit(node).alias("PNODE_Name"),
+            pl.lit(STITCH_BAA).alias("BAA"),
+            pl.lit(pd.Timestamp.now("UTC").tz_localize(None)).alias("file_create_time_utc"),
+            pl.lit(f"weis-stitch:mean({prefix}*)").alias("url"),
+            pl.lit(STITCH_SOURCE).alias("source"),
+        )
+        .collect()
+    )
+
+
+def build_lmp_stitch(weis_base: str, so: dict) -> pl.DataFrame:
+    """Build the West LMP stitch: exact-name matches + PROXY_MAP proxies.
+
+    Reads the WEIS consolidated ``lmp.parquet``, keeps only intervals before
+    the seam, and produces the West BAA rows two ways: exact-name West nodes
+    copied straight through, and each aggregated hub in PROXY_MAP synthesized
+    from the per-interval mean of its WEIS constituent nodes.
 
     Args:
         weis_base: S3 prefix of the WEIS ``data/`` tables.
         so: boto3/polars storage options for the R2 bucket.
 
     Returns:
-        pl.DataFrame of stitch rows (matched nodes + SWPW_HUB proxy) with
-        the same columns/dtypes as the data_im ``lmp`` table.
+        pl.DataFrame of stitch rows (matched nodes + proxies) with the same
+        columns/dtypes as the data_im ``lmp`` table.
     """
     lmp = pl.scan_parquet(f"{weis_base}lmp.parquet", storage_options=so).filter(
         pl.col("GMTIntervalEnd_HE") < SEAM
@@ -88,37 +134,18 @@ def build_lmp_stitch(weis_base: str, so: dict) -> pl.DataFrame:
         )
         .collect()
     )
-
-    # SWPW_HUB has no WEIS equivalent -> per-interval mean over all WACM* nodes.
-    proxy = (
-        lmp.filter(pl.col("Settlement_Location_Name").str.starts_with("WACM"))
-        .group_by(["Interval_HE", "GMTIntervalEnd_HE", "timestamp_mst_HE"])
-        .agg(
-            # mean promotes Float32 -> Float64; cast back to match the table
-            pl.col("LMP").mean().cast(pl.Float32),
-            pl.col("MLC").mean().cast(pl.Float32),
-            pl.col("MCC").mean().cast(pl.Float32),
-            pl.col("MEC").mean().cast(pl.Float32),
-        )
-        .with_columns(
-            pl.lit("SWPW_HUB").alias("Settlement_Location_Name"),
-            pl.lit("SWPW_HUB").alias("PNODE_Name"),
-            pl.lit(STITCH_BAA).alias("BAA"),
-            pl.lit(pd.Timestamp.now("UTC").tz_localize(None)).alias(
-                "file_create_time_utc"
-            ),
-            pl.lit("weis-stitch:mean(WACM*)").alias("url"),
-            pl.lit(STITCH_SOURCE).alias("source"),
-        )
-        .collect()
-    )
-
     n_matched = matched["Settlement_Location_Name"].n_unique()
     log.info(
         f"LMP stitch: {n_matched} exact-name West nodes, {matched.shape[0]:,} rows"
     )
-    log.info(f"LMP stitch: SWPW_HUB proxy over WACM* -> {proxy.shape[0]:,} rows")
-    return pl.concat([matched, proxy.select(matched.columns)], how="vertical")
+
+    proxies = []
+    for node, prefix in PROXY_MAP.items():
+        px = _build_proxy(lmp, node, prefix).select(matched.columns)
+        log.info(f"LMP stitch: {node} proxy over {prefix}* -> {px.shape[0]:,} rows")
+        proxies.append(px)
+
+    return pl.concat([matched, *proxies], how="vertical")
 
 
 def build_forecast_stitch(weis_base: str, target: str, so: dict) -> pl.DataFrame:
