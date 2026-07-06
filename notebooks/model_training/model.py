@@ -1,7 +1,11 @@
-# Optuna hyperparameter tuning for SPP WEIS price forecast models.
+# Optuna hyperparameter tuning for SPP West (RTO West / Integrated
+# Marketplace) nodal price forecast models.
 #
-# Supports TiDE, TSMixer, and TFT model types. Runs multi-objective
-# optimization (MAE + CI error) with Pareto front analysis.
+# Supports TiDE, TSMixer, and TFT model types. Runs single-objective
+# optimization on CRPS (a proper score that captures point accuracy and
+# interval calibration/sharpness at once), matching the primary metric of the
+# evaluation harness in src/evaluation.py; MAE is logged per trial as a
+# diagnostic user_attr.
 #
 # Usage:
 #   Interactive: marimo edit notebooks/model_training/model.py
@@ -65,7 +69,7 @@ def _():
     import torch
     import pathlib as _pathlib
 
-    from darts.metrics import mae
+    from darts.metrics import mae, mcrps
     from darts.models import TFTModel, TiDEModel, TSMixerModel, NaiveEnsembleModel
 
     import warnings
@@ -95,6 +99,7 @@ def _():
         TiDEModel,
         log,
         mae,
+        mcrps,
         np,
         pd,
         pl,
@@ -109,7 +114,6 @@ def _():
         plot_optimization_history,
         plot_contour,
         plot_param_importances,
-        plot_pareto_front,
     )
 
     return (
@@ -117,7 +121,6 @@ def _():
         plot_contour,
         plot_optimization_history,
         plot_param_importances,
-        plot_pareto_front,
     )
 
 
@@ -378,16 +381,44 @@ def _(
 
 
 @app.cell
+def _(mae, mcrps, np, parameters):
+    def score_trial_crps(model, trial, test_series, past_cov, futr_cov):
+        """Backtest one trial's model on the West holdout and return CRPS.
+
+        The single study objective, shared by all model types. ``test_series``
+        is a list of nodes, so ``backtest`` returns one ``[crps, mae]`` row per
+        node (each reduced over that node's windows); average across nodes. MAE
+        is stored as a diagnostic ``user_attr``. ``num_samples`` makes the
+        forecast stochastic so CRPS is meaningful (it degenerates to MAE on a
+        point forecast).
+        """
+        val_backtest = model.backtest(
+            series=test_series,
+            past_covariates=past_cov,
+            future_covariates=futr_cov,
+            retrain=False,
+            forecast_horizon=parameters.FORECAST_HORIZON,
+            stride=24,  # daily origins over the hourly series
+            metric=[mcrps, mae],
+            verbose=False,
+            num_samples=200,
+            last_points_only=False,
+        )
+        crps = np.mean([e[0] for e in val_backtest])
+        trial.set_user_attr("mae", float(np.mean([e[1] for e in val_backtest])))
+        return float(crps) if np.isfinite(crps) else float("inf")
+
+    return (score_trial_crps,)
+
+
+@app.cell
 def _(
     PyTorchLightningPruningCallback,
     TRIAL_MODEL_DIR,
     build_fit_tsmixerx,
     futr_cov,
-    get_ci_err,
-    mae,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -426,25 +457,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tsmixer,)
 
@@ -463,13 +476,10 @@ def _(
     TRIAL_MODEL_DIR,
     build_fit_tide,
     futr_cov,
-    get_ci_err,
-    mae,
     n_futr,
     n_past,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -526,25 +536,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tide,)
 
@@ -555,11 +547,8 @@ def _(
     TRIAL_MODEL_DIR,
     build_fit_tft,
     futr_cov,
-    get_ci_err,
-    mae,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -599,25 +588,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tft,)
 
@@ -631,23 +602,13 @@ def _(MODEL_TYPE, os):
 @app.cell
 def _(MODEL_TYPE, log, log_pretty, target_names):
     def print_callback(study, trial):
-        best_smape = min(study.best_trials, key=lambda t: t.values[0])
-        best_ci = min(study.best_trials, key=lambda t: t.values[1])
-        best_total = min(study.best_trials, key=lambda t: sum(t.values))
+        best = study.best_trial
         print("\n" + "*" * 30, flush=True)
-        log.info(f"\nTrial: {trial.number} Current values: {trial.values}")
+        log.info(f"\nTrial: {trial.number} Current {target_names[0]}: {trial.value}")
         log.info(f"Current params: \n{log_pretty(trial.params)}")
         log.info(
-            f"Best {target_names[0]}: Num: {best_smape.number}, {best_smape.values}, "
-            f"Best params: \n{log_pretty(best_smape.params)}"
-        )
-        log.info(
-            f"Best {target_names[1]}: Num: {best_ci.number}, {best_ci.values}, "
-            f"Best params: \n{log_pretty(best_ci.params)}"
-        )
-        log.info(
-            f"Best Total: Num: {best_total.number}, {best_total.values}, "
-            f"Best params: \n{log_pretty(best_total.params)}"
+            f"Best {target_names[0]}: Num: {best.number}, {best.value}, "
+            f"Best params: \n{log_pretty(best.params)}"
         )
         study.trials_dataframe().to_csv(
             f"study_csv/{MODEL_TYPE}/{trial.number:03}.csv"
@@ -658,7 +619,7 @@ def _(MODEL_TYPE, log, log_pretty, target_names):
 
 @app.cell
 def _():
-    target_names = ["MAE", "CI_ERROR"]
+    target_names = ["CRPS"]
     return (target_names,)
 
 
@@ -711,7 +672,7 @@ def _(MODEL_TYPE, parameters):
 @app.cell
 def _(optuna, study_name):
     study = optuna.create_study(
-        directions=["minimize", "minimize"],
+        direction="minimize",
         storage="sqlite:///spp_trials.db",
         study_name=study_name,
         load_if_exists=True,
@@ -729,25 +690,14 @@ def _(NUM_TRIALS, RUN_EXP, objective_func, print_callback, study):
 
 
 @app.cell
-def _(plot_optimization_history, study, target_names):
-    for _i, _name in enumerate(target_names):
-        _fig = plot_optimization_history(
-            study, target=lambda t, idx=_i: t.values[idx], target_name=_name
-        )
-        _fig.show()
+def _(plot_optimization_history, study):
+    plot_optimization_history(study).show()
     return
 
 
 @app.cell
-def _(plot_contour, study, target_names):
-    for _i, _name in enumerate(target_names):
-        _fig = plot_contour(
-            study,
-            params=["lr", "n_epochs"],
-            target=lambda t, idx=_i: t.values[idx],
-            target_name=_name,
-        )
-        _fig.show()
+def _(plot_contour, study):
+    plot_contour(study, params=["lr", "n_epochs"]).show()
     return
 
 
@@ -758,22 +708,10 @@ def _(plot_param_importances, study):
 
 
 @app.cell
-def _(plot_pareto_front, study, target_names):
-    plot_pareto_front(study, target_names=target_names)
-    return
-
-
-@app.cell
-def _(plot_pareto_front, study, target_names):
-    plot_pareto_front(study, target_names=target_names, include_dominated_trials=False)
-    return
-
-
-@app.cell
 def _(log, log_pretty, study):
-    _best = min(study.best_trials, key=lambda t: t.values[0] + 0.5 * t.values[1])
+    _best = study.best_trial
     log.info(f"Best number: {_best.number}")
-    log.info(f"Best values: {_best.values}")
+    log.info(f"Best value: {_best.value}")
     log.info(f"Best params: \n{log_pretty(_best.params)}")
     return
 
@@ -790,31 +728,28 @@ def _(np, optuna, pd):
         study_name: str,
         storage: str = "sqlite:///spp_trials.db",
         n_results: int = 5,
-        ci_scaler: float = 0.25,
     ) -> pd.DataFrame:
         _study = optuna.load_study(study_name=study_name, storage=storage)
         trials = pd.DataFrame(
             [
-                {"number": s.number, "values": s.values, "params": s.params}
+                {
+                    "number": s.number,
+                    "value": s.value if s.value is not None else np.nan,
+                    "params": s.params,
+                    "model_path": s.user_attrs.get("model_path"),
+                }
                 for s in _study.trials
             ]
         )
-        trials["total_value"] = [
-            v[0] + ci_scaler * v[1] if v else np.nan for v in trials["values"]
-        ]
-        trials["model_path"] = [
-            s.user_attrs["model_path"] if s.user_attrs else None
-            for s in _study.trials
-        ]
         trials = trials[~trials.params.duplicated()]
-        return trials.sort_values("total_value").head(n_results)
+        return trials.sort_values("value").head(n_results)
 
     return (get_best_trials,)
 
 
 @app.cell
 def _(get_best_trials, study_name):
-    best_trials = get_best_trials(study_name, ci_scaler=0.5, n_results=5)
+    best_trials = get_best_trials(study_name, n_results=5)
     best_trials
     return (best_trials,)
 

@@ -274,11 +274,18 @@ distribution. **Effort:** medium (GPU hours), but reuses the existing model.
 **Notebook is `notebooks/model_training/model.py` (the Optuna study).** It
 already flows through the current `de.create_database` / `prep_lmp` /
 `prep_all_df` / `get_train_test_all` functions, so it inherits the IM-only
-West clamp and `MODEL_APP_NODES` scope automatically, and its objective is
-already multi-objective (`directions=["minimize","minimize"]`, targets
-`MAE` + `CI_ERROR`) — matching the two weaknesses above. It could run as-is,
-but before a serious IM re-tune make three edits. **Edits 2 and 3 are DONE;
-edit 1 (the clip A/B) is the remaining experiment to run:**
+West clamp and `MODEL_APP_NODES` scope automatically. **Its objective is now
+single-objective CRPS** — ✅ DONE (was multi-objective `MAE` + `CI_ERROR`).
+CRPS is a proper score that captures both point accuracy and interval
+calibration/sharpness in one number, matches the harness's primary metric
+(so the study optimizes exactly what we measure), and — since the baseline
+*over*-covers — naturally pushes toward sharper intervals. All three objectives
+(TiDE/TFT/TSMixer) now score `metric=[mcrps, mae]` on a full-horizon
+(`last_points_only=False`) probabilistic backtest, return CRPS, and log MAE as
+a diagnostic `user_attr`; the study is `direction="minimize"`, `get_best_trials`
+sorts by CRPS, and the Pareto-front cells were removed. Validated end-to-end on
+real IM data. **Edits 2 and 3 are DONE; edit 1 (the clip A/B) is the remaining
+experiment to run:**
 
 1. **Re-test outlier clipping** — ⏳ TODO (the load-bearing experiment). The
    two clip calls now read a single `CLIP_OUTLIERS` toggle in the notebook's
