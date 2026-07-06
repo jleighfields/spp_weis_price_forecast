@@ -246,14 +246,14 @@ def _(mo):
 
 
 @app.cell
-def _(AWS_S3_FOLDER, log, pd):
+def _(AWS_S3_FOLDER, log, pd, utils):
     utc_timestamp = pd.Timestamp.now("UTC")
     log.info(f"{utc_timestamp = }")
 
     folder_time = utc_timestamp.strftime("%Y-%m-%d_%H-%M-%S") + "/"
     log.info(f"{folder_time = }")
 
-    artifact_folder = "model_retrains/" + folder_time
+    artifact_folder = utils.RETRAINS_PREFIX + folder_time
     log.info(f"{artifact_folder = }")
 
     artifact_path = AWS_S3_FOLDER + artifact_folder
@@ -346,7 +346,6 @@ def _(
     past_cov,
     pd,
 ):
-
     log.info("test getting predictions")
     plot_ind = 3
     plot_series = all_series[plot_ind]
@@ -395,12 +394,14 @@ def _(
     os,
     pred,
     s3,
+    utils,
 ):
     # Promote by updating champion.json to point at the new model's folder.
     # The app loads models directly from model_retrains/<timestamp>/ via
     # champion_artifact_folder, so no file copying to S3_models/ is needed.
-    # To revert to a previous model, just update champion.json to point at
-    # the old folder (see scripts/r2_promote_champion.py or the plan).
+    # To revert to a previous model, repoint champion.json at the old folder
+    # with `python scripts/r2_promote_champion.py <timestamp> --promote`
+    # (run it with --list to see the available model_retrains/ folders).
     #
     # Set PROMOTE_CHAMPION=false to train + save the checkpoints to the
     # timestamped folder WITHOUT overwriting champion.json — used to stage a
@@ -409,13 +410,11 @@ def _(
     # together.
     promote = os.environ.get("PROMOTE_CHAMPION", "true").lower() != "false"
     if pred is not None and promote:
-        champion_json = {
-            "champion": folder_time,
-            "champion_artifact_folder": artifact_folder,
-            "champion_artifact_path": artifact_path,
-        }
+        champion_json = utils.build_champion_config(
+            folder_time, artifact_folder, artifact_path
+        )
         _buffer = io.BytesIO(json.dumps(champion_json).encode("utf-8"))
-        champion_key = AWS_S3_FOLDER + "S3_models/champion.json"
+        champion_key = AWS_S3_FOLDER + utils.CHAMPION_KEY_SUFFIX
         s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=_buffer)
         log.info(f"Uploaded champion model json: {champion_key}")
         log.info(f"champion_json: {champion_json}")

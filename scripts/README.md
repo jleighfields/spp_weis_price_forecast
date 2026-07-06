@@ -84,6 +84,43 @@ uv run python scripts/r2_move_objects.py "" --bucket old-bucket --delete-only
 uv run python scripts/r2_move_objects.py "old/models/" "new/models/" --copy --delete
 ```
 
+## r2_promote_champion.py
+
+Promote (or revert to) a retrained model by repointing
+`S3_models/champion.json` — the pointer the Shiny app reads to decide which
+`model_retrains/<timestamp>/` folder to serve.
+
+Retrains that run with `PROMOTE_CHAMPION=false` are *staged*: their
+checkpoints land in a timestamped folder but champion.json is untouched, so
+the live app keeps its current model. This script is the manual promote/revert
+step — it only rewrites the small JSON pointer (matching the schema
+`model_retrain.py` writes), never moving checkpoints.
+
+- **Dry run by default**: prints the current → target change; pass `--promote`
+  to write.
+- **Validated**: refuses to point at a folder with no objects, so a typo can't
+  break model loading.
+
+### Prerequisites
+
+Same R2 environment variables as `r2_move_objects.py` above.
+
+### Usage
+
+```bash
+# List the retrain folders available to promote (newest last)
+uv run python scripts/r2_promote_champion.py --list
+
+# Show the model champion.json currently points at
+uv run python scripts/r2_promote_champion.py --show
+
+# Dry run - preview the change (no write)
+uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45
+
+# Promote / revert to that folder
+uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45 --promote
+```
+
 ## weis_stitch_fill.py
 
 One-time WEIS→`data_im/` West stitch-fill (Phase 2 of the RTO West
