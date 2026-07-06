@@ -19,6 +19,8 @@ foundation model.
 """
 
 import logging
+import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -26,7 +28,13 @@ from darts import TimeSeries
 from darts.metrics import mae, mcrps, merr, mic, miw, rmse
 from darts.models.forecasting.forecasting_model import ForecastingModel
 
-import parameters
+# Put src/ on sys.path so the bare `import parameters` resolves regardless of
+# how this library is imported (matches the other src/ modules).
+_src_dir = os.path.dirname(os.path.abspath(__file__))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+import parameters  # noqa: E402  (imported after the sys.path shim above)
 
 log = logging.getLogger(__name__)
 
