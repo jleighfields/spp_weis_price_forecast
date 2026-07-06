@@ -2,9 +2,9 @@
 Module for custom Darts model serving using mlflow pyfunc
 '''
 
-import os
 import logging
 import numpy as np
+import pandas as pd
 import mlflow.pyfunc
 import torch
 from darts import TimeSeries
@@ -15,13 +15,27 @@ log = logging.getLogger(__name__)
 
 
 class DartsGlobalModel(mlflow.pyfunc.PythonModel):
+    """mlflow PyFunc wrapper serving a global Darts forecasting model.
 
-    def load_context(self, context):
+    Wraps a single Darts model (TiDE/TFT/TSMixer) or a NaiveEnsembleModel
+    so it can be logged and served via mlflow. The concrete model type is
+    read from the ``MODEL_TYPE.pkl`` artifact at load time.
+    """
+
+    def load_context(self, context: mlflow.pyfunc.PythonModelContext) -> None:
+        """Load the Darts model from mlflow artifacts by MODEL_TYPE.
+
+        Args:
+            context: mlflow context whose ``artifacts`` map holds the
+                serialized model, its MODEL_TYPE, and train timestamp.
+
+        Raises:
+            ValueError: If MODEL_TYPE is not a supported model kind.
+        """
         from darts.models import (
             TFTModel,
             TiDEModel,
             TSMixerModel,
-            NaiveEnsembleModel,
         )
         import pickle
         # print(f'context.artifacts: {context.artifacts}')
@@ -59,20 +73,24 @@ class DartsGlobalModel(mlflow.pyfunc.PythonModel):
         log.info(f'TRAIN_TIMESTAMP: {self.model.TRAIN_TIMESTAMP}')
 
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.model.__repr__()
-        
-    def __str__(self):
+
+    def __str__(self) -> str:
         return self.model.__str__()
 
-    def predict(self, context, model_input):
-        """
-        Custom predict function for Darts forecasting model.
+    def predict(self, context: mlflow.pyfunc.PythonModelContext,
+                model_input: pd.DataFrame) -> str:
+        """Forecast from json-serialized series and covariates.
+
         Args:
-            model_input: pd.DataFrame. Containes the unscaled series to make prediction for,
-                         future covariate series, and past covariate series as columns of a dataframe.
+            context: mlflow context (unused; required by the PyFunc API).
+            model_input: One-row DataFrame with json-serialized 'series',
+                'past_covariates', and 'future_covariates' columns plus the
+                'n' (horizon) and 'num_samples' scalars.
+
         Returns:
-            prediction: json-formatted time series in original scale.
+            The forecast TimeSeries as a json string, in the original scale.
         """
         # ".from_json() returns a float64 dtype"
         log.info('READING INPUTS...')

@@ -89,9 +89,16 @@ def get_s3_base_path() -> str:
 import boto3
 from botocore.exceptions import ClientError
 
-def check_file_exists_client(bucket_name, object_name):
+def check_file_exists_client(bucket_name: str, object_name: str) -> bool:
     """
     Checks if a file (object) exists in an S3 bucket using boto3 client.
+
+    Args:
+        bucket_name: The S3 bucket name.
+        object_name: The object key to check.
+
+    Returns:
+        True if the object exists, False on a 404 (other errors re-raise).
     """
     s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_ENDPOINT_URL"))
     try:

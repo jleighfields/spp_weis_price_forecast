@@ -1,7 +1,11 @@
-# SPP WEIS Price Forecast
+# SPP West Price Forecast
 
 ## Introduction
-This project forecasts SPP WEIS (Western Energy Imbalance Service) locational marginal prices using deep learning ensemble models. It implements a full MLOps lifecycle using Modal for serverless compute:
+This project forecasts SPP West (RTO West / Integrated Marketplace) nodal
+locational marginal prices using deep learning ensemble models. SPP runs the
+Integrated Marketplace across two balancing authority areas — SPP East and SPP
+West (`SWPW`) — and this project models the West BAA. It implements a full MLOps
+lifecycle using Modal for serverless compute:
 
 * Automated data collection from SPP
 * Feature engineering with Polars and DuckDB
@@ -28,17 +32,21 @@ Shiny Web App (interactive forecasts with confidence intervals)
 
 ## Data
 
-SPP market data is available at https://marketplace.spp.org/groups/operational-data-weis. This data is public and updated on regular intervals. Automated Modal jobs collect and upsert this data to Cloudflare R2.
+SPP Integrated Marketplace data is public and published on the SPP portal
+(https://portal.spp.org). The feeds now carry a `BAA` column (East `SPP` /
+West `SWPW`); collection filters LMP to a hub/BA node list and keeps West rows
+for modeling. Automated Modal jobs collect and upsert this data to Cloudflare R2
+under the `data_im/` prefix.
 
 ### Data types collected
 
-* **LMP** - Locational marginal prices for settlement locations ([source](https://marketplace.spp.org/pages/lmp-by-settlement-location-weis)). 5-minute interval data aggregated to hourly. This is the forecast target.\
+* **LMP** - Locational marginal prices for settlement locations ([source](https://portal.spp.org/pages/rtbm-lmp-by-location)). 5-minute interval data (plus a daily rollup) aggregated to hourly. This is the forecast target.\
 ![LMP summary](./imgs/lmp_settlement_location.PNG)
 
-* **MTLF** - Mid-term load forecast ([source](https://marketplace.spp.org/pages/systemwide-hourly-load-forecast-mtlf-vs-actual-weis)). System-wide hourly load forecast for the next 7 days (168 hours), updated every hour. Includes actuals for model training.\
+* **MTLF** - Mid-term load forecast ([source](https://portal.spp.org/pages/mtlf-vs-actual)). Per-BAA hourly load forecast for the next 7 days (168 hours), updated every hour. Includes actuals for model training.\
 ![MTLF summary](./imgs/mtlf.PNG)
 
-* **MTRF** - Mid-term resource forecast ([source](https://marketplace.spp.org/pages/mid-term-resource-forecast-mtrf-weis)). System-wide hourly wind and solar generation forecast for the next 144 hours, updated every hour.\
+* **MTRF** - Mid-term resource forecast ([source](https://portal.spp.org/pages/midterm-resource-forecast)). Per-BAA hourly wind and solar generation forecast for the next 144 hours, updated every hour.\
 ![MTRF summary](./imgs/mtrf.PNG)
 
 ## Forecasting
