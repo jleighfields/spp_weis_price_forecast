@@ -557,6 +557,12 @@ def load_ensemble_from_dir(
 
     Returns:
         A tuple of (ensemble_model, train_timestamp).
+
+    Raises:
+        ValueError: If a ``.pt`` checkpoint matches no class in
+            ``MODEL_CLASS_MAP`` (refusing to silently drop it into a
+            smaller ensemble), or if no loadable checkpoints are found in
+            ``model_dir`` (refusing to build a zero-model ensemble).
     """
     local_files = os.listdir(model_dir)
 
@@ -570,7 +576,9 @@ def load_ensemble_from_dir(
     ]
 
     # Load each checkpoint with the appropriate Darts model class,
-    # determined by matching filename substrings.
+    # determined by matching filename substrings. A checkpoint that
+    # matches no class is a silent-drop hazard (a renamed or re-serialized
+    # file would shrink the ensemble with no error), so fail loud instead.
     forecasting_models = []
     for pt_file in pt_files:
         for name_pattern, model_class in MODEL_CLASS_MAP.items():
@@ -582,6 +590,17 @@ def load_ensemble_from_dir(
                 )
                 forecasting_models.append(model)
                 break
+        else:
+            raise ValueError(
+                f'checkpoint {pt_file!r} in {model_dir} matches no known '
+                f'model class {list(MODEL_CLASS_MAP)}; refusing to build a '
+                'silently-truncated ensemble'
+            )
+
+    if not forecasting_models:
+        raise ValueError(
+            f'no loadable model checkpoints found in {model_dir}'
+        )
 
     # Combine all individual models into a NaiveEnsembleModel that
     # averages their predictions at inference time.

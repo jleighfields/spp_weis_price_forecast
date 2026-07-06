@@ -39,11 +39,16 @@ def _():
     RUN_EXP = True
     NUM_TRIALS = 100
 
-    MODEL_NAME = "spp_weis"
+    # Clip LMP to the 0.25% / 99.75% quantiles before training/scoring.
+    # A deliberate, tested win on WEIS; re-validate on the spikier IM
+    # distribution by running the study once True and once False and
+    # comparing MAE/CRPS and CI coverage/tail error on the harness.
+    CLIP_OUTLIERS = True
 
     REMOVE_PRIOR_MODELS = True
     TEST_BUILD_BACKTEST = False
     return (
+        CLIP_OUTLIERS,
         MODEL_TYPE,
         NUM_TRIALS,
         REMOVE_PRIOR_MODELS,
@@ -214,8 +219,8 @@ def _(con, de):
 
 
 @app.cell
-def _(con, de):
-    all_df = de.prep_all_df(con, clip_outliers=True)
+def _(CLIP_OUTLIERS, con, de):
+    all_df = de.prep_all_df(con, clip_outliers=CLIP_OUTLIERS)
     all_df
     return (all_df,)
 
@@ -252,9 +257,9 @@ def _(mo):
 
 
 @app.cell
-def _(con, de):
+def _(CLIP_OUTLIERS, con, de):
     lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(
-        con, clip_outliers=True
+        con, clip_outliers=CLIP_OUTLIERS
     )
     return lmp_all, test_all, train_all, train_test_all
 
@@ -484,9 +489,13 @@ def _(
         temporal_hidden_size_future = trial.suggest_int(
             "temporal_hidden_size_future", 8, 32, 1
         )
-        lr = trial.suggest_float("lr", 1e-5, 5e-5, step=1e-6)
-        n_epochs = trial.suggest_int("n_epochs", 6, 20)
-        dropout = trial.suggest_float("dropout", 0.35, 0.5, step=0.01)
+        # Bounds widened from the WEIS-era ranges (lr 1e-5..5e-5,
+        # n_epochs 6..20, dropout 0.35..0.5): the IM series is far spikier
+        # and much shorter (~3 months), so allow a faster learning rate
+        # (log scale), many more epochs, and lighter regularization.
+        lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
+        n_epochs = trial.suggest_int("n_epochs", 6, 60)
+        dropout = trial.suggest_float("dropout", 0.1, 0.5, step=0.05)
         encoder_key = trial.suggest_categorical(
             "encoder_key", ["rel", "rel_mon", "rel_mon_day"]
         )
@@ -660,14 +669,14 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, shutil):
+def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, parameters, shutil):
     TRIAL_MODEL_DIR = f"optuna/{MODEL_TYPE}"
     MODEL_CHECKPOINT_DIR = f"model_checkpoints/{MODEL_TYPE}_model"
 
     if REMOVE_PRIOR_MODELS:
         try:
             optuna.delete_study(
-                study_name=f"spp_weis_{MODEL_TYPE}",
+                study_name=f"{parameters.MODEL_NAME}_{MODEL_TYPE}",
                 storage="sqlite:///spp_trials.db",
             )
             shutil.rmtree(TRIAL_MODEL_DIR)
@@ -694,8 +703,8 @@ def _(MODEL_TYPE, objective_tft, objective_tide, objective_tsmixer):
 
 
 @app.cell
-def _(MODEL_TYPE):
-    study_name = f"spp_weis_{MODEL_TYPE}"
+def _(MODEL_TYPE, parameters):
+    study_name = f"{parameters.MODEL_NAME}_{MODEL_TYPE}"
     return (study_name,)
 
 
