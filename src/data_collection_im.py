@@ -754,6 +754,11 @@ def upsert_im(
     if file_exists:
         target_df = pl.read_parquet(target_path, storage_options=storage_opts)
         start_count = target_df.shape[0]
+        # Align to the stored column order before the positional vstack. RF
+        # files carry BAA mid-schema post-launch but ensure_baa appends it for
+        # pre-launch files, so the per-era column order differs and a plain
+        # concat fails ("column names don't match").
+        upsert_df = upsert_df.select(target_df.columns)
         target_df = dedup(pl.concat([target_df, upsert_df]).lazy()).collect()
     else:
         start_count = 0

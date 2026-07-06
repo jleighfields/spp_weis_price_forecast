@@ -375,6 +375,30 @@ class TestUpsertIm:
         result = pl.read_parquet(f'{out_dir}mtlf.parquet')
         assert result.shape[0] == 2
 
+    def test_merges_across_column_order_drift(self, out_dir):
+        # regression: RF files place BAA mid-schema post-launch but appended
+        # (via ensure_baa) pre-launch, so the stored table and new files can
+        # differ in column order. upsert_im must align by name, not crash on
+        # the positional vstack.
+        dcim.upsert_im(
+            [self.make_batch(out_dir, 'a', 'SPP', 1.0, '2026-07-01 12:05:00')],
+            'mtlf', base_path=out_dir,
+        )
+        # second batch with the same columns in a different order
+        reordered = pl.DataFrame({
+            'BAA': ['SWPW'],
+            'MTLF': [2.0],
+            'file_create_time_utc': [pd.Timestamp('2026-07-01 12:05:00')],
+            'GMTIntervalEnd': [pd.Timestamp('2026-07-01 12:00:00')],
+        })
+        path = f'{out_dir}mtlf/reordered.parquet'
+        reordered.write_parquet(path)
+        dcim.upsert_im([path], 'mtlf', base_path=out_dir)
+
+        result = pl.read_parquet(f'{out_dir}mtlf.parquet')
+        assert result.shape[0] == 2
+        assert set(result['BAA'].unique()) == {'SPP', 'SWPW'}
+
     def test_unknown_target_raises(self, out_dir):
         with pytest.raises(ValueError):
             dcim.upsert_im([], 'gen_cap', base_path=out_dir)
