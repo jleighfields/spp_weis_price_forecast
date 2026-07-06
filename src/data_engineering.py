@@ -151,6 +151,21 @@ def create_database(
 #############################################
 # data prep
 #############################################
+def _default_start_time() -> pd.Timestamp:
+    """Default training-window start: the last TRAIN_START, but never before
+    the RTO West launch.
+
+    WEIS-era prices are a different, much calmer regime (~half the RTO West
+    volatility, only shallow negatives), so mixing them in biases the model
+    toward flat forecasts. Clamping here keeps training IM-only for now and
+    slides into a normal rolling year once a full year of IM data exists.
+    """
+    return max(
+        pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START),
+        node_list.RTO_WEST_LAUNCH,
+    )
+
+
 def prep_lmp(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
@@ -198,8 +213,7 @@ def prep_lmp(
     ]
 
     if not start_time:
-        # get last 1.5 years
-        start_time = pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START)
+        start_time = _default_start_time()
 
     # TODO: handle checks for start_time < end_time
     lmp = lmp.filter(pl.col("timestamp_mst_HE") >= start_time)
@@ -263,7 +277,7 @@ def _prep_baa_hourly(
     drop_cols = ['Interval', 'GMTIntervalEnd', 'BAA', 'source']
 
     if not start_time:
-        start_time = pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START)
+        start_time = _default_start_time()
     df = df.filter(pl.col("timestamp_mst") >= start_time)
     if end_time:
         df = df.filter(pl.col("timestamp_mst") <= end_time)

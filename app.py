@@ -90,8 +90,8 @@ app_ui = ui.page_sidebar(
         ui.input_date("fcast_date", "Forecast date"),
         ui.input_select("fcast_hour", "Forecast hour", choices=[]),
         ui.hr(),
-        ui.h4("Select LMP node"),
-        ui.input_select("node_name", "LMP node", choices=[]),
+        ui.h4("Select LMP hub"),
+        ui.input_select("node_name", "LMP hub", choices=[]),
         ui.input_select(
             "n_days",
             "Number of days to forecast",
@@ -264,10 +264,12 @@ def server(input, output, session):
         )
 
         nodes = get_price_nodes(df)
+        # default to the SWPW_HUB flagship hub when present
+        default_node = 'SWPW_HUB' if 'SWPW_HUB' in nodes else (nodes[0] if nodes else None)
         ui.update_select(
             "node_name",
             choices=dict(zip(nodes, nodes)),
-            selected=nodes[0] if nodes else None,
+            selected=default_node,
         )
 
     @reactive.effect
