@@ -1,7 +1,11 @@
-# Optuna hyperparameter tuning for SPP WEIS price forecast models.
+# Optuna hyperparameter tuning for SPP West (RTO West / Integrated
+# Marketplace) nodal price forecast models.
 #
-# Supports TiDE, TSMixer, and TFT model types. Runs multi-objective
-# optimization (MAE + CI error) with Pareto front analysis.
+# Supports TiDE, TSMixer, and TFT model types. Runs single-objective
+# optimization on CRPS (a proper score that captures point accuracy and
+# interval calibration/sharpness at once), matching the primary metric of the
+# evaluation harness in src/evaluation.py; MAE is logged per trial as a
+# diagnostic user_attr.
 #
 # Usage:
 #   Interactive: marimo edit notebooks/model_training/model.py
@@ -39,11 +43,16 @@ def _():
     RUN_EXP = True
     NUM_TRIALS = 100
 
-    MODEL_NAME = "spp_weis"
+    # Clip LMP to the 0.25% / 99.75% quantiles before training/scoring.
+    # A deliberate, tested win on WEIS; re-validate on the spikier IM
+    # distribution by running the study once True and once False and
+    # comparing MAE/CRPS and CI coverage/tail error on the harness.
+    CLIP_OUTLIERS = True
 
     REMOVE_PRIOR_MODELS = True
     TEST_BUILD_BACKTEST = False
     return (
+        CLIP_OUTLIERS,
         MODEL_TYPE,
         NUM_TRIALS,
         REMOVE_PRIOR_MODELS,
@@ -60,7 +69,7 @@ def _():
     import torch
     import pathlib as _pathlib
 
-    from darts.metrics import mae
+    from darts.metrics import mae, mcrps
     from darts.models import TFTModel, TiDEModel, TSMixerModel, NaiveEnsembleModel
 
     import warnings
@@ -76,12 +85,14 @@ def _():
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger(__name__)
 
-    # Add project root to sys.path
+    # Add project root and src/ to sys.path — src/ so modules like
+    # data_engineering can `import parameters` directly (matches model_retrain.py).
     import sys as _sys
 
-    _project_root = str(_pathlib.Path(__file__).resolve().parent.parent.parent)
-    if _project_root not in _sys.path:
-        _sys.path.insert(0, _project_root)
+    _root = _pathlib.Path(__file__).resolve().parent.parent.parent
+    for _p in [str(_root), str(_root / "src")]:
+        if _p not in _sys.path:
+            _sys.path.insert(0, _p)
 
     return (
         NaiveEnsembleModel,
@@ -90,6 +101,7 @@ def _():
         TiDEModel,
         log,
         mae,
+        mcrps,
         np,
         pd,
         pl,
@@ -104,7 +116,6 @@ def _():
         plot_optimization_history,
         plot_contour,
         plot_param_importances,
-        plot_pareto_front,
     )
 
     return (
@@ -112,7 +123,6 @@ def _():
         plot_contour,
         plot_optimization_history,
         plot_param_importances,
-        plot_pareto_front,
     )
 
 
@@ -214,8 +224,8 @@ def _(con, de):
 
 
 @app.cell
-def _(con, de):
-    all_df = de.prep_all_df(con, clip_outliers=True)
+def _(CLIP_OUTLIERS, con, de):
+    all_df = de.prep_all_df(con, clip_outliers=CLIP_OUTLIERS)
     all_df
     return (all_df,)
 
@@ -252,9 +262,9 @@ def _(mo):
 
 
 @app.cell
-def _(con, de):
+def _(CLIP_OUTLIERS, con, de):
     lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(
-        con, clip_outliers=True
+        con, clip_outliers=CLIP_OUTLIERS
     )
     return lmp_all, test_all, train_all, train_test_all
 
@@ -373,16 +383,44 @@ def _(
 
 
 @app.cell
+def _(mae, mcrps, np, parameters):
+    def score_trial_crps(model, trial, test_series, past_cov, futr_cov):
+        """Backtest one trial's model on the West holdout and return CRPS.
+
+        The single study objective, shared by all model types. ``test_series``
+        is a list of nodes, so ``backtest`` returns one ``[crps, mae]`` row per
+        node (each reduced over that node's windows); average across nodes. MAE
+        is stored as a diagnostic ``user_attr``. ``num_samples`` makes the
+        forecast stochastic so CRPS is meaningful (it degenerates to MAE on a
+        point forecast).
+        """
+        val_backtest = model.backtest(
+            series=test_series,
+            past_covariates=past_cov,
+            future_covariates=futr_cov,
+            retrain=False,
+            forecast_horizon=parameters.FORECAST_HORIZON,
+            stride=24,  # daily origins over the hourly series
+            metric=[mcrps, mae],
+            verbose=False,
+            num_samples=200,
+            last_points_only=False,
+        )
+        crps = np.mean([e[0] for e in val_backtest])
+        trial.set_user_attr("mae", float(np.mean([e[1] for e in val_backtest])))
+        return float(crps) if np.isfinite(crps) else float("inf")
+
+    return (score_trial_crps,)
+
+
+@app.cell
 def _(
     PyTorchLightningPruningCallback,
     TRIAL_MODEL_DIR,
     build_fit_tsmixerx,
     futr_cov,
-    get_ci_err,
-    mae,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -414,32 +452,14 @@ def _(
             activation=activation,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tsmixer,)
 
@@ -458,13 +478,10 @@ def _(
     TRIAL_MODEL_DIR,
     build_fit_tide,
     futr_cov,
-    get_ci_err,
-    mae,
     n_futr,
     n_past,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -484,9 +501,14 @@ def _(
         temporal_hidden_size_future = trial.suggest_int(
             "temporal_hidden_size_future", 8, 32, 1
         )
-        lr = trial.suggest_float("lr", 1e-5, 5e-5, step=1e-6)
+        # lr and dropout widened from the WEIS-era ranges (lr 1e-5..5e-5,
+        # dropout 0.35..0.5) for the spikier, shorter IM series: a faster
+        # learning rate (log scale) and lighter regularization. n_epochs stays
+        # 6..20 — the tuned value is baked into TIDE_PARAMS and drives every
+        # production retrain, so we don't want a 60-epoch champion.
+        lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
         n_epochs = trial.suggest_int("n_epochs", 6, 20)
-        dropout = trial.suggest_float("dropout", 0.35, 0.5, step=0.01)
+        dropout = trial.suggest_float("dropout", 0.1, 0.5, step=0.05)
         encoder_key = trial.suggest_categorical(
             "encoder_key", ["rel", "rel_mon", "rel_mon_day"]
         )
@@ -510,32 +532,14 @@ def _(
             encoder_key=encoder_key,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tide,)
 
@@ -546,11 +550,8 @@ def _(
     TRIAL_MODEL_DIR,
     build_fit_tft,
     futr_cov,
-    get_ci_err,
-    mae,
-    np,
-    parameters,
     past_cov,
+    score_trial_crps,
     test_series,
     train_series,
 ):
@@ -583,32 +584,14 @@ def _(
             batch_size=64,
             callbacks=callback,
             model_id=f"{trial.number:03}",
-            log_tensorboard=True,
+            log_tensorboard=False,
         )
 
         model_path = f"{TRIAL_MODEL_DIR}/model_{trial.number}"
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        val_backtest = model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-
-        err_metric = np.mean([e[0] for e in val_backtest])
-        ci_error = np.mean([e[1] for e in val_backtest])
-        if np.isnan(err_metric):
-            err_metric = float("inf")
-        if np.isnan(ci_error):
-            ci_error = float("inf")
-        return err_metric, ci_error
+        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tft,)
 
@@ -622,23 +605,13 @@ def _(MODEL_TYPE, os):
 @app.cell
 def _(MODEL_TYPE, log, log_pretty, target_names):
     def print_callback(study, trial):
-        best_smape = min(study.best_trials, key=lambda t: t.values[0])
-        best_ci = min(study.best_trials, key=lambda t: t.values[1])
-        best_total = min(study.best_trials, key=lambda t: sum(t.values))
+        best = study.best_trial
         print("\n" + "*" * 30, flush=True)
-        log.info(f"\nTrial: {trial.number} Current values: {trial.values}")
+        log.info(f"\nTrial: {trial.number} Current {target_names[0]}: {trial.value}")
         log.info(f"Current params: \n{log_pretty(trial.params)}")
         log.info(
-            f"Best {target_names[0]}: Num: {best_smape.number}, {best_smape.values}, "
-            f"Best params: \n{log_pretty(best_smape.params)}"
-        )
-        log.info(
-            f"Best {target_names[1]}: Num: {best_ci.number}, {best_ci.values}, "
-            f"Best params: \n{log_pretty(best_ci.params)}"
-        )
-        log.info(
-            f"Best Total: Num: {best_total.number}, {best_total.values}, "
-            f"Best params: \n{log_pretty(best_total.params)}"
+            f"Best {target_names[0]}: Num: {best.number}, {best.value}, "
+            f"Best params: \n{log_pretty(best.params)}"
         )
         study.trials_dataframe().to_csv(
             f"study_csv/{MODEL_TYPE}/{trial.number:03}.csv"
@@ -649,7 +622,7 @@ def _(MODEL_TYPE, log, log_pretty, target_names):
 
 @app.cell
 def _():
-    target_names = ["MAE", "CI_ERROR"]
+    target_names = ["CRPS"]
     return (target_names,)
 
 
@@ -660,14 +633,14 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, shutil):
+def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, parameters, shutil):
     TRIAL_MODEL_DIR = f"optuna/{MODEL_TYPE}"
     MODEL_CHECKPOINT_DIR = f"model_checkpoints/{MODEL_TYPE}_model"
 
     if REMOVE_PRIOR_MODELS:
         try:
             optuna.delete_study(
-                study_name=f"spp_weis_{MODEL_TYPE}",
+                study_name=f"{parameters.MODEL_NAME}_{MODEL_TYPE}",
                 storage="sqlite:///spp_trials.db",
             )
             shutil.rmtree(TRIAL_MODEL_DIR)
@@ -694,15 +667,15 @@ def _(MODEL_TYPE, objective_tft, objective_tide, objective_tsmixer):
 
 
 @app.cell
-def _(MODEL_TYPE):
-    study_name = f"spp_weis_{MODEL_TYPE}"
+def _(MODEL_TYPE, parameters):
+    study_name = f"{parameters.MODEL_NAME}_{MODEL_TYPE}"
     return (study_name,)
 
 
 @app.cell
 def _(optuna, study_name):
     study = optuna.create_study(
-        directions=["minimize", "minimize"],
+        direction="minimize",
         storage="sqlite:///spp_trials.db",
         study_name=study_name,
         load_if_exists=True,
@@ -720,25 +693,14 @@ def _(NUM_TRIALS, RUN_EXP, objective_func, print_callback, study):
 
 
 @app.cell
-def _(plot_optimization_history, study, target_names):
-    for _i, _name in enumerate(target_names):
-        _fig = plot_optimization_history(
-            study, target=lambda t, idx=_i: t.values[idx], target_name=_name
-        )
-        _fig.show()
+def _(plot_optimization_history, study):
+    plot_optimization_history(study).show()
     return
 
 
 @app.cell
-def _(plot_contour, study, target_names):
-    for _i, _name in enumerate(target_names):
-        _fig = plot_contour(
-            study,
-            params=["lr", "n_epochs"],
-            target=lambda t, idx=_i: t.values[idx],
-            target_name=_name,
-        )
-        _fig.show()
+def _(plot_contour, study):
+    plot_contour(study, params=["lr", "n_epochs"]).show()
     return
 
 
@@ -749,22 +711,10 @@ def _(plot_param_importances, study):
 
 
 @app.cell
-def _(plot_pareto_front, study, target_names):
-    plot_pareto_front(study, target_names=target_names)
-    return
-
-
-@app.cell
-def _(plot_pareto_front, study, target_names):
-    plot_pareto_front(study, target_names=target_names, include_dominated_trials=False)
-    return
-
-
-@app.cell
 def _(log, log_pretty, study):
-    _best = min(study.best_trials, key=lambda t: t.values[0] + 0.5 * t.values[1])
+    _best = study.best_trial
     log.info(f"Best number: {_best.number}")
-    log.info(f"Best values: {_best.values}")
+    log.info(f"Best value: {_best.value}")
     log.info(f"Best params: \n{log_pretty(_best.params)}")
     return
 
@@ -781,31 +731,28 @@ def _(np, optuna, pd):
         study_name: str,
         storage: str = "sqlite:///spp_trials.db",
         n_results: int = 5,
-        ci_scaler: float = 0.25,
     ) -> pd.DataFrame:
         _study = optuna.load_study(study_name=study_name, storage=storage)
         trials = pd.DataFrame(
             [
-                {"number": s.number, "values": s.values, "params": s.params}
+                {
+                    "number": s.number,
+                    "value": s.value if s.value is not None else np.nan,
+                    "params": s.params,
+                    "model_path": s.user_attrs.get("model_path"),
+                }
                 for s in _study.trials
             ]
         )
-        trials["total_value"] = [
-            v[0] + ci_scaler * v[1] if v else np.nan for v in trials["values"]
-        ]
-        trials["model_path"] = [
-            s.user_attrs["model_path"] if s.user_attrs else None
-            for s in _study.trials
-        ]
         trials = trials[~trials.params.duplicated()]
-        return trials.sort_values("total_value").head(n_results)
+        return trials.sort_values("value").head(n_results)
 
     return (get_best_trials,)
 
 
 @app.cell
 def _(get_best_trials, study_name):
-    best_trials = get_best_trials(study_name, ci_scaler=0.5, n_results=5)
+    best_trials = get_best_trials(study_name, n_results=5)
     best_trials
     return (best_trials,)
 
@@ -824,19 +771,23 @@ def _(mo):
 
 @app.cell
 def _(TFTModel, TSMixerModel, TiDEModel, best_trials, torch):
+    # weights_only=False: torch 2.6+ defaults torch.load to weights_only=True,
+    # which refuses to unpickle Darts' QuantileRegression likelihood in the
+    # Lightning checkpoint. These are our own trial checkpoints written this
+    # run to a local dir (trusted source), so full unpickling is safe.
     forecasting_models = []
     for _m in best_trials.model_path:
         if "ts_mixer" in _m.lower():
             forecasting_models += [
-                TSMixerModel.load(_m, map_location=torch.device("cpu"))
+                TSMixerModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         elif "tide" in _m.lower():
             forecasting_models += [
-                TiDEModel.load(_m, map_location=torch.device("cpu"))
+                TiDEModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         elif "tft" in _m.lower():
             forecasting_models += [
-                TFTModel.load(_m, map_location=torch.device("cpu"))
+                TFTModel.load(_m, map_location=torch.device("cpu"), weights_only=False)
             ]
         else:
             raise ValueError(f"Unsupported MODEL_TYPE: {_m}")

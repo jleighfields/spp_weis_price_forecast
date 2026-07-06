@@ -40,17 +40,13 @@ from pytz.exceptions import NonExistentTimeError
 
 log = logging.getLogger(__name__)
 
-# adding module folder to system path
-# needed for running scripts as jobs
-home = os.getenv('HOME')
-module_paths = [
-    f'{home}/spp_weis_price_forecast/src',
-    f'{home}/Documents/github/spp_weis_price_forecast/src',
-    '/cloud/project/src'
-]
-for module_path in module_paths:
-    if os.path.isdir(module_path):
-        sys.path.insert(0, module_path)
+# Put this module's own directory (src/) on sys.path so the bare intra-src
+# imports below resolve no matter where the app, a notebook, or a job is
+# launched from. Deriving it from __file__ works on any machine/checkout
+# path, unlike hardcoded HOME-relative guesses.
+_src_dir = os.path.dirname(os.path.abspath(__file__))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 from data_collection import (  # noqa: E402
     N_JOBS,

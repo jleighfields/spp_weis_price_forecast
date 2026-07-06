@@ -429,6 +429,21 @@ def _(
 
 
 @app.cell
+def _(all_series, futr_cov, loaded_model, log, past_cov):
+    # Score the freshly-trained ensemble on the West holdout so every retrain
+    # reports its backtest metrics (CRPS, coverage/width, MAE/RMSE/bias, tail).
+    # Runs after promotion and is wrapped so a scoring error never aborts a
+    # retrain that already staged/promoted.
+    try:
+        from src.evaluation import backtest_report
+
+        backtest_report(loaded_model, all_series, past_cov, futr_cov)
+    except Exception as _e:
+        log.warning(f"backtest scoring skipped: {_e}")
+    return
+
+
+@app.cell
 def _(log, t0, time):
     _t1 = time()
     log.info("finished retraining")

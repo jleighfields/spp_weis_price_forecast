@@ -131,7 +131,7 @@ class TestLoadEnsembleFromDir:
         self, mock_listdir, mock_ensemble, mock_pickle,
     ):
         """pickle loads TRAIN_TIMESTAMP.pkl and returns it as second tuple element."""
-        mock_listdir.return_value = ['TRAIN_TIMESTAMP.pkl']
+        mock_listdir.return_value = ['tide_0.pt', 'TRAIN_TIMESTAMP.pkl']
         expected_ts = pd.Timestamp('2026-02-28 08:30:00', tz='UTC')
         mock_pickle.return_value = expected_ts
         mock_ensemble.return_value = MagicMock(name='ensemble')
@@ -149,10 +149,10 @@ class TestLoadEnsembleFromDir:
     @patch('modeling.pickle.load')
     @patch('modeling.NaiveEnsembleModel')
     @patch('modeling.os.listdir')
-    def test_empty_directory(
+    def test_empty_directory_raises(
         self, mock_listdir, mock_ensemble, mock_pickle,
     ):
-        """No .pt files → ensemble built with empty list (no error)."""
+        """No .pt files → raise rather than serve a zero-model ensemble."""
         mock_listdir.return_value = ['TRAIN_TIMESTAMP.pkl']
         mock_pickle.return_value = pd.Timestamp('2026-03-01', tz='UTC')
         mock_ensemble.return_value = MagicMock(name='ensemble')
@@ -162,10 +162,29 @@ class TestLoadEnsembleFromDir:
             'tide_': _make_model_mock('TiDEModel'),
             'tft': _make_model_mock('TFTModel'),
         }):
-            modeling.load_ensemble_from_dir('/tmp/models')
+            with pytest.raises(ValueError, match='no loadable model checkpoints'):
+                modeling.load_ensemble_from_dir('/tmp/models')
 
-        call_kwargs = mock_ensemble.call_args
-        assert call_kwargs.kwargs['forecasting_models'] == []
+    @patch('builtins.open', mock_open(read_data=b''))
+    @patch('modeling.pickle.load')
+    @patch('modeling.NaiveEnsembleModel')
+    @patch('modeling.os.listdir')
+    def test_unmatched_checkpoint_raises(
+        self, mock_listdir, mock_ensemble, mock_pickle,
+    ):
+        """A .pt file matching no class substring raises instead of being
+        silently dropped into a smaller ensemble."""
+        mock_listdir.return_value = ['mystery_0.pt', 'TRAIN_TIMESTAMP.pkl']
+        mock_pickle.return_value = pd.Timestamp('2026-03-01', tz='UTC')
+        mock_ensemble.return_value = MagicMock(name='ensemble')
+
+        with patch.dict(modeling.MODEL_CLASS_MAP, {
+            'tsmixer': _make_model_mock('TSMixerModel'),
+            'tide_': _make_model_mock('TiDEModel'),
+            'tft': _make_model_mock('TFTModel'),
+        }):
+            with pytest.raises(ValueError, match='matches no known'):
+                modeling.load_ensemble_from_dir('/tmp/models')
 
     @patch('builtins.open', mock_open(read_data=b''))
     @patch('modeling.pickle.load')

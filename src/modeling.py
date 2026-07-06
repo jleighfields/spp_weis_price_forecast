@@ -53,17 +53,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# adding module folder to system path
-# needed for running scripts as jobs
-home = os.getenv('HOME')
-module_paths = [
-    f'{home}/spp_weis_price_forecast/src',
-    f'{home}/Documents/github/spp_weis_price_forecast/src',
-]
-for module_path in module_paths:
-    if os.path.isdir(module_path):
-        log.info('adding module path')
-        sys.path.insert(0, module_path)
+# Put this module's own directory (src/) on sys.path so the bare intra-src
+# import below resolves no matter where the app, a notebook, or a job is
+# launched from. Deriving it from __file__ works on any machine/checkout
+# path, unlike hardcoded HOME-relative guesses.
+_src_dir = os.path.dirname(os.path.abspath(__file__))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 import parameters
 
@@ -557,6 +553,12 @@ def load_ensemble_from_dir(
 
     Returns:
         A tuple of (ensemble_model, train_timestamp).
+
+    Raises:
+        ValueError: If a ``.pt`` checkpoint matches no class in
+            ``MODEL_CLASS_MAP`` (refusing to silently drop it into a
+            smaller ensemble), or if no loadable checkpoints are found in
+            ``model_dir`` (refusing to build a zero-model ensemble).
     """
     local_files = os.listdir(model_dir)
 
@@ -570,18 +572,38 @@ def load_ensemble_from_dir(
     ]
 
     # Load each checkpoint with the appropriate Darts model class,
-    # determined by matching filename substrings.
+    # determined by matching filename substrings. A checkpoint that
+    # matches no class is a silent-drop hazard (a renamed or re-serialized
+    # file would shrink the ensemble with no error), so fail loud instead.
     forecasting_models = []
     for pt_file in pt_files:
         for name_pattern, model_class in MODEL_CLASS_MAP.items():
             if name_pattern in pt_file:
                 log.info(f'loading {model_class.__name__}: {pt_file}')
+                # weights_only=False: torch 2.6+ defaults torch.load to
+                # weights_only=True, which refuses to unpickle Darts'
+                # QuantileRegression likelihood stored in the Lightning
+                # checkpoint. These checkpoints are our own artifacts pulled
+                # from our private R2 bucket (a trusted source), so full
+                # unpickling is safe here.
                 model = model_class.load(
                     os.path.join(model_dir, pt_file),
                     map_location=torch.device('cpu'),
+                    weights_only=False,
                 )
                 forecasting_models.append(model)
                 break
+        else:
+            raise ValueError(
+                f'checkpoint {pt_file!r} in {model_dir} matches no known '
+                f'model class {list(MODEL_CLASS_MAP)}; refusing to build a '
+                'silently-truncated ensemble'
+            )
+
+    if not forecasting_models:
+        raise ValueError(
+            f'no loadable model checkpoints found in {model_dir}'
+        )
 
     # Combine all individual models into a NaiveEnsembleModel that
     # averages their predictions at inference time.
