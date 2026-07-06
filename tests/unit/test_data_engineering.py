@@ -33,8 +33,11 @@ def sample_lmp_data():
         'Interval_HE': dates,
         'GMTIntervalEnd_HE': dates + pd.Timedelta('6h'),  # UTC offset
         'timestamp_mst_HE': dates,
-        'Settlement_Location_Name': ['PSCO_NODE1'] * 50 + ['PSCO_NODE2'] * 50,
-        'PNODE_Name': ['PNODE1'] * 50 + ['PNODE2'] * 50,
+        # real West hub/BA nodes so prep_lmp's node-list filter keeps them
+        'Settlement_Location_Name': ['SWPW_HUB'] * 50 + ['PSCO'] * 50,
+        'PNODE_Name': ['SWPW_HUB'] * 50 + ['PSCO'] * 50,
+        'BAA': ['SWPW'] * 100,
+        'source': ['im'] * 100,
         'LMP': np.random.uniform(20, 50, 100).tolist(),
         'MLC': np.random.uniform(0, 2, 100).tolist(),
         'MCC': np.random.uniform(0, 1, 100).tolist(),
@@ -51,6 +54,8 @@ def sample_mtlf_data():
         'Interval': dates,
         'GMTIntervalEnd': dates + pd.Timedelta('6h'),
         'timestamp_mst': dates,
+        'BAA': ['SWPW'] * 100,
+        'source': ['im'] * 100,
         'MTLF': np.random.uniform(1400, 1800, 100).astype(int).tolist(),
         'Averaged_Actual': np.random.uniform(1380, 1820, 100).tolist(),
     }
@@ -65,6 +70,8 @@ def sample_mtrf_data():
         'Interval': dates,
         'GMTIntervalEnd': dates + pd.Timedelta('6h'),
         'timestamp_mst': dates,
+        'BAA': ['SWPW'] * 100,
+        'source': ['im'] * 100,
         'Wind_Forecast_MW': np.random.uniform(400, 600, 100).tolist(),
         'Solar_Forecast_MW': np.random.uniform(100, 400, 100).tolist(),
     }
@@ -132,33 +139,42 @@ class TestPrepLmp:
 
         assert isinstance(result, pl.DataFrame)
 
-    def test_filters_by_location(self, mock_duckdb_connection):
-        """Test that location filter works correctly."""
+    def test_filters_to_west_nodes(self, mock_duckdb_connection):
+        """Only West hub/BA nodes survive the default filter."""
         import data_engineering as de
 
-        result = de.prep_lmp(mock_duckdb_connection, start_time=pd.Timestamp('2023-01-01'), loc_filter='PSCO_')
+        result = de.prep_lmp(mock_duckdb_connection, start_time=pd.Timestamp('2023-01-01'))
 
-        # All rows should contain PSCO_ in unique_id
-        unique_ids = result['unique_id'].unique().to_list()
-        assert all('PSCO_' in uid for uid in unique_ids)
+        unique_ids = set(result['unique_id'].unique().to_list())
+        assert unique_ids
+        assert unique_ids <= set(de.node_list.WEST_HUB_BA_NODES)
 
-    def test_excludes_arpa_locations(self, mock_duckdb_connection):
-        """Test that ARPA locations are excluded."""
+    def test_nodes_param_restricts_locations(self, mock_duckdb_connection):
+        """The nodes argument narrows the kept settlement locations."""
         import data_engineering as de
 
-        # Add an ARPA location to the test data
+        result = de.prep_lmp(
+            mock_duckdb_connection, start_time=pd.Timestamp('2023-01-01'), nodes=['SWPW_HUB']
+        )
+
+        assert result['unique_id'].unique().to_list() == ['SWPW_HUB']
+
+    def test_excludes_east_baa(self, mock_duckdb_connection):
+        """The BAA filter drops non-West rows even for a West node name."""
+        import data_engineering as de
+
+        # BPA is in the modeled node list (passes the node whitelist), so
+        # tagging this row BAA='SPP' isolates the BAA filter: only it excludes it.
         con = mock_duckdb_connection
         con.execute("""
             INSERT INTO lmp VALUES
             ('2023-06-01 00:00:00', '2023-06-01 06:00:00', '2023-06-01 00:00:00',
-             'PSCO_ARPA_NODE', 'PNODE_ARPA', 30.0, 1.0, 0.5, 28.5)
+             'BPA', 'BPA', 'SPP', 'im', 30.0, 1.0, 0.5, 28.5)
         """)
 
         result = de.prep_lmp(con, start_time=pd.Timestamp('2023-01-01'))
 
-        # No ARPA locations should be present
-        unique_ids = result['unique_id'].unique().to_list()
-        assert not any('_ARPA' in uid for uid in unique_ids)
+        assert 'BPA' not in result['unique_id'].unique().to_list()
 
     def test_filters_by_start_time(self, mock_duckdb_connection):
         """Test that start_time filter works."""
@@ -383,8 +399,10 @@ class TestPrepAllDf:
             'Interval_HE': list(dates) * 2,
             'GMTIntervalEnd_HE': list(dates + pd.Timedelta('6h')) * 2,
             'timestamp_mst_HE': list(dates) * 2,
-            'Settlement_Location_Name': ['PSCO_NODE1'] * 200 + ['PSCO_NODE2'] * 200,
-            'PNODE_Name': ['PNODE1'] * 200 + ['PNODE2'] * 200,
+            'Settlement_Location_Name': ['SWPW_HUB'] * 200 + ['PSCO'] * 200,
+            'PNODE_Name': ['SWPW_HUB'] * 200 + ['PSCO'] * 200,
+            'BAA': ['SWPW'] * 400,
+            'source': ['im'] * 400,
             'LMP': np.random.uniform(20, 50, 400).tolist(),
             'MLC': np.random.uniform(0, 2, 400).tolist(),
             'MCC': np.random.uniform(0, 1, 400).tolist(),
@@ -396,6 +414,8 @@ class TestPrepAllDf:
             'Interval': dates,
             'GMTIntervalEnd': dates + pd.Timedelta('6h'),
             'timestamp_mst': dates,
+            'BAA': ['SWPW'] * 200,
+            'source': ['im'] * 200,
             'MTLF': np.random.uniform(1400, 1800, 200).astype(int).tolist(),
             'Averaged_Actual': np.random.uniform(1380, 1820, 200).tolist(),
         })
@@ -405,6 +425,8 @@ class TestPrepAllDf:
             'Interval': dates,
             'GMTIntervalEnd': dates + pd.Timedelta('6h'),
             'timestamp_mst': dates,
+            'BAA': ['SWPW'] * 200,
+            'source': ['im'] * 200,
             'Wind_Forecast_MW': np.random.uniform(400, 600, 200).tolist(),
             'Solar_Forecast_MW': np.random.uniform(100, 400, 200).tolist(),
         })
@@ -514,6 +536,7 @@ class TestAllDfToPandas:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 10).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 10).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 10).tolist(),
+            'break_indicator': [1.0] * 10,
             'temperature': np.random.uniform(15, 30, 10).tolist(),
         })
 
@@ -547,6 +570,7 @@ class TestAllDfToPandas:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 10).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 10).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 10).tolist(),
+            'break_indicator': [1.0] * 10,
             'temperature': np.random.uniform(15, 30, 10).tolist(),
         })
 
@@ -572,8 +596,10 @@ class TestGetTrainTestAll:
             'Interval_HE': list(dates) * 2,
             'GMTIntervalEnd_HE': list(dates + pd.Timedelta('6h')) * 2,
             'timestamp_mst_HE': list(dates) * 2,
-            'Settlement_Location_Name': ['PSCO_NODE1'] * 1000 + ['PSCO_NODE2'] * 1000,
-            'PNODE_Name': ['PNODE1'] * 1000 + ['PNODE2'] * 1000,
+            'Settlement_Location_Name': ['SWPW_HUB'] * 1000 + ['PSCO'] * 1000,
+            'PNODE_Name': ['SWPW_HUB'] * 1000 + ['PSCO'] * 1000,
+            'BAA': ['SWPW'] * 2000,
+            'source': ['im'] * 2000,
             'LMP': np.random.uniform(20, 50, 2000).tolist(),
             'MLC': np.random.uniform(0, 2, 2000).tolist(),
             'MCC': np.random.uniform(0, 1, 2000).tolist(),
@@ -692,6 +718,7 @@ class TestGetFutrCov:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 50).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 50).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 50).tolist(),
+            'break_indicator': [1.0] * 50,
             'temperature': np.random.uniform(15, 30, 50).tolist(),
         }, index=dates)
 
@@ -741,16 +768,12 @@ class TestCreateDatabase:
         """Test that function returns a DuckDB connection and creates tables from S3."""
         import data_engineering as de
 
-        # Mock get_parquet_files to return file keys
-        mock_parquet_files = [f'data/{ds}.parquet' for ds in ['lmp', 'mtrf', 'mtlf']]
-
         # Create a mock connection
         mock_con = MagicMock(spec=duckdb.DuckDBPyConnection)
 
         with patch('data_engineering.duckdb.connect', return_value=mock_con):
-            with patch('data_engineering.utils.get_parquet_files', return_value=mock_parquet_files):
-                with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
-                    con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf'])
+            with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
+                con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf'])
 
         # Verify connection was returned
         assert con == mock_con
@@ -759,8 +782,10 @@ class TestCreateDatabase:
         mock_con.sql.assert_any_call("INSTALL httpfs;")
         mock_con.sql.assert_any_call("LOAD httpfs;")
 
-        # Verify execute was called for each dataset with S3 read_parquet
+        # Verify execute reads each dataset from the data_im/ prefix over S3
         execute_calls = [str(call) for call in mock_con.execute.call_args_list]
-        assert any('lmp' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)
-        assert any('mtrf' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)
-        assert any('mtlf' in call and 'read_parquet' in call and 's3://' in call for call in execute_calls)
+        for ds in ['lmp', 'mtrf', 'mtlf']:
+            assert any(
+                ds in call and 'read_parquet' in call and 's3://' in call and 'data_im/' in call
+                for call in execute_calls
+            )

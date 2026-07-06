@@ -1,5 +1,6 @@
 """
-Data engineering module for SPP WEIS price forecasting.
+Data engineering module for SPP western-market (RTO West / Integrated
+Marketplace) price forecasting.
 
 This module provides functions to prepare data for model training and forecasting
 using polars for data manipulation and duckdb for database operations. It handles:
@@ -28,10 +29,9 @@ from darts.dataprocessing.transformers import MissingValuesFiller
 from darts import TimeSeries
 
 import warnings
-warnings.filterwarnings("ignore")
-
-# logging
 import logging
+
+warnings.filterwarnings("ignore")
 
 # define log
 logging.basicConfig(level=logging.INFO)
@@ -50,8 +50,8 @@ for module_path in module_paths:
         log.info('adding module path')
         sys.path.insert(0, module_path)
 
-import parameters
-import utils  # AWS S3 utility functions for bucket operations
+import parameters  # noqa: E402  (imported after the sys.path shim above)
+import node_list  # noqa: E402
 
 
 #############################################
@@ -66,6 +66,11 @@ FUTR_COLS = [
     'load_net_re_diff_rolling_3',
     'load_net_re_diff_rolling_4',
     'load_net_re_diff_rolling_6',
+    # 0 before the 2026-04-01 WEIS->RTO West seam, 1 after; lets the model
+    # learn the regime shift. Known over the forecast horizon (constant 1
+    # post-seam), so it is a future covariate. Drop it once the training
+    # window no longer spans the seam (~2027-04), when it degenerates.
+    'break_indicator',
     # 'temperature',
 ]
 
@@ -97,7 +102,7 @@ def create_database(
 
     Args:
         datasets: List of dataset names to load. Each name corresponds
-            to a parquet file in S3 (e.g., 'lmp' -> 'data/lmp.parquet').
+            to a parquet file in S3 (e.g., 'lmp' -> 'data_im/lmp.parquet').
             Defaults to ['lmp', 'mtrf', 'mtlf'].
 
     Returns:
@@ -110,15 +115,10 @@ def create_database(
     """
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
-    assert AWS_S3_BUCKET
+    if not AWS_S3_BUCKET:
+        raise ValueError('AWS_S3_BUCKET env var is not set')
     log.info(f'{AWS_S3_BUCKET = }')
     log.info(f'{AWS_S3_FOLDER = }')
-
-    # List all objects in the S3 folder and filter for parquet files
-    # object_name = f'{AWS_S3_FOLDER}data/{target}.parquet'
-    # s3_path_target = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{target}.parquet'
-    # parquet_files = utils.get_parquet_files()
-    # parquet_files = [ for ds in datasets]
 
     con = duckdb.connect()
     con.sql("INSTALL httpfs;")
@@ -138,10 +138,12 @@ def create_database(
         con.sql(f"SET s3_region = '{s3_region}';")
 
     for ds in datasets:
-        # Match dataset name to S3 parquet file key
-        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{ds}.parquet'
+        # Match dataset name to S3 parquet file key. RTO West / Integrated
+        # Marketplace data lives under data_im/ (WEIS data/ is retired).
+        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data_im/{ds}.parquet'
         log.info(f'loading {ds} from {pf}')
-        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('{pf}')")
+        # ds (dataset name) and pf (S3 path) are code-controlled, not user input
+        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('{pf}')")  # noqa: S608
 
     return con
 
@@ -153,14 +155,15 @@ def prep_lmp(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
-    loc_filter: str = 'PSCO_',
+    baa: str = node_list.WEST_BAA,
+    nodes: Optional[List[str]] = None,
     clip_outliers: bool = False,
 ) -> pl.DataFrame:
     """
     Prepare LMP (Locational Marginal Price) data from DuckDB.
 
     Filters, transforms, and engineers features for LMP price data including
-    location filtering, time range filtering, outlier clipping, and price
+    BAA/location filtering, time range filtering, outlier clipping, and price
     differencing calculations.
 
     Args:
@@ -168,8 +171,10 @@ def prep_lmp(
         start_time: Start of time range filter. If None, uses TRAIN_START
             parameter (default ~1.5 years ago).
         end_time: End of time range filter. If None, no upper bound.
-        loc_filter: String pattern to filter Settlement_Location_Name.
-            Defaults to 'PSCO_' for Public Service of Colorado nodes.
+        baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
+            the data_im/ table holds both BAAs.
+        nodes: Settlement locations to keep. Defaults to the modeled/app node
+            list (node_list.MODEL_APP_NODES).
         clip_outliers: If True, clip LMP values to 0.25% and 99.75% quantiles.
 
     Returns:
@@ -178,12 +183,17 @@ def prep_lmp(
     """
     lmp = con.execute("SELECT * FROM lmp").pl()
 
-    # filter by location
-    lmp = lmp.filter(pl.col("Settlement_Location_Name").str.contains(loc_filter))
+    # filter to the West BAA and the modeled/app nodes
+    if nodes is None:
+        nodes = node_list.MODEL_APP_NODES
+    lmp = lmp.filter(
+        (pl.col("BAA") == baa)
+        & pl.col("Settlement_Location_Name").is_in(nodes)
+    )
 
     drop_cols = [
         'Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE',
-        'Settlement_Location_Name', 'PNODE_Name',
+        'Settlement_Location_Name', 'PNODE_Name', 'BAA', 'source',
         'MLC', 'MCC', 'MEC'
     ]
 
@@ -210,7 +220,6 @@ def prep_lmp(
         lmp
         .drop('file_create_time_utc', 'url', strict=False)
         .with_columns(pl.col("Settlement_Location_Name").alias("unique_id"))
-        .filter(~pl.col("unique_id").str.contains("_ARPA"))
         .drop_nulls(subset=["unique_id"])
         .with_columns(pl.col("timestamp_mst_HE").alias("timestamp_mst"))
         .with_columns(pl.col("LMP").cast(pl.Float32))
@@ -227,97 +236,107 @@ def prep_lmp(
     return lmp
 
 
+def _prep_baa_hourly(
+    df: pl.DataFrame,
+    value_cols: List[str],
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    baa: str = node_list.WEST_BAA,
+) -> pl.DataFrame:
+    """
+    Shared prep for the per-BAA hourly forecast tables (MTLF, MTRF).
+
+    Filters to one BAA (data_im/ holds both), time-windows, casts the value
+    columns to Float32, and averages to one row per timestamp.
+
+    Args:
+        df: Raw table read from DuckDB (mtlf or mtrf).
+        value_cols: Numeric columns to keep and cast (e.g. ['MTLF', ...]).
+        start_time: Start of time range filter. If None, uses TRAIN_START.
+        end_time: End of time range filter. If None, no upper bound.
+        baa: Balancing authority area to keep (defaults to SPP West).
+
+    Returns:
+        pl.DataFrame with 'timestamp_mst' and the value columns.
+    """
+    df = df.filter(pl.col("BAA") == baa)
+    drop_cols = ['Interval', 'GMTIntervalEnd', 'BAA', 'source']
+
+    if not start_time:
+        start_time = pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START)
+    df = df.filter(pl.col("timestamp_mst") >= start_time)
+    if end_time:
+        df = df.filter(pl.col("timestamp_mst") <= end_time)
+
+    return (
+        df
+        .drop('file_create_time_utc', 'url', strict=False)
+        .with_columns([pl.col(c).cast(pl.Float32) for c in value_cols])
+        .drop([c for c in drop_cols if c in df.columns], strict=False)
+        .group_by("timestamp_mst")
+        .mean()
+        .sort("timestamp_mst")
+    )
+
+
 def prep_mtrf(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
+    baa: str = node_list.WEST_BAA,
 ) -> pl.DataFrame:
     """
     Prepare MTRF (Mid-Term Resource Forecast) data from DuckDB.
 
-    Processes renewable generation forecast data including wind and solar
-    capacity forecasts.
+    Processes renewable generation forecast data (wind and solar) for one BAA.
 
     Args:
         con: DuckDB connection with 'mtrf' table loaded.
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
+        baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
+            the data_im/ table holds both BAAs, so this must be set or the
+            forecast becomes a whole-RTO aggregate.
 
     Returns:
         pl.DataFrame: Processed MTRF data with 'timestamp_mst',
             'Wind_Forecast_MW', and 'Solar_Forecast_MW' columns.
     """
     mtrf = con.execute("SELECT * FROM mtrf").pl()
-    drop_cols = ['Interval', 'GMTIntervalEnd']
-
-    if not start_time:
-        # get last 1.5 years
-        start_time = pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START)
-
-    # TODO: handle checks for start_time < end_time
-    mtrf = mtrf.filter(pl.col("timestamp_mst") >= start_time)
-
-    if end_time:
-        mtrf = mtrf.filter(pl.col("timestamp_mst") <= end_time)
-
-    mtrf = (
-        mtrf
-        .drop('file_create_time_utc', 'url', strict=False)
-        .with_columns(pl.col("Wind_Forecast_MW").cast(pl.Float32))
-        .with_columns(pl.col("Solar_Forecast_MW").cast(pl.Float32))
-        .drop([c for c in drop_cols if c in mtrf.columns], strict=False)
-        .group_by("timestamp_mst")
-        .mean()
-        .sort("timestamp_mst")
+    return _prep_baa_hourly(
+        mtrf, ['Wind_Forecast_MW', 'Solar_Forecast_MW'],
+        start_time=start_time, end_time=end_time, baa=baa,
     )
-
-    return mtrf
 
 
 def prep_mtlf(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
+    baa: str = node_list.WEST_BAA,
 ) -> pl.DataFrame:
     """
     Prepare MTLF (Mid-Term Load Forecast) data from DuckDB.
 
-    Processes load forecast data including forecasted and actual load values.
+    Processes load forecast data (forecast and actual load) for one BAA.
 
     Args:
         con: DuckDB connection with 'mtlf' table loaded.
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
+        baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
+            the data_im/ table holds both BAAs, so this must be set or the
+            forecast becomes a whole-RTO aggregate.
 
     Returns:
         pl.DataFrame: Processed MTLF data with 'timestamp_mst', 'MTLF',
             and 'Averaged_Actual' columns.
     """
     mtlf = con.execute("SELECT * FROM mtlf").pl()
-    drop_cols = ['Interval', 'GMTIntervalEnd']
-
-    if not start_time:
-        # get last 1.5 years
-        start_time = pd.Timestamp.now() - pd.Timedelta(parameters.TRAIN_START)
-
-    # TODO: handle checks for start_time < end_time
-    mtlf = mtlf.filter(pl.col("timestamp_mst") >= start_time)
-
-    if end_time:
-        mtlf = mtlf.filter(pl.col("timestamp_mst") <= end_time)
-
-    mtlf = (
-        mtlf
-        .drop('file_create_time_utc', 'url', strict=False)
-        .with_columns(pl.col("MTLF").cast(pl.Float32))
-        .with_columns(pl.col("Averaged_Actual").cast(pl.Float32))
-        .drop([c for c in drop_cols if c in mtlf.columns], strict=False)
-        .group_by("timestamp_mst")
-        .mean()
-        .sort("timestamp_mst")
+    return _prep_baa_hourly(
+        mtlf, ['MTLF', 'Averaged_Actual'],
+        start_time=start_time, end_time=end_time, baa=baa,
     )
-
-    return mtlf
 
 
 def prep_gen_cap(
@@ -423,6 +442,8 @@ def prep_all_df(
     - Renewable energy ratios and differences
     - Load net of renewable generation
     - Rolling window aggregations for price and load differences
+    - break_indicator: the 0/1 WEIS->RTO West regime flag at the
+      2026-04-01 seam (a future covariate; see FUTR_COLS)
 
     Args:
         con: DuckDB connection with required tables loaded.
@@ -447,7 +468,7 @@ def prep_all_df(
     # weather = prep_weather(con, start_time=start_time, end_time=end_time)
 
     # join into single dataset
-    log.info(f'joining mtrf')
+    log.info('joining mtrf')
     all_df = (
         mtlf
         .join(mtrf, on="timestamp_mst", how="left")
@@ -490,6 +511,11 @@ def prep_all_df(
         .with_columns(
             (pl.col("LMP") - pl.col("LMP").shift(1).over("unique_id"))
             .cast(pl.Float32).alias("lmp_diff")
+        )
+        .with_columns(
+            # regime flag for the WEIS->RTO West seam (see FUTR_COLS note)
+            (pl.col("timestamp_mst") >= node_list.RTO_WEST_LAUNCH)
+            .cast(pl.Float32).alias("break_indicator")
         )
         .with_columns(
             ((pl.col("Wind_Forecast_MW") + pl.col("Solar_Forecast_MW")) / pl.col("MTLF"))

@@ -38,4 +38,15 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-playwright>=0.5.0",
     "ruff>=0.14.13",
+    "detect-secrets>=1.5.0",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# marimo's reactive graph relies on bare expressions (B018), cross-cell
+# imports and redefinitions (F401/F811/F821), and generated cell code
+# (E501/I001); notebooks also use assert as an interactive sanity check
+# (S101).
+"notebooks/**/*.py" = ["B018", "E501", "F401", "F811", "F821", "I001", "S101"]
+# pytest's whole model is assert (S101); test data is code-generated
+# fixtures, not real credentials (S105-S107).
+"tests/**" = ["S101", "S105", "S106", "S107"]

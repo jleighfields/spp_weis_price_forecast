@@ -1,5 +1,5 @@
 """
-Plotting utilities for the SPP WEIS LMP forecasting Streamlit app.
+Plotting utilities for the SPP IM West LMP forecasting Shiny app.
 
 This module provides functions to create visualizations of LMP price forecasts,
 including:

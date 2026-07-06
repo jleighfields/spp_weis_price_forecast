@@ -1,11 +1,15 @@
-# Model retraining notebook for SPP WEIS nodal price forecasting.
+# Model retraining notebook for SPP West (RTO West / Integrated Marketplace)
+# nodal price forecasting.
 #
 # Workflow:
 #   1. Connect to S3-backed database and prepare LMP + covariate data
 #   2. Train TSMixer, TiDE, and TFT models using top-N hyperparameter sets
 #   3. Save trained models to S3 using Darts' native serialization (.pt + .pt.ckpt)
 #   4. Reload models from S3 and verify predictions via a NaiveEnsembleModel
-#   5. Upload champion.json so the Shiny app knows which model folder to load
+#   5. Upload champion.json so the Shiny app knows which model folder to load —
+#      unless PROMOTE_CHAMPION=false, which stages the checkpoints in their
+#      timestamped folder without touching the live champion (see the promote
+#      cell for details).
 #
 # Usage:
 #   Interactive: marimo edit notebooks/model_training/model_retrain.py
@@ -133,16 +137,6 @@ def _(de):
 
 @app.cell
 def _(con, de, log):
-    log.info("preparing lmp data")
-    lmp = de.prep_lmp(con)
-    lmp_df = lmp.to_pandas().rename(
-        columns={
-            "LMP": "LMP_HOURLY",
-            "unique_id": "node",
-            "timestamp_mst": "time",
-        }
-    )
-
     log.info("preparing covariate data")
     all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
     all_df_pd.info()
@@ -156,7 +150,6 @@ def _(con, de, log):
 def _(all_df_pd, de, lmp_all, test_all, train_all, train_test_all):
     all_series = de.get_series(lmp_all)
     train_test_all_series = de.get_series(train_test_all)
-    train_series = de.get_series(train_all)
     test_series = de.get_series(test_all)
 
     futr_cov = de.get_futr_cov(all_df_pd)
@@ -399,6 +392,7 @@ def _(
     io,
     json,
     log,
+    os,
     pred,
     s3,
 ):
@@ -407,7 +401,14 @@ def _(
     # champion_artifact_folder, so no file copying to S3_models/ is needed.
     # To revert to a previous model, just update champion.json to point at
     # the old folder (see scripts/r2_promote_champion.py or the plan).
-    if pred is not None:
+    #
+    # Set PROMOTE_CHAMPION=false to train + save the checkpoints to the
+    # timestamped folder WITHOUT overwriting champion.json — used to stage a
+    # new model (e.g. the first RTO West retrain) before its serving code is
+    # deployed, so the live app keeps its current champion until they promote
+    # together.
+    promote = os.environ.get("PROMOTE_CHAMPION", "true").lower() != "false"
+    if pred is not None and promote:
         champion_json = {
             "champion": folder_time,
             "champion_artifact_folder": artifact_folder,
@@ -418,6 +419,11 @@ def _(
         s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=_buffer)
         log.info(f"Uploaded champion model json: {champion_key}")
         log.info(f"champion_json: {champion_json}")
+    elif pred is not None:
+        log.info(
+            f"PROMOTE_CHAMPION=false: saved checkpoints to {artifact_folder} "
+            "but did NOT promote champion.json (staged, not live)."
+        )
     else:
         log.warning("Prediction failed, not promoting champion")
     return

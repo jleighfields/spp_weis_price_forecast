@@ -14,7 +14,7 @@ from shiny.playwright import controller
 def test_app_title(page: Page, app):
     """Page title matches the expected value."""
     page.goto(app.url)
-    expect(page).to_have_title("SPP Weis Nodal Price Forecast")
+    expect(page).to_have_title("SPP IM West Nodal Price Forecast")
 
 
 def test_sidebar_inputs_render(page: Page, app):
