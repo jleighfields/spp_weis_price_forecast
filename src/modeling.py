@@ -140,7 +140,7 @@ def build_fit_tsmixerx(
     MODEL_TYPE = "ts_mixer_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
@@ -276,11 +276,11 @@ def build_fit_tide(
     MODEL_TYPE = "tide_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    # Default quantile set; callers can pass a wider-tailed set (e.g. adding
-    # 0.005/0.995) to let the model predict further into the spike/negative
-    # tails. The QuantileRegression likelihood is trained on exactly these.
+    # Default to the single-home quantile set in parameters (wider-tailed, so
+    # the model represents the spike/negative tails); callers can pass a custom
+    # set to override (e.g. a narrower set for an ablation).
     if quantiles is None:
-        quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+        quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
@@ -410,7 +410,7 @@ def build_fit_tft(
     MODEL_TYPE = "tft_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()

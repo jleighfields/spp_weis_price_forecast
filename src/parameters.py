@@ -19,6 +19,19 @@ USE_TFT = False
 
 TOP_N = 5
 
+# Single home for the QuantileRegression quantile set the models are trained
+# on (the three build_fit_* functions in src/modeling.py read this). Wider
+# than the old 0.01..0.99 set: the extra 0.001/0.005/0.025 and 0.975/0.995/
+# 0.999 levels let the model represent the spike/negative tails, which gives
+# a small CRPS gain and honest far-tail (99%) bands for the app. Evaluated
+# out-of-sample vs the standard set; see plans/model_improvements_volatility.md.
+QUANTILES = [
+    0.001, 0.005, 0.01, 0.025,
+    0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+    0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95,
+    0.975, 0.99, 0.995, 0.999,
+]
+
 
 ## set of encoders for experiment
 ENCODERS = {}
