@@ -390,12 +390,31 @@ history exists. **Effort:** low to try zero-shot; medium to fine-tune. VRAM is
 no longer a constraint on the current **GB10** box (large unified memory);
 the 120–260M-param models fit comfortably.
 
-### 5. Regime-aware modeling (research spike, lower priority)
-The deep negatives are a distinct regime. Options to explore: a
-classification model (0.37) predicting negative/spike hours as an extra
-future covariate, or an asymmetric/heavy-tailed quantile set. **Hypothesis:**
-explicitly modeling the negative-price regime reduces tail error.
-**Effort:** high, exploratory.
+### 5. Regime-aware modeling — ⚠️ FEASIBILITY-CHECKED, low expected payoff
+Before building a regime model, a cheap predictability check (HistGradientBoosting
+classifier on the **future-known** covariates, honest time split) asked whether
+the tail regimes are even predictable:
+
+| Target | Base rate | ROC-AUC | PR-AUC |
+|---|---|---|---|
+| spike \|LMP\|>$100 | 1.5% | **0.57** | 0.018 (≈ base rate) |
+| high LMP>$100 | 1.2% | 0.69 | 0.032 |
+| neg LMP<0 | 16% | **0.70** | 0.39 |
+
+**Conclusion:** positive scarcity spikes are **essentially unpredictable** from
+load/renewable forecasts (AUC 0.57, PR-AUC at base rate) — they're grid events
+(outages/congestion) not in our feature set, and a 120-h horizon can't use
+recent-LMP autocorrelation. So **no regime model fixes spike-tail coverage with
+current data.** Negative-price hours *are* predictable (AUC 0.70) — but the
+forecaster already ingests the predictive covariates (`re_ratio`,
+`load_net_re`), so a classifier covariate would mostly duplicate signal it has.
+**Recommendation: don't build the full regime model.** The tail ceiling here is
+a *data* limit (need outage/congestion/transmission feeds) not a *model* limit;
+the wider-quantile champion is a sensible stopping point on tails. (Feasibility
+script in scratchpad.)
+
+Original idea (superseded): a classification model (0.37) predicting
+negative/spike hours as an extra future covariate, or an asymmetric quantile set.
 
 ## Suggested sequencing
 
