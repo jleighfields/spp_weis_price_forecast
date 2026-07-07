@@ -265,6 +265,9 @@ def build_fit_tide(
         n_epochs: Number of training epochs.
         dropout: Dropout probability.
         encoder_key: Key for time encoders from parameters.ENCODERS.
+        quantiles: Quantile levels for the QuantileRegression likelihood.
+            If None, defaults to parameters.QUANTILES (the single-home,
+            wider-tailed set the other builders also use).
         force_reset: Reset model checkpoint if exists.
         callbacks: Optional list of PyTorch Lightning callbacks.
         model_id: Model identifier for checkpointing.
