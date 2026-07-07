@@ -43,10 +43,19 @@ Work is underway on branch `rto-west-volatility-improvements`.
   x86 with torch pinned to 2.11.0). The app is confirmed working on the retuned
   champion. Revert model: `python scripts/r2_promote_champion.py
   2026-07-06_12-41-45 --promote`.
-- **Experiment 1 (conformal) — EVALUATED, not adopting.** Out-of-sample test
-  showed conformal improves calibration slightly (coverage 0.85→0.88) but
-  worsens CRPS and doesn't fix the extreme tails. See Experiment 1. The tail
-  weakness now points to Experiment 5 (regime/heavier-tailed quantiles).
+- **Wider tail quantiles — ADOPTED + PROMOTED (2026-07-07).**
+  `parameters.QUANTILES` (27 levels) is now the single home for the quantile
+  set; the champion retrained with it (`model_retrains/2026-07-07_03-38-56/`)
+  and is live. Full-harness vs the prior champion: **coverage 0.85→0.88**
+  (toward nominal), tail cov 0.19→0.23, neg cov 0.56→0.59, bias −0.33→0.05, at
+  essentially unchanged CRPS (17.22→17.37, within noise). Honest-CI win. Revert:
+  `r2_promote_champion.py 2026-07-06_17-48-05 --promote`.
+- **Experiment 1 (conformal) — re-opened.** Initially shelved (worsened CRPS),
+  but since honest coverage is a priority, conformal is back on the table as a
+  *serving-layer* option: OOS it lifts 90% coverage a further ~0.02–0.03 and
+  negative-hour coverage most. Next: prototype wrapping the served ensemble in
+  `ConformalQRModel` in the app load/predict path (task b). Extreme spike tails
+  (|x|>100) still unsolved by any CI tweak → Experiment 5.
 - **Note:** Connect Cloud uses `requirements.txt` only; `manifest.json` is
   vestigial for this deploy (R-only on Connect Cloud) — a candidate for removal.
 
