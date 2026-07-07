@@ -50,12 +50,16 @@ Work is underway on branch `rto-west-volatility-improvements`.
   (toward nominal), tail cov 0.19→0.23, neg cov 0.56→0.59, bias −0.33→0.05, at
   essentially unchanged CRPS (17.22→17.37, within noise). Honest-CI win. Revert:
   `r2_promote_champion.py 2026-07-06_17-48-05 --promote`.
-- **Experiment 1 (conformal) — re-opened.** Initially shelved (worsened CRPS),
-  but since honest coverage is a priority, conformal is back on the table as a
-  *serving-layer* option: OOS it lifts 90% coverage a further ~0.02–0.03 and
-  negative-hour coverage most. Next: prototype wrapping the served ensemble in
-  `ConformalQRModel` in the app load/predict path (task b). Extreme spike tails
-  (|x|>100) still unsolved by any CI tweak → Experiment 5.
+- **Experiment 1 (conformal) — REJECTED for serving (final).** Two independent
+  killers: (1) **latency** — wrapping the served ensemble in `ConformalQRModel`
+  made a single-node forecast take **~57s** (vs ~1–2s raw) because it re-runs
+  the base ensemble across a calibration window at predict time; unacceptable
+  for the interactive app. (2) **finicky** — it needs a specific volume of
+  calibration forecast/actual pairs (errored: "could only generate 90"),
+  fragile to configure on the ~3-month IM history. Its calibration gain
+  (coverage +0.02–0.03) is small and already better achieved by the wider
+  quantiles. Not integrating conformal. Prototype scripts in scratchpad only —
+  no app code changed.
 - **Note:** Connect Cloud uses `requirements.txt` only; `manifest.json` is
   vestigial for this deploy (R-only on Connect Cloud) — a candidate for removal.
 
