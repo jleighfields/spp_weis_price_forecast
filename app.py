@@ -192,6 +192,14 @@ def server(input, output, session):
         '''Blocking: download champion checkpoints from R2 and return (model, train_timestamp).'''
         with tempfile.TemporaryDirectory() as tmpdir:
             utils.download_champion_checkpoints(tmpdir)
+            # Verify the champion was trained on the same covariates this app
+            # now builds; a mismatch (e.g. a covariate added/removed since the
+            # model was trained) would otherwise surface as a cryptic
+            # component-mask error on every forecast. Raise loud instead so the
+            # model stays unloaded and the reason is obvious in the logs.
+            config = utils.load_training_config(tmpdir)
+            if config is not None:
+                utils.validate_model_covariates(config, de.FUTR_COLS, de.PAST_COLS)
             return load_ensemble_from_dir(tmpdir)
 
     @reactive.effect

@@ -61,11 +61,6 @@ FUTR_COLS = [
     'load_net_re_diff_rolling_3',
     'load_net_re_diff_rolling_4',
     'load_net_re_diff_rolling_6',
-    # 0 before the 2026-04-01 WEIS->RTO West seam, 1 after; lets the model
-    # learn the regime shift. Known over the forecast horizon (constant 1
-    # post-seam), so it is a future covariate. Drop it once the training
-    # window no longer spans the seam (~2027-04), when it degenerates.
-    'break_indicator',
     # 'temperature',
 ]
 
@@ -451,8 +446,6 @@ def prep_all_df(
     - Renewable energy ratios and differences
     - Load net of renewable generation
     - Rolling window aggregations for price and load differences
-    - break_indicator: the 0/1 WEIS->RTO West regime flag at the
-      2026-04-01 seam (a future covariate; see FUTR_COLS)
 
     Args:
         con: DuckDB connection with required tables loaded.
@@ -520,11 +513,6 @@ def prep_all_df(
         .with_columns(
             (pl.col("LMP") - pl.col("LMP").shift(1).over("unique_id"))
             .cast(pl.Float32).alias("lmp_diff")
-        )
-        .with_columns(
-            # regime flag for the WEIS->RTO West seam (see FUTR_COLS note)
-            (pl.col("timestamp_mst") >= node_list.RTO_WEST_LAUNCH)
-            .cast(pl.Float32).alias("break_indicator")
         )
         .with_columns(
             ((pl.col("Wind_Forecast_MW") + pl.col("Solar_Forecast_MW")) / pl.col("MTLF"))

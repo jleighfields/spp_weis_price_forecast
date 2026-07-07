@@ -536,7 +536,6 @@ class TestAllDfToPandas:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 10).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 10).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 10).tolist(),
-            'break_indicator': [1.0] * 10,
             'temperature': np.random.uniform(15, 30, 10).tolist(),
         })
 
@@ -570,7 +569,6 @@ class TestAllDfToPandas:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 10).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 10).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 10).tolist(),
-            'break_indicator': [1.0] * 10,
             'temperature': np.random.uniform(15, 30, 10).tolist(),
         })
 
@@ -718,7 +716,6 @@ class TestGetFutrCov:
             'load_net_re_diff_rolling_3': np.random.uniform(-150, 150, 50).tolist(),
             'load_net_re_diff_rolling_4': np.random.uniform(-200, 200, 50).tolist(),
             'load_net_re_diff_rolling_6': np.random.uniform(-300, 300, 50).tolist(),
-            'break_indicator': [1.0] * 50,
             'temperature': np.random.uniform(15, 30, 50).tolist(),
         }, index=dates)
 
