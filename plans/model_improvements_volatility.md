@@ -36,15 +36,19 @@ Work is underway on branch `rto-west-volatility-improvements`.
   intervals; the retuned `lr`~3e-4 learns the distribution (sharp ~$99 band,
   honest ~0.85 coverage). Remaining weakness: the tighter band **under-covers
   the tails** — the target for conformal (Exp 1).
-- **PROMOTED (2026-07-06):** `champion.json` → the retuned 0.45 champion
-  `model_retrains/2026-07-06_17-48-05/`. **⚠️ The live app on `main` is still
-  darts 0.41 and cannot load this 0.45 checkpoint — it breaks on next reload
-  until the 0.45 deploy lands.** Revert: `python scripts/r2_promote_champion.py
+- **PROMOTED + DEPLOYED (2026-07-06):** `champion.json` → the retuned 0.45
+  champion `model_retrains/2026-07-06_17-48-05/`; the Darts-0.45 branch merged
+  to `main` and redeployed to Posit **Connect Cloud** (which installs from
+  `requirements.txt` — regenerated via `scripts/gen_deploy_requirements.sh` for
+  x86 with torch pinned to 2.11.0). The app is confirmed working on the retuned
+  champion. Revert model: `python scripts/r2_promote_champion.py
   2026-07-06_12-41-45 --promote`.
-- **URGENT / deferred:** Regenerate Posit deploy pins (`requirements.txt` /
-  `manifest.json`) for the CPU host (not local cu128/aarch64 wheels) and merge
-  the branch to `main` to redeploy the app on 0.45 — this closes the broken
-  window opened by the promotion above.
+- **Experiment 1 (conformal) — EVALUATED, not adopting.** Out-of-sample test
+  showed conformal improves calibration slightly (coverage 0.85→0.88) but
+  worsens CRPS and doesn't fix the extreme tails. See Experiment 1. The tail
+  weakness now points to Experiment 5 (regime/heavier-tailed quantiles).
+- **Note:** Connect Cloud uses `requirements.txt` only; `manifest.json` is
+  vestigial for this deploy (R-only on Connect Cloud) — a candidate for removal.
 
 Everything below the status block is the original test plan, with the
 Experiment 0 section rewritten to record the outcome.
@@ -258,13 +262,31 @@ points at 0.41 checkpoints** → broken startup. Still the failure to avoid.
 Only after the app reproduces on 0.45 do the harness/experiments below build
 on top.
 
-### 1. Conformal intervals — `ConformalQRModel` (highest value / lowest effort)
-Wrap the existing TiDE ensemble output in conformal quantile regression to
-fix the interval calibration. **Hypothesis (revised by the baseline):** the
-0.45 baseline *over*-covers (90% band ≈ 1.00 at ~$1,412 wide), so conformal
-should **tighten** the intervals toward honest ~0.90 coverage and much
-narrower width — while improving CRPS. **Metric:** coverage, width, CRPS on
-the harness. Still the cheapest, most direct win for the CI problem.
+### 1. Conformal intervals — `ConformalQRModel` — ❌ EVALUATED, not adopting
+Wrapped the retuned ensemble in `ConformalQRModel` and scored it **out-of-sample**
+(base trained through Jun 8; conformal calibrated on Jun 8–22; tested on the
+last 14 days — the in-sample naive backtest was neutral and misleading, as the
+plan warned). Result:
+
+| model | CRPS | coverage | width | tail cov | neg cov |
+|---|---|---|---|---|---|
+| raw | **19.6** | 0.85 | **158** | 0.19 | 0.53 |
+| conformal (symmetric) | 20.1 | 0.88 | 176 | 0.22 | 0.63 |
+| conformal (asymmetric) | 21.0 | 0.86 | 181 | **0.25** | 0.58 |
+
+**Verdict:** conformal *modestly* improves calibration (coverage 0.85→0.88;
+asymmetric mode helps the tails, 0.19→0.25) but **worsens CRPS** (19.6→20–21)
+by over-widening — the retuned model is already near-calibrated (0.85≈0.90), so
+there's little to gain, and CRPS (our primary metric) penalizes the extra
+width. It also does **not** fix the extreme tails (even $180-wide bands miss 75%
+of >$100 spike hours). **Not promoting conformal.** The remaining tail weakness
+belongs to wider tail quantiles in the base model or **Experiment 5**
+(regime-aware), not conformal. (Prototype scripts in scratchpad, not committed.)
+
+**Original plan text (superseded by the result above), for reference:**
+Wrap the existing TiDE ensemble output in conformal quantile regression to fix
+the interval calibration. Works on the current ensemble; no Darts upgrade
+needed.
 
 **Works on the current ensemble, and does not need the Darts upgrade.**
 `ConformalQRModel` accepts any pre-trained `GlobalForecastingModel` and has no
