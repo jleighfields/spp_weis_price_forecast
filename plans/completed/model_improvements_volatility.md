@@ -1,5 +1,14 @@
 # Model improvements for RTO West volatility — test plan
 
+> **✅ COMPLETE (2026-07-07).** Shipped: Darts 0.41→0.45 + Blackwell GPU,
+> single-objective CRPS re-tune (**CRPS 61.4 → 17.2**), and wider tail
+> quantiles for honest CIs (coverage 0.85→0.88) — all deployed and live.
+> Ruled out with evidence: conformal intervals (57s/forecast latency) and
+> regime/spike modeling (spikes unpredictable from available data — a data
+> limit, not a model limit). The Experiment 3/4 architecture bake-off (never
+> run — optional, general-accuracy upside) was extracted into its own active
+> plan, `plans/architecture_bakeoff.md`. This plan is archived as complete.
+
 Research-backed plan for improving the West nodal price model on the new,
 much more volatile RTO West / Integrated Marketplace data.
 
@@ -372,30 +381,36 @@ Best params are logged + written to `study_csv/`; the handoff into
 `TIDE_PARAMS` in `src/parameters.py` stays manual (copy the winning trial's
 params). No plumbing change needed there.
 
-### 3. TimeXer / PatchTST via `NeuralForecastModel`
-Test both against the tuned-TiDE baseline. **TimeXer** first — it is
-designed to exploit exogenous covariates (MTLF, wind/solar, load-net-RE),
-which drive the duck-curve volatility. PatchTST second for the long
-120-hour horizon. **Hypothesis:** attention over exogenous drivers captures
-the negative-midday / evening-ramp structure better than TiDE.
-**Effort:** medium-high (new model integration + its own tuning).
+### 3–4. Architecture bake-off (TimeXer / PatchTST / foundation models) — MOVED
+Never run — the remaining *optional* upside (general accuracy, not
+tail-specific). Extracted into its own active plan,
+`plans/architecture_bakeoff.md`.
 
-### 4. Foundation models — zero-shot then fine-tuned
-Given only ~3 months of IM data, a pretrained model's priors may beat a
-from-scratch net. Test **Chronos2 / TiRex / TimesFM zero-shot first**
-(no training — cheap to try as a baseline), then `enable_finetuning` on the
-IM data. **Hypothesis:** competitive or better with far less data
-sensitivity; possibly the best interim model until a full year of IM
-history exists. **Effort:** low to try zero-shot; medium to fine-tune. VRAM is
-no longer a constraint on the current **GB10** box (large unified memory);
-the 120–260M-param models fit comfortably.
+### 5. Regime-aware modeling — ⚠️ FEASIBILITY-CHECKED, low expected payoff
+Before building a regime model, a cheap predictability check (HistGradientBoosting
+classifier on the **future-known** covariates, honest time split) asked whether
+the tail regimes are even predictable:
 
-### 5. Regime-aware modeling (research spike, lower priority)
-The deep negatives are a distinct regime. Options to explore: a
-classification model (0.37) predicting negative/spike hours as an extra
-future covariate, or an asymmetric/heavy-tailed quantile set. **Hypothesis:**
-explicitly modeling the negative-price regime reduces tail error.
-**Effort:** high, exploratory.
+| Target | Base rate | ROC-AUC | PR-AUC |
+|---|---|---|---|
+| spike \|LMP\|>$100 | 1.5% | **0.57** | 0.018 (≈ base rate) |
+| high LMP>$100 | 1.2% | 0.69 | 0.032 |
+| neg LMP<0 | 16% | **0.70** | 0.39 |
+
+**Conclusion:** positive scarcity spikes are **essentially unpredictable** from
+load/renewable forecasts (AUC 0.57, PR-AUC at base rate) — they're grid events
+(outages/congestion) not in our feature set, and a 120-h horizon can't use
+recent-LMP autocorrelation. So **no regime model fixes spike-tail coverage with
+current data.** Negative-price hours *are* predictable (AUC 0.70) — but the
+forecaster already ingests the predictive covariates (`re_ratio`,
+`load_net_re`), so a classifier covariate would mostly duplicate signal it has.
+**Recommendation: don't build the full regime model.** The tail ceiling here is
+a *data* limit (need outage/congestion/transmission feeds) not a *model* limit;
+the wider-quantile champion is a sensible stopping point on tails. (Feasibility
+script in scratchpad.)
+
+Original idea (superseded): a classification model (0.37) predicting
+negative/spike hours as an extra future covariate, or an asymmetric quantile set.
 
 ## Suggested sequencing
 

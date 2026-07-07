@@ -5,8 +5,8 @@ notebooks + Modal jobs collect SPP marketplace data into R2 (S3-compatible)
 storage, `src/` holds the pipeline (collection → engineering → Darts
 models), and `app.py` serves forecasts via Shiny, deployed to Posit
 Connect. The project is migrating from the retired WEIS market to RTO
-West / Integrated Marketplace feeds — the live plan is
-`plans/weis_to_rto_west_migration.md`.
+West / Integrated Marketplace feeds; in-progress and completed design
+plans live under `plans/` (finished ones in `plans/completed/`).
 
 ## Skills (Slash Commands)
 
@@ -134,3 +134,9 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
 - **Style:** Google-style docstrings (summary, Args, Returns),
   `X | None` over `Optional[X]`, direct imports for type hints, no `_`
   prefix on function names except internal helpers.
+- **Don't reference `plans/` files from code, comments, docstrings, or
+  READMEs.** Plans get moved (e.g. to `plans/completed/`), renamed, or
+  deleted, which turns any such reference into a broken pointer. Make the
+  comment self-contained instead — state the fact/rationale inline rather
+  than deferring to a plan. (Plans may reference each other and the code;
+  the code just shouldn't reference the plans.)

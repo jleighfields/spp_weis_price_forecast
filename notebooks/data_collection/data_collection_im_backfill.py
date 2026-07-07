@@ -7,7 +7,7 @@
 #   * 2026-04-01 -> now: both BAAs, all hub/BA nodes (IM era)
 #   * 2025-04-01 -> 2026-03-31: East hubs only, BAA='SPP' (pre-launch East era)
 # The WEIS West stitch (<= 2026-03-31, BAA='SWPW') is a separate one-time
-# script: scripts/weis_stitch_fill.py. See plans/weis_to_rto_west_migration.md.
+# script: scripts/weis_stitch_fill.py.
 #
 # Usage:
 #   Interactive: marimo edit notebooks/data_collection/data_collection_im_backfill.py

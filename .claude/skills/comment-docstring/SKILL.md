@@ -62,7 +62,7 @@ and the next developer follows the README into the wrong mental model.
 |---|---|
 | `src/`, `app.py`, `modal_jobs/`, `notebooks/` | root `README.md` |
 | `scripts/` | `scripts/README.md` |
-| Anything renaming feeds, storage prefixes, model names, or node scope | `plans/weis_to_rto_west_migration.md` (the live migration plan) |
+| Anything renaming feeds, storage prefixes, model names, or node scope | the active plan(s) under `plans/` |
 | Anything that changes repo-level architecture, conventions, or shared SSoT locations | `CLAUDE.md` (root) and `README.md` (root) |
 
 ### What to look for
