@@ -114,6 +114,13 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   logic. Notebooks are marimo `.py` files (git-friendly, runnable as
   scripts) — edit them as Python, keep cells as separate `@app.cell`
   defs, and put shared logic in `src/`.
+- **Updating a Modal job: redeploy in place, never stop + deploy anew.**
+  `modal deploy modal_jobs/<job>.py` updates the existing app to a new
+  *version* (same app, stays deployed — see `modal app history`); the code
+  is baked in from local `src/`/`notebooks/` at deploy time, so redeploy
+  after any change. Do **not** `modal app stop` and deploy a renamed app:
+  Modal has no way to delete a stopped app, so that leaves permanent
+  dashboard clutter. (Ephemeral `modal run` also leaves stopped-app records.)
 - **The Databricks jobs in `databricks.yaml` are PAUSED** — Modal
   replaced them. Don't revive them.
 - **R2 storage:** WEIS-era data lives under the `data/` prefix;
