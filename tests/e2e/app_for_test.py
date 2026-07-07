@@ -67,7 +67,6 @@ def _make_all_df_pd() -> pd.DataFrame:
                 "load_net_re_diff_rolling_4": float(rng.uniform(-100, 100)),
                 "load_net_re_diff_rolling_6": float(rng.uniform(-100, 100)),
                 "Averaged_Actual": float(rng.uniform(20, 60)),
-                "break_indicator": 1.0,
                 "lmp_diff": float(rng.uniform(-10, 10)),
                 "lmp_diff_rolling_2": float(rng.uniform(-10, 10)),
                 "lmp_diff_rolling_3": float(rng.uniform(-10, 10)),

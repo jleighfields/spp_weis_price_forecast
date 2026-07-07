@@ -869,5 +869,42 @@ def _(
     return
 
 
+@app.cell
+def _(all_series, de, log, parameters, torch):
+    # Record the training config for this study run (the same schema the retrain
+    # writes to R2), documenting exactly which covariates / nodes / quantiles
+    # were tuned against. The study does not save a servable model, so this is
+    # logged for provenance rather than uploaded — the winning params get
+    # retrained + saved (with this config) by model_retrain.py.
+    import darts as _darts
+    import node_list as _node_list
+    import utils as _utils
+
+    _study_model_types = [
+        _n for _n, _u in [
+            ("tide", parameters.USE_TIDE),
+            ("tsmixer", parameters.USE_TSMIXER),
+            ("tft", parameters.USE_TFT),
+        ] if _u
+    ]
+    _study_cfg = _utils.build_training_config(
+        train_timestamp=str(all_series[0].end_time()),
+        future_covariates=de.FUTR_COLS,
+        past_covariates=de.PAST_COLS,
+        nodes=_node_list.MODEL_APP_NODES,
+        quantiles=parameters.QUANTILES,
+        model_name=parameters.MODEL_NAME,
+        model_types=_study_model_types,
+        forecast_horizon=parameters.FORECAST_HORIZON,
+        input_chunk_length=parameters.INPUT_CHUNK_LENGTH,
+        train_start=str(all_series[0].start_time()),
+        train_end=str(all_series[0].end_time()),
+        darts_version=_darts.__version__,
+        torch_version=torch.__version__,
+    )
+    log.info(f"study training_config: {_study_cfg}")
+    return
+
+
 if __name__ == "__main__":
     app.run()

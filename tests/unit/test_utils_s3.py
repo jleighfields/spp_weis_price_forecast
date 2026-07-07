@@ -11,7 +11,7 @@ import os
 import sys
 
 import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -154,3 +154,64 @@ class TestDownloadChampionCheckpoints:
             Bucket='test-bucket',
             Key='staging/S3_models/champion.json',
         )
+
+
+# ============================================================
+# Test training-config helpers
+# ============================================================
+
+def _sample_config():
+    return utils.build_training_config(
+        train_timestamp='2026-07-07T03:38:56',
+        future_covariates=['MTLF', 're_ratio'],
+        past_covariates=['lmp_diff'],
+        nodes=['BHBA', 'BPA'],
+        quantiles=[0.05, 0.5, 0.95],
+        model_name='spp_west',
+        model_types=['tide'],
+        forecast_horizon=120,
+        input_chunk_length=168,
+        train_start='2026-04-15',
+        train_end='2026-06-29',
+        darts_version='0.45.0',
+        torch_version='2.11.0+cu128',
+    )
+
+
+class TestTrainingConfig:
+    def test_build_includes_covariate_and_provenance_fields(self):
+        cfg = _sample_config()
+        assert cfg['future_covariates'] == ['MTLF', 're_ratio']
+        assert cfg['past_covariates'] == ['lmp_diff']
+        assert cfg['nodes'] == ['BHBA', 'BPA']
+        assert cfg['darts_version'] == '0.45.0'
+
+    def test_validate_passes_on_match(self):
+        # no exception when the serving covariates match the config
+        utils.validate_model_covariates(_sample_config(), ['MTLF', 're_ratio'], ['lmp_diff'])
+
+    def test_validate_raises_on_future_mismatch(self):
+        with pytest.raises(ValueError, match='future covariate mismatch'):
+            utils.validate_model_covariates(
+                _sample_config(), ['MTLF', 're_ratio', 'break_indicator'], ['lmp_diff'])
+
+    def test_validate_raises_on_reorder(self):
+        # order matters — darts binds covariates positionally
+        with pytest.raises(ValueError, match='future covariate mismatch'):
+            utils.validate_model_covariates(_sample_config(), ['re_ratio', 'MTLF'], ['lmp_diff'])
+
+    def test_validate_raises_on_past_mismatch(self):
+        with pytest.raises(ValueError, match='past covariate mismatch'):
+            utils.validate_model_covariates(_sample_config(), ['MTLF', 're_ratio'], ['lmp_diff', 'x'])
+
+    def test_validate_skips_missing_fields(self):
+        # legacy config without covariate keys -> no validation, no error
+        utils.validate_model_covariates({}, ['anything'], ['anything'])
+
+    def test_load_returns_none_when_absent(self, tmp_path):
+        assert utils.load_training_config(str(tmp_path)) is None
+
+    def test_load_round_trips(self, tmp_path):
+        cfg = _sample_config()
+        (tmp_path / utils.TRAINING_CONFIG_FILENAME).write_text(json.dumps(cfg))
+        assert utils.load_training_config(str(tmp_path)) == cfg

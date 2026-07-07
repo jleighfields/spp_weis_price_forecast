@@ -317,6 +317,60 @@ def _(
     return
 
 
+@app.cell
+def _(
+    AWS_S3_BUCKET,
+    artifact_path,
+    de,
+    io,
+    json,
+    log,
+    parameters,
+    s3,
+    torch,
+    train_test_all_series,
+    utc_timestamp,
+    utils,
+):
+    # Save training_config.json next to the checkpoints: records exactly what
+    # the model was trained on (covariates, nodes, quantiles, versions, train
+    # window) so the app can verify its inputs still match before serving it.
+    import darts as _darts
+    import node_list as _node_list
+
+    _model_types = [
+        _name for _name, _used in [
+            ("tide", parameters.USE_TIDE),
+            ("tsmixer", parameters.USE_TSMIXER),
+            ("tft", parameters.USE_TFT),
+        ] if _used
+    ]
+    _cfg = utils.build_training_config(
+        train_timestamp=str(utc_timestamp),
+        future_covariates=de.FUTR_COLS,
+        past_covariates=de.PAST_COLS,
+        nodes=_node_list.MODEL_APP_NODES,
+        quantiles=parameters.QUANTILES,
+        model_name=parameters.MODEL_NAME,
+        model_types=_model_types,
+        forecast_horizon=parameters.FORECAST_HORIZON,
+        input_chunk_length=parameters.INPUT_CHUNK_LENGTH,
+        train_start=str(train_test_all_series[0].start_time()),
+        train_end=str(train_test_all_series[0].end_time()),
+        darts_version=_darts.__version__,
+        torch_version=torch.__version__,
+    )
+    _cfg_key = artifact_path + utils.TRAINING_CONFIG_FILENAME
+    s3.put_object(
+        Bucket=AWS_S3_BUCKET,
+        Key=_cfg_key,
+        Body=io.BytesIO(json.dumps(_cfg, indent=2).encode("utf-8")),
+    )
+    log.info(f"Uploaded: {_cfg_key}")
+    log.info(f"training_config: {_cfg}")
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
