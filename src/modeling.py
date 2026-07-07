@@ -231,6 +231,7 @@ def build_fit_tide(
     n_epochs: int = 10,
     dropout: float = 0.43,
     encoder_key: str = 'rel',
+    quantiles: Optional[List[float]] = None,
     force_reset: bool = True,
     callbacks: Optional[List[Any]] = None,
     model_id: str = 'tide',
@@ -275,7 +276,11 @@ def build_fit_tide(
     MODEL_TYPE = "tide_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    # Default quantile set; callers can pass a wider-tailed set (e.g. adding
+    # 0.005/0.995) to let the model predict further into the spike/negative
+    # tails. The QuantileRegression likelihood is trained on exactly these.
+    if quantiles is None:
+        quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
