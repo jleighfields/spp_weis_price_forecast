@@ -24,8 +24,13 @@ image = (
         "polars-xdt==0.17.1",
         "pandas",
         "joblib",
-        "torch==2.5.1",
-        "darts==0.41.0",
+        # Must match the serving/training stack (Darts 0.45 / torch 2.11) or the
+        # retrained model is inconsistent with the app and the params tuned on
+        # 0.45. A10G is x86, so the plain PyPI torch wheel applies here (the app
+        # box is aarch64 + cu128, but the checkpoint format is torch-version-,
+        # not CUDA-, specific).
+        "torch==2.11.0",
+        "darts==0.45.0",
         "lightning>=2.6.0",
         "scikit-learn",
         "marimo",
