@@ -1,9 +1,9 @@
 """Single home for the stored/modeled settlement-location node lists.
 
 The RTO West migration scopes LMP storage and modeling to hub/BA-level
-nodes. This module is that list's one home: the IM collectors filter LMP rows to
-STORED_NODES at storage time, and data engineering derives the model
-universe from the same lists — neither redeclares them.
+nodes. This module is that list's one home: the IM collectors filter
+LMP rows to STORED_NODES at storage time, and data engineering derives
+the model universe from the same lists — neither redeclares them.
 
 Kept separate from src/parameters.py on purpose: parameters.py imports
 sklearn/darts, which the Modal data-collection image does not install.
