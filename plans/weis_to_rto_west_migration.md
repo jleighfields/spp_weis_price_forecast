@@ -2,6 +2,33 @@
 
 ## Current state (updated 2026-07-05)
 
+> **Update (2026-07-07) — supersedes the stitch / break-indicator design below.**
+> The **STITCH** strategy (glue WEIS history onto IM with a break-indicator
+> covariate + 365-day window) was **not adopted**. Training is **IM-only**,
+> clamped to the 2026-04-01 RTO West launch: `de._default_start_time()` =
+> `max(now − TRAIN_START, RTO_WEST_LAUNCH)`. The window grows from the launch
+> until ~2027-04, then becomes a rolling 365-day window. Rationale: WEIS-era
+> prices are a much calmer regime, so mixing them biased the model toward flat
+> forecasts.
+>
+> Consequences:
+> - The `break_indicator` future covariate (added in Phase 4) was **removed
+>   2026-07-07** — IM-only training makes it a degenerate constant 1. `FUTR_COLS`
+>   is now 11 covariates.
+> - A model-improvements effort shipped and is live: **Darts 0.41→0.45**, a
+>   **single-objective CRPS re-tune** (harness CRPS 61.4→17.2), **wider tail
+>   quantiles** (`parameters.QUANTILES`, coverage 0.85→0.88), and a
+>   **`training_config.json`** saved with every model (covariates / nodes /
+>   quantiles / versions / train window) that the app **validates at load** —
+>   a covariate mismatch now fails loud with a clear message.
+> - **Modal retrain job:** `spp-weis-model-retrain` (`modal_jobs/model_retrain.py`,
+>   weekly Sun 20:00 UTC, auto-promotes). It **bakes code in at deploy time and
+>   does not auto-pull** — redeploy with `modal deploy modal_jobs/model_retrain.py`
+>   after code changes. (Not currently a live Modal app.)
+>
+> The stitch / break-indicator sections below are kept for history but are
+> superseded by the above.
+
 Where things stand on `feature/rto-west-migration`, for picking up in a fresh session:
 
 **Done**
@@ -68,7 +95,8 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   a covariate yet (see open question below).
 
 - **Phase 4 done + LIVE (2026-07-06):** added the 2026-04-01 **break-indicator future
-  covariate** (`RTO_WEST_LAUNCH` single-homed in `node_list`), set `MODEL_NAME='spp_west'`,
+  covariate** (`RTO_WEST_LAUNCH` single-homed in `node_list`) — *removed 2026-07-07, see
+  update above_ — set `MODEL_NAME='spp_west'`,
   scoped modeling/app to a curated **10-node `MODEL_APP_NODES`** (8 internal West + `BPA`/`CISO`
   — the 25 seam interfaces are one near-identical CAISO/WECC signal, so only two are kept),
   retrained a 5-member TiDE ensemble locally on GPU (~10 s/epoch, val RMSE ≈ $9.9), and
