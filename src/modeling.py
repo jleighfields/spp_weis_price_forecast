@@ -140,7 +140,7 @@ def build_fit_tsmixerx(
     MODEL_TYPE = "ts_mixer_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
@@ -231,6 +231,7 @@ def build_fit_tide(
     n_epochs: int = 10,
     dropout: float = 0.43,
     encoder_key: str = 'rel',
+    quantiles: Optional[List[float]] = None,
     force_reset: bool = True,
     callbacks: Optional[List[Any]] = None,
     model_id: str = 'tide',
@@ -264,6 +265,9 @@ def build_fit_tide(
         n_epochs: Number of training epochs.
         dropout: Dropout probability.
         encoder_key: Key for time encoders from parameters.ENCODERS.
+        quantiles: Quantile levels for the QuantileRegression likelihood.
+            If None, defaults to parameters.QUANTILES (the single-home,
+            wider-tailed set the other builders also use).
         force_reset: Reset model checkpoint if exists.
         callbacks: Optional list of PyTorch Lightning callbacks.
         model_id: Model identifier for checkpointing.
@@ -275,7 +279,11 @@ def build_fit_tide(
     MODEL_TYPE = "tide_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    # Default to the single-home quantile set in parameters (wider-tailed, so
+    # the model represents the spike/negative tails); callers can pass a custom
+    # set to override (e.g. a narrower set for an ablation).
+    if quantiles is None:
+        quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
@@ -405,7 +413,7 @@ def build_fit_tft(
     MODEL_TYPE = "tft_model"
     work_dir = os.getcwd() + f'/model_checkpoints/{MODEL_TYPE}'
     os.makedirs(work_dir, exist_ok=True)
-    quantiles = [0.01]+np.arange(0.05, 1, 0.05).tolist()+[0.99]
+    quantiles = parameters.QUANTILES
     
     #TODO: pick a metric...
     # torch_metrics = MeanAbsoluteError()
