@@ -14,28 +14,12 @@ app = modal.App("spp-weis-model-retrain")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
-        "polars==1.37.1",
-        "pyarrow==19.0.1",
-        "boto3==1.35.92",
-        "duckdb==1.4.3",
-        "requests",
-        "tqdm==4.67.1",
-        "polars-xdt==0.17.1",
-        "pandas",
-        "joblib",
-        # Must match the serving/training stack (Darts 0.45 / torch 2.11) or the
-        # retrained model is inconsistent with the app and the params tuned on
-        # 0.45. A10G is x86, so the plain PyPI torch wheel applies here (the app
-        # box is aarch64 + cu128, but the checkpoint format is torch-version-,
-        # not CUDA-, specific).
-        "torch==2.11.0",
-        "darts==0.45.0",
-        "lightning>=2.6.0",
-        "scikit-learn",
-        "marimo",
-        "python-dotenv",
-    )
+    # Install the exact deploy pins (requirements.txt) so the retrain stack —
+    # Darts / torch / lightning / marimo — can NOT drift from the app. A
+    # hand-maintained pin list drifted once (Darts 0.41 vs the app's 0.45) and
+    # trained a broken champion; requirements.txt is the single source of truth
+    # for these pins, and resolves to x86 wheels (correct for the A10G below).
+    .pip_install_from_requirements("requirements.txt")
     .add_local_dir("src", remote_path="/root/src")
     .add_local_dir("notebooks", remote_path="/root/notebooks")
 )
