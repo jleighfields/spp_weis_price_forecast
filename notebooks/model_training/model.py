@@ -880,13 +880,9 @@ def _(all_series, de, log, parameters, torch):
     import node_list as _node_list
     import utils as _utils
 
-    _study_model_types = [
-        _n for _n, _u in [
-            ("tide", parameters.USE_TIDE),
-            ("tsmixer", parameters.USE_TSMIXER),
-            ("tft", parameters.USE_TFT),
-        ] if _u
-    ]
+    _study_model_types = _utils.active_model_types(
+        parameters.USE_TIDE, parameters.USE_TSMIXER, parameters.USE_TFT
+    )
     _study_cfg = _utils.build_training_config(
         train_timestamp=str(all_series[0].end_time()),
         future_covariates=de.FUTR_COLS,

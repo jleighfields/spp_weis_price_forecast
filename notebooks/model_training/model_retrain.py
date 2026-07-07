@@ -338,13 +338,9 @@ def _(
     import darts as _darts
     import node_list as _node_list
 
-    _model_types = [
-        _name for _name, _used in [
-            ("tide", parameters.USE_TIDE),
-            ("tsmixer", parameters.USE_TSMIXER),
-            ("tft", parameters.USE_TFT),
-        ] if _used
-    ]
+    _model_types = utils.active_model_types(
+        parameters.USE_TIDE, parameters.USE_TSMIXER, parameters.USE_TFT
+    )
     _cfg = utils.build_training_config(
         train_timestamp=str(utc_timestamp),
         future_covariates=de.FUTR_COLS,

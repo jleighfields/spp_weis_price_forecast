@@ -215,3 +215,41 @@ class TestTrainingConfig:
         cfg = _sample_config()
         (tmp_path / utils.TRAINING_CONFIG_FILENAME).write_text(json.dumps(cfg))
         assert utils.load_training_config(str(tmp_path)) == cfg
+
+    def test_active_model_types(self):
+        assert utils.active_model_types(True, False, False) == ['tide']
+        assert utils.active_model_types(True, True, True) == ['tide', 'tsmixer', 'tft']
+        assert utils.active_model_types(False, False, False) == []
+
+
+class TestGetLoadedModelsFilter:
+    """get_loaded_models must download training_config.json with the checkpoints
+    (else the app can't validate covariates), but must NOT match a bare
+    champion.json pointer."""
+
+    @staticmethod
+    def _obj(key):
+        m = MagicMock()
+        m.key = key
+        return m
+
+    @patch.dict(os.environ, {'AWS_S3_BUCKET': 'b', 'AWS_S3_FOLDER': ''})
+    @patch('utils.list_folder_contents_resource')
+    def test_includes_config_and_checkpoints(self, mock_list):
+        mock_list.return_value = [self._obj(k) for k in [
+            'model_retrains/ts/tide_0.pt',
+            'model_retrains/ts/tide_0.pt.ckpt',
+            'model_retrains/ts/TRAIN_TIMESTAMP.pkl',
+            'model_retrains/ts/training_config.json',
+            'model_retrains/ts/notes.txt',
+        ]]
+        keys = utils.get_loaded_models('model_retrains/ts/')
+        assert 'model_retrains/ts/training_config.json' in keys
+        assert 'model_retrains/ts/tide_0.pt' in keys
+        assert 'model_retrains/ts/notes.txt' not in keys  # unrecognized file
+
+    @patch.dict(os.environ, {'AWS_S3_BUCKET': 'b', 'AWS_S3_FOLDER': ''})
+    @patch('utils.list_folder_contents_resource')
+    def test_excludes_champion_json_pointer(self, mock_list):
+        mock_list.return_value = [self._obj('S3_models/champion.json')]
+        assert utils.get_loaded_models('S3_models/') == []

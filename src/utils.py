@@ -84,11 +84,15 @@ def get_loaded_models(search_folder: str = "S3_models/") -> List[str]:
     bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, folder_prefix)
     # Filter for objects in the S3_models/ subdirectory
     loaded_models = [d.key for d in bucket_contents if search_folder in d.key]
-    # Filter for recognized model file extensions
+    # Keep the checkpoint files plus the per-model training_config.json (matched
+    # by its exact name, not a bare ".json", so the S3_models/champion.json
+    # pointer is never picked up). The config must download with the model so
+    # the app can validate covariates at load.
     loaded_models = [
         lm
         for lm in loaded_models
-        if ((".pkl" in lm) or (".ckpt" in lm) or (".pt" in lm))
+        if ((".pkl" in lm) or (".ckpt" in lm) or (".pt" in lm)
+            or lm.endswith(TRAINING_CONFIG_FILENAME))
     ]
     log.info(f"loaded_models: {loaded_models}")
 
@@ -98,9 +102,10 @@ def get_loaded_models(search_folder: str = "S3_models/") -> List[str]:
 def download_checkpoints(s3_folder: str, dest_dir: str) -> None:
     """Download model checkpoint files from an S3 folder to a local directory.
 
-    Lists all model files (.pt, .ckpt, .pkl) in the given S3 folder using
-    ``get_loaded_models`` and downloads them into ``dest_dir``. Works with
-    any model folder — champion, challenger, or historical.
+    Lists the checkpoint files (.pt, .ckpt, .pkl) plus the model's
+    ``training_config.json`` in the given S3 folder using ``get_loaded_models``
+    and downloads them into ``dest_dir``. Works with any model folder —
+    champion, challenger, or historical.
 
     Environment Variables:
         AWS_S3_BUCKET: The S3 bucket name.
@@ -156,6 +161,31 @@ def build_champion_config(
 # Name of the per-model provenance/validation file saved next to the
 # checkpoints in each model_retrains/<ts>/ folder.
 TRAINING_CONFIG_FILENAME = "training_config.json"
+
+
+def active_model_types(
+    use_tide: bool, use_tsmixer: bool, use_tft: bool
+) -> List[str]:
+    """Names of the model builders enabled in parameters, in ensemble order.
+
+    Args:
+        use_tide: ``parameters.USE_TIDE``.
+        use_tsmixer: ``parameters.USE_TSMIXER``.
+        use_tft: ``parameters.USE_TFT``.
+
+    Returns:
+        The enabled model-type names (e.g. ``["tide"]``), for the training
+        config's ``model_types`` field.
+    """
+    return [
+        name
+        for name, used in (
+            ("tide", use_tide),
+            ("tsmixer", use_tsmixer),
+            ("tft", use_tft),
+        )
+        if used
+    ]
 
 
 def build_training_config(
@@ -223,6 +253,14 @@ def load_training_config(model_dir: str) -> dict | None:
 
     Returns None for models saved before the config existed, so callers can
     treat validation as best-effort on legacy artifacts.
+
+    Args:
+        model_dir: Local directory holding a model's checkpoints (and,
+            for models retrained with the current code, its
+            ``training_config.json``).
+
+    Returns:
+        The parsed training-config dict, or None if the file is not present.
     """
     path = os.path.join(model_dir, TRAINING_CONFIG_FILENAME)
     if not os.path.exists(path):
