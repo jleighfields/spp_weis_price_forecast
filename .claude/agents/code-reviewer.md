@@ -79,10 +79,9 @@ skill's README-sweep step even when the affected docs were outside the
 target path:
 
 - **README sweep** — pick the doc set from the skill's matching-files
-  table (root `README.md`, `scripts/README.md`,
-  `plans/weis_to_rto_west_migration.md`, `CLAUDE.md`), grep for every
-  removed / renamed symbol from the diff, and fix any prose the change
-  invalidated.
+  table (root `README.md`, `scripts/README.md`, the active plans under
+  `plans/`, `CLAUDE.md`), grep for every removed / renamed symbol from the
+  diff, and fix any prose the change invalidated.
 
 After editing, run `uv run pytest tests/unit -q` (per the skill's steps)
 to confirm nothing broke.

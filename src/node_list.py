@@ -1,8 +1,7 @@
 """Single home for the stored/modeled settlement-location node lists.
 
 The RTO West migration scopes LMP storage and modeling to hub/BA-level
-nodes (plans/weis_to_rto_west_migration.md, decisions 2026-07-05). This
-module is that list's one home: the IM collectors filter LMP rows to
+nodes. This module is that list's one home: the IM collectors filter LMP rows to
 STORED_NODES at storage time, and data engineering derives the model
 universe from the same lists — neither redeclares them.
 

@@ -1,8 +1,7 @@
 # Hourly data collection for SPP RTO West / Integrated Marketplace (IM).
 #
 # Collects MTLF, MTRF, RF_RESERVE_ZONE, and 5-min LMP data into data_im/.
-# Parallel to data_collection_hourly.py (the WEIS pipeline); see
-# plans/weis_to_rto_west_migration.md.
+# Parallel to data_collection_hourly.py (the WEIS pipeline).
 #
 # Usage:
 #   Interactive: marimo edit notebooks/data_collection/data_collection_im_hourly.py

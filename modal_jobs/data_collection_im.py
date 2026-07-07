@@ -2,8 +2,7 @@
 
 Thin wrappers that run the IM marimo notebooks headlessly. The notebooks at
 notebooks/data_collection/data_collection_im_*.py contain all collection
-logic. Parallel to modal_jobs/data_collection.py (the WEIS pipeline); see
-plans/weis_to_rto_west_migration.md.
+logic. Parallel to modal_jobs/data_collection.py (the WEIS pipeline).
 
 Test:  modal run modal_jobs/data_collection_im.py::collect_im_hourly
 Deploy: modal deploy modal_jobs/data_collection_im.py

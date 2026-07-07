@@ -5,7 +5,7 @@ Materializes the pre-launch West history in storage: copies the WEIS
 tables with ``BAA='SWPW'`` and ``source='weis'``, so the West BAA has a
 continuous training series across the 2026-04-01 seam.
 
-Two LMP cases (see plans/weis_to_rto_west_migration.md, decisions 2026-07-05):
+Two LMP cases:
   * Exact-name West nodes (``node_list.WEST_HUB_BA_NODES`` present in WEIS,
     ~40 of them, incl. all seam nodes) are copied straight through.
   * The RTO West aggregated hubs have no WEIS equivalent. The flagship

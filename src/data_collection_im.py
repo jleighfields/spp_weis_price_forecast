@@ -11,8 +11,7 @@ R2 prefix, alongside the untouched WEIS `data/` prefix. Feeds:
 - RF_RESERVE_ZONE: wind/solar forecasts AND actuals by reserve zone (hourly)
 - DA LMP: Day-Ahead hourly LMP (collected for history; not modeled yet)
 
-Key differences from the WEIS collectors
-(see plans/weis_to_rto_west_migration.md):
+Key differences from the WEIS collectors:
     - Files cover both BAAs (East 'SPP', West 'SWPW') with a `BAA` column;
       pre-launch (< 2026-04-01) files lack the column and are East-only,
       so processors fill BAA='SPP'. Rows with a null BAA (future intervals

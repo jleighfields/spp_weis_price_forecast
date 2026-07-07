@@ -2,8 +2,7 @@
 #
 # Runs the daily-LMP repair sweep (fills the 5-min LMP history from the
 # lag-published daily rollups) and collects the Day-Ahead LMP into data_im/.
-# Parallel to data_collection_daily.py (the WEIS pipeline); see
-# plans/weis_to_rto_west_migration.md.
+# Parallel to data_collection_daily.py (the WEIS pipeline).
 #
 # Usage:
 #   Interactive: marimo edit notebooks/data_collection/data_collection_im_daily.py
