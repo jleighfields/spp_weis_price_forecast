@@ -1,11 +1,12 @@
 """
-Unit tests for src/data_collection.py
+Unit tests for src/data_collection.py (WEIS-specific feed logic).
 
-Tests cover:
-- Helper functions (datetime conversion, time components, column formatting)
-- URL generation functions
-- Data processing functions (with mocked HTTP requests)
-- Aggregation functions
+The feed-agnostic helpers shared with the IM collector are tested in
+test_data_collection_utils.py. Tests here cover:
+- WEIS datetime conversion and time-component parsing
+- WEIS URL generation functions
+- WEIS data processing functions (with mocked HTTP requests)
+- LMP aggregation and upsert
 """
 
 import pytest
@@ -127,30 +128,6 @@ class TestConvertDatetimeCols:
         assert result['Value'].to_list() == original_values
 
 
-class TestSetHE:
-    """Tests for set_he (hour ending) function."""
-
-    def test_adds_hour_ending_columns(self):
-        """Test that HE columns are added with ceiling to hour."""
-        import data_collection as dc
-
-        df = pl.DataFrame({
-            'Interval': [pd.Timestamp('2023-04-01 13:05:00'), pd.Timestamp('2023-04-01 13:55:00')],
-            'GMTIntervalEnd': [pd.Timestamp('2023-04-01 13:05:00'), pd.Timestamp('2023-04-01 13:55:00')],
-            'timestamp_mst': [pd.Timestamp('2023-04-01 06:05:00'), pd.Timestamp('2023-04-01 06:55:00')],
-        })
-
-        result = dc.set_he(df)
-
-        assert 'Interval_HE' in result.columns
-        assert 'GMTIntervalEnd_HE' in result.columns
-        assert 'timestamp_mst_HE' in result.columns
-
-        # Check ceiling is applied correctly (both should ceil to 14:00)
-        assert result['Interval_HE'][0] == pd.Timestamp('2023-04-01 14:00:00')
-        assert result['Interval_HE'][1] == pd.Timestamp('2023-04-01 14:00:00')
-
-
 class TestGetTimeComponents:
     """Tests for get_time_components function."""
 
@@ -195,48 +172,6 @@ class TestGetTimeComponents:
         assert tc is not None
         assert 'YEAR' in tc
         assert 'timestamp' in tc
-
-
-class TestAddTimestampMst:
-    """Tests for add_timestamp_mst function."""
-
-    def test_adds_mst_timestamp(self):
-        """Test that MST timestamp column is added correctly."""
-        import data_collection as dc
-
-        df = pl.DataFrame({
-            'GMTIntervalEnd': [pd.Timestamp('2023-04-01 13:00:00'), pd.Timestamp('2023-04-01 14:00:00')]
-        })
-
-        result = dc.add_timestamp_mst(df)
-
-        assert 'timestamp_mst' in result.columns
-        # UTC to MST is -7 hours
-        assert result['timestamp_mst'][0] == pd.Timestamp('2023-04-01 06:00:00')
-
-
-class TestFormatDfColnames:
-    """Tests for format_df_colnames function."""
-
-    def test_removes_spaces(self):
-        """Test that spaces are replaced with underscores."""
-        import data_collection as dc
-
-        df = pl.DataFrame({'Column Name': [1], 'Another Column': [2]})
-        dc.format_df_colnames(df)
-
-        assert 'Column_Name' in df.columns
-        assert 'Another_Column' in df.columns
-
-    def test_strips_whitespace(self):
-        """Test that leading/trailing whitespace is stripped."""
-        import data_collection as dc
-
-        df = pl.DataFrame({' Column ': [1], '  Name  ': [2]})
-        dc.format_df_colnames(df)
-
-        assert 'Column' in df.columns
-        assert 'Name' in df.columns
 
 
 # ============================================================
@@ -319,54 +254,6 @@ class TestGetGenCapUrl:
 
 
 # ============================================================
-# Test CSV Fetching
-# ============================================================
-
-class TestGetCsvFromUrl:
-    """Tests for get_csv_from_url function."""
-
-    def test_successful_fetch(self, sample_mtlf_csv):
-        """Test successful CSV fetch from URL."""
-        import data_collection as dc
-
-        mock_response = MagicMock()
-        mock_response.ok = True
-        mock_response.text = sample_mtlf_csv
-
-        with patch('data_collection.requests.get', return_value=mock_response):
-            df = dc.get_csv_from_url('http://test.url')
-
-        assert isinstance(df, pl.DataFrame)
-        assert df.shape[0] > 0
-        assert len(df) == 3
-        assert 'Interval' in df.columns
-
-    def test_failed_fetch_returns_empty_df(self):
-        """Test that failed fetch returns empty DataFrame."""
-        import data_collection as dc
-
-        mock_response = MagicMock()
-        mock_response.ok = False
-        mock_response.reason = 'Not Found'
-
-        with patch('data_collection.requests.get', return_value=mock_response):
-            df = dc.get_csv_from_url('http://test.url')
-
-        assert isinstance(df, pl.DataFrame)
-        assert df.is_empty()
-
-    def test_exception_returns_empty_df(self):
-        """Test that exception returns empty DataFrame."""
-        import data_collection as dc
-
-        with patch('data_collection.requests.get', side_effect=Exception('Connection error')):
-            df = dc.get_csv_from_url('http://test.url')
-
-        assert isinstance(df, pl.DataFrame)
-        assert df.is_empty()
-
-
-# ============================================================
 # Test Data Processing Functions
 # ============================================================
 
@@ -383,7 +270,7 @@ class TestGetProcessMtlf:
 
         tc = dc.get_time_components('4/1/2023 07:00:00')
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_process_mtlf(tc)
@@ -406,7 +293,7 @@ class TestGetProcessMtrf:
 
         tc = dc.get_time_components('4/1/2023 07:00:00')
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_process_mtrf(tc)
@@ -457,7 +344,7 @@ class TestGetProcess5minLmp:
 
         tc = dc.get_time_components('4/1/2023 13:10:00', five_min_ceil=True)
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_process_5min_lmp(tc)
@@ -480,7 +367,7 @@ class TestGetProcessDailyLmp:
 
         tc = dc.get_time_components('4/1/2023 00:00:00')
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_process_daily_lmp(tc)
@@ -507,7 +394,7 @@ class TestGetRangeData:
 
         end_ts = pd.Timestamp('2023-04-01 10:00:00')
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_range_data(
@@ -532,7 +419,7 @@ class TestGetRangeData:
 
         end_ts = pd.Timestamp('2023-04-01 10:00:00')
 
-        with patch('data_collection.requests.get', return_value=mock_response):
+        with patch('data_collection_utils.requests.get', return_value=mock_response):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder/'}):
                 with patch.object(pl.DataFrame, 'write_parquet'):
                     result = dc.get_range_data(
@@ -585,26 +472,6 @@ class TestUpsertMtlfMtrfLmp:
                             except (KeyError, Exception):
                                 # May fail due to missing columns, but shouldn't fail on target validation
                                 pass
-
-
-# ============================================================
-# Test ProgressParallel Class
-# ============================================================
-
-class TestProgressParallel:
-    """Tests for ProgressParallel class."""
-
-    def test_parallel_execution(self):
-        """Test that ProgressParallel executes jobs."""
-        import data_collection as dc
-
-        def simple_func(x):
-            return x * 2
-
-        parallel = dc.ProgressParallel(n_jobs=2, total=3, use_tqdm=False)
-        results = parallel(dc.delayed(simple_func)(i) for i in [1, 2, 3])
-
-        assert sorted(results) == [2, 4, 6]
 
 
 # ============================================================

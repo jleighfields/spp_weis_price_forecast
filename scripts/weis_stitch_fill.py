@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("weis_stitch_fill")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from data_collection import _s3_storage_options  # noqa: E402
+from data_collection_utils import _s3_storage_options  # noqa: E402
 from data_collection_im import RTO_WEST_LAUNCH, UPSERT_KEYS  # noqa: E402
 from node_list import WEST_HUB_BA_NODES  # noqa: E402
 

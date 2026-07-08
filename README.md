@@ -80,7 +80,8 @@ Historical and future covariates are declared in the fit function. Input and out
 │   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
 ├── src/
 │   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
-│   ├── data_collection.py    # Shared collection helpers + legacy WEIS ETL (imported by data_collection_im)
+│   ├── data_collection.py    # Legacy WEIS market ETL + weather upsert (WEIS feed logic; still imported by the weather notebook)
+│   ├── data_collection_utils.py # Shared feed-agnostic collection helpers (used by both collectors)
 │   ├── data_collection_im.py # ETL functions for the Integrated Marketplace feeds
 │   ├── data_engineering.py   # Feature engineering, train/test splits
 │   ├── modeling.py           # Model training and loading (TiDE, TSMixer, TFT)
@@ -126,8 +127,9 @@ Modal jobs are thin wrappers that import and run the corresponding [marimo](http
 
 Runtimes are estimates based on current resource configuration. The retired WEIS
 market-collection jobs and notebooks live under `deprecated/weis/` (feeds dead since
-2026-04-01); `src/data_collection.py` stays put — it still hosts the shared collection
-helpers imported by `data_collection_im.py`.
+2026-04-01); `src/data_collection.py` stays put — it holds the WEIS feed logic and is
+still imported by the weather notebook. The feed-agnostic collection helpers shared with
+`data_collection_im.py` live in `src/data_collection_utils.py`.
 
 ### Estimated monthly cost
 
@@ -154,10 +156,10 @@ uv tool install modal
 modal token new
 
 # Test a job
-modal run modal_jobs/data_collection.py::collect_hourly
+modal run modal_jobs/data_collection_im.py::collect_im_hourly
 
 # Deploy scheduled jobs
-modal deploy modal_jobs/data_collection.py
+modal deploy modal_jobs/data_collection_im.py
 modal deploy modal_jobs/model_retrain.py
 ```
 

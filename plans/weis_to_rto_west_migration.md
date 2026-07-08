@@ -136,9 +136,14 @@ are in fact fully covered on both sides of the seam.
    CRPS 61.4→17.2, coverage ~0.88). The stitch was not used (see the 2026-07-07 update above).
 2. **Phase 3b — node geometry**: build `src/geometry.py::fetch_pcm_geometries()` +
    `src/reference/node_geometry.csv` + a refresh notebook (map coordinates for the app).
-3. **Phase 5 cleanup**: extract the shared collection helpers out of `src/data_collection.py`
-   into a neutral module so the legacy WEIS module can also move to `deprecated/`; optional
-   R2 bucket rename `spp-weis-forecast`→`spp-im-bucket`.
+3. ~~**Phase 5 cleanup** — extract shared collection helpers~~ — ✅ **DONE (2026-07-08).**
+   The eight feed-agnostic helpers (`N_JOBS`, `ProgressParallel`, `_s3_storage_options`,
+   `add_timestamp_mst`, `check_file_exists_client`, `format_df_colnames`, `get_csv_from_url`,
+   `set_he`) now have a single home in `src/data_collection_utils.py`. The live IM collector
+   (`data_collection_im.py`) and the stitch script import from it; `data_collection.py` re-imports
+   them for its WEIS-specific feed logic. Tests split into `tests/unit/test_data_collection_utils.py`.
+   `data_collection.py` stays in `src/` (still used by the live weather-collection notebook).
+   Still optional: R2 bucket rename `spp-weis-forecast`→`spp-im-bucket`.
 4. Open decision: whether West `RF_RESERVE_ZONE` (zone 21, post-launch only) is worth adding
    as a covariate (its `ReserveZone==21` filter is ready to wire in if so).
 
@@ -509,13 +514,16 @@ copy-migration — is a **later refactor**, not now.)
 
 > **Partially done early (2026-07-05):** the WEIS `spp-weis-data-collection` Modal app is
 > **stopped**, and the six WEIS market-collection notebooks + the WEIS Modal wrapper were
-> moved to **`deprecated/weis/`** (`git mv`, history preserved). **`src/data_collection.py`
-> stays in place** — it is still the home of the shared collection helpers (`get_csv_from_url`,
-> `_s3_storage_options`, `set_he`, `ProgressParallel`, …) that `data_collection_im.py` imports.
-> Fully retiring it means first extracting those helpers into a neutral module
-> (e.g. `src/collection_utils.py`); that extraction is the remaining Phase 5 cleanup.
-> `notebooks/data_collection/data_collection_weather.py` also stays — weather is a live model
-> covariate (used in `data_engineering.py`), independent of the market migration.
+> moved to **`deprecated/weis/`** (`git mv`, history preserved).
+>
+> **Helper extraction done (2026-07-08):** the shared, feed-agnostic collection helpers
+> (`get_csv_from_url`, `_s3_storage_options`, `set_he`, `ProgressParallel`, …) now live in
+> **`src/data_collection_utils.py`**, their single home. `data_collection_im.py` (live IM
+> collector) and `scripts/weis_stitch_fill.py` import from it, so neither depends on the WEIS
+> module. `data_collection.py` re-imports the same helpers for its WEIS feed logic and **stays
+> in `src/`** — `notebooks/data_collection/data_collection_weather.py` still calls
+> `data_collection.upsert_weather`, and weather is a live model covariate (used in
+> `data_engineering.py`), independent of the market migration.
 
 **Suggested sequencing:** all work on the **feature branch**. Phase 1 → 2 → 3/3b restore +
 enrich the data pipeline and can proceed now. Phase 4 (retrain) follows once the
