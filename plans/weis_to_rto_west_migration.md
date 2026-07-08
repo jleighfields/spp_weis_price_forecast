@@ -1,5 +1,15 @@
 # Migration Plan: SPP WEIS → SPP RTO West (Integrated Marketplace)
 
+> **✅ Migration complete and live (status as of 2026-07-08).** Phases 0–4
+> shipped: the app forecasts RTO West / Integrated Marketplace prices on the
+> curated 10-node West set, with the IM-tuned `spp_west` champion promoted and
+> live. All design decisions are resolved. The Optuna re-tune once listed as a
+> "next action" is **done** — the single-objective CRPS study replaced the
+> WEIS-tuned params (harness CRPS 61.4→17.2). The only remaining work is the
+> **optional** polish in the "Next actions" list below (app-map node geometry,
+> Phase 5 code cleanup, an R2 bucket rename, one reserve-zone decision) — none
+> are migration blockers.
+
 ## Current state (updated 2026-07-05)
 
 > **Update (2026-07-07) — supersedes the stitch / break-indicator design below.**
@@ -103,7 +113,9 @@ Where things stand on `feature/rto-west-migration`, for picking up in a fresh se
   **promoted** the `spp_west` champion. **Merged to `main`** (`0745d79`) → Posit Connect
   auto-deploys the new West serving code; e2e validated the promoted champion + new code are
   compatible (all 6 pass). Revert = point `champion.json` back to `2026-07-05_20-08-55/`.
-  Optuna re-tune was **deferred** (quick-retrain-first); current `TIDE_PARAMS` are WEIS-tuned.
+  Optuna re-tune was deferred at Phase 4 (quick-retrain-first) but has **since
+  been done** — the single-objective CRPS study replaced the WEIS-tuned
+  `TIDE_PARAMS` with IM-tuned ones (harness CRPS 61.4→17.2).
 
 **Data-quality finding (2026-07-05) — stitch continuity by exact node name:**
 Checking the 64 West nodes against the WEIS history: **seam 25/25 present, internal only
@@ -119,8 +131,9 @@ variance). The 6 nodes originally suspected of missing data (`DEAA/DOPD/EPE/GCPD
 are in fact fully covered on both sides of the seam.
 
 **Next actions (optional; the migration is live)**
-1. **Optuna re-tune** on the stitched West data → refresh `TIDE_PARAMS`, re-evaluate on a West
-   holdout, re-promote if better (to tighten the ~$9.9 RMSE from the quick retrain).
+1. ~~**Optuna re-tune**~~ — ✅ **DONE.** The single-objective CRPS study on the IM-only West
+   data replaced the WEIS-tuned `TIDE_PARAMS` with IM-tuned ones and re-promoted (harness
+   CRPS 61.4→17.2, coverage ~0.88). The stitch was not used (see the 2026-07-07 update above).
 2. **Phase 3b — node geometry**: build `src/geometry.py::fetch_pcm_geometries()` +
    `src/reference/node_geometry.csv` + a refresh notebook (map coordinates for the app).
 3. **Phase 5 cleanup**: extract the shared collection helpers out of `src/data_collection.py`
