@@ -12,6 +12,11 @@ import modal
 
 app = modal.App("spp-im-data-collection")
 
+# The bucket name is not secret, so it lives here in code (env= below) rather
+# than in the aws-secret. Credentials, S3_ENDPOINT_URL, AWS_DEFAULT_REGION, and
+# AWS_S3_FOLDER still come from the aws-secret; a bucket change is a redeploy.
+S3_BUCKET = "spp-rto"
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -40,7 +45,7 @@ image = (
     timeout=1800,
     cpu=16.0,  # 16 physical cores for joblib parallel processing
     memory=4096,  # 4 GiB
-    env={"MAX_JOBS": "15"},
+    env={"MAX_JOBS": "15", "AWS_S3_BUCKET": S3_BUCKET},
 )
 def collect_im_hourly():
     """Collect IM MTLF, MTRF, RF_RESERVE_ZONE, and 5-min LMP data."""
@@ -61,7 +66,7 @@ def collect_im_hourly():
     timeout=1800,
     cpu=16.0,  # 16 physical cores for joblib parallel processing
     memory=4096,  # 4 GiB
-    env={"MAX_JOBS": "15"},
+    env={"MAX_JOBS": "15", "AWS_S3_BUCKET": S3_BUCKET},
 )
 def collect_im_daily():
     """Run the daily-LMP repair sweep and collect Day-Ahead LMP data."""

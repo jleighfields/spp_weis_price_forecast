@@ -1,7 +1,7 @@
 """One-time WEIS -> data_im West stitch-fill (Phase 2 of the RTO West migration).
 
 Materializes the pre-launch West history in storage: copies the WEIS
-(``data/``) consolidated lmp/mtlf/mtrf rows into the ``data_im/`` consolidated
+(``data/``) consolidated lmp/mtlf/mtrf rows into the ``im/`` consolidated
 tables with ``BAA='SWPW'`` and ``source='weis'``, so the West BAA has a
 continuous training series across the 2026-04-01 seam.
 
@@ -19,7 +19,7 @@ da_lmp and rf_reserve_zone get no stitch (West values start at RTO launch).
 Idempotent: re-running drops the prior ``source='weis'`` rows first, so it can
 be re-run from raw ``data/`` if the seam treatment ever changes.
 
-Run only when nothing else is writing the ``data_im/`` tables — this and
+Run only when nothing else is writing the ``im/`` tables — this and
 ``upsert_im`` both do whole-object read-modify-write on the same parquets, so a
 concurrent collection/backfill job would clobber one side. Stop the IM Modal
 app (or wait for the backfill) first.
@@ -41,7 +41,7 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("weis_stitch_fill")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from data_collection_utils import _s3_storage_options  # noqa: E402
+from data_collection_utils import IM_PREFIX, WEIS_PREFIX, _s3_storage_options  # noqa: E402
 from data_collection_im import RTO_WEST_LAUNCH, UPSERT_KEYS  # noqa: E402
 from node_list import WEST_HUB_BA_NODES  # noqa: E402
 
@@ -69,7 +69,7 @@ def _base_paths() -> tuple[str, str]:
     """Return (weis_base, im_base) S3 prefixes from the AWS env vars."""
     bucket = os.environ["AWS_S3_BUCKET"]
     folder = os.environ.get("AWS_S3_FOLDER", "")
-    return f"s3://{bucket}/{folder}data/", f"s3://{bucket}/{folder}data_im/"
+    return f"s3://{bucket}/{folder}{WEIS_PREFIX}", f"s3://{bucket}/{folder}{IM_PREFIX}"
 
 
 def _build_proxy(lmp: pl.LazyFrame, node: str, prefix: str) -> pl.DataFrame:
@@ -181,7 +181,7 @@ def merge_into_target(
     if the merge introduces duplicate upsert keys.
 
     Args:
-        im_base: S3 prefix of the ``data_im/`` tables.
+        im_base: S3 prefix of the ``im/`` tables.
         target: Consolidated table name ('lmp', 'mtlf', 'mtrf').
         stitch: Stitch rows to merge, from build_lmp_stitch /
             build_forecast_stitch.

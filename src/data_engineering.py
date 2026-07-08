@@ -47,6 +47,7 @@ if _src_dir not in sys.path:
 
 import parameters  # noqa: E402  (imported after the sys.path shim above)
 import node_list  # noqa: E402
+from data_collection_utils import IM_PREFIX  # noqa: E402
 
 
 #############################################
@@ -92,7 +93,7 @@ def create_database(
 
     Args:
         datasets: List of dataset names to load. Each name corresponds
-            to a parquet file in S3 (e.g., 'lmp' -> 'data_im/lmp.parquet').
+            to a parquet file in S3 (e.g., 'lmp' -> 'im/lmp.parquet').
             Defaults to ['lmp', 'mtrf', 'mtlf'].
 
     Returns:
@@ -129,8 +130,8 @@ def create_database(
 
     for ds in datasets:
         # Match dataset name to S3 parquet file key. RTO West / Integrated
-        # Marketplace data lives under data_im/ (WEIS data/ is retired).
-        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data_im/{ds}.parquet'
+        # Marketplace data lives under the IM prefix (WEIS data is retired).
+        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{IM_PREFIX}{ds}.parquet'
         log.info(f'loading {ds} from {pf}')
         # ds (dataset name) and pf (S3 path) are code-controlled, not user input
         con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('{pf}')")  # noqa: S608
@@ -177,7 +178,7 @@ def prep_lmp(
             parameter (default ~1.5 years ago).
         end_time: End of time range filter. If None, no upper bound.
         baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
-            the data_im/ table holds both BAAs.
+            the im/ table holds both BAAs.
         nodes: Settlement locations to keep. Defaults to the modeled/app node
             list (node_list.MODEL_APP_NODES).
         clip_outliers: If True, clip LMP values to 0.25% and 99.75% quantiles.
@@ -250,7 +251,7 @@ def _prep_baa_hourly(
     """
     Shared prep for the per-BAA hourly forecast tables (MTLF, MTRF).
 
-    Filters to one BAA (data_im/ holds both), time-windows, casts the value
+    Filters to one BAA (im/ holds both), time-windows, casts the value
     columns to Float32, and averages to one row per timestamp.
 
     Args:
@@ -299,7 +300,7 @@ def prep_mtrf(
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
         baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
-            the data_im/ table holds both BAAs, so this must be set or the
+            the im/ table holds both BAAs, so this must be set or the
             forecast becomes a whole-RTO aggregate.
 
     Returns:
@@ -329,7 +330,7 @@ def prep_mtlf(
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
         baa: Balancing authority area to keep. Defaults to 'SWPW' (SPP West);
-            the data_im/ table holds both BAAs, so this must be set or the
+            the im/ table holds both BAAs, so this must be set or the
             forecast becomes a whole-RTO aggregate.
 
     Returns:

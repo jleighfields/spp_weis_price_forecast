@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 # champion pointer lives, relative to AWS_S3_FOLDER. Shared by the app read
 # path below, the model_retrain notebook (write path), and
 # scripts/r2_promote_champion.py so a layout change has exactly one home.
-RETRAINS_PREFIX = "model_retrains/"
-CHAMPION_KEY_SUFFIX = "S3_models/champion.json"
+RETRAINS_PREFIX = "models/retrains/"
+CHAMPION_KEY_SUFFIX = "models/champion.json"
 
 
 def list_folder_contents_resource(bucket_name: str, folder_prefix: str):
@@ -59,12 +59,13 @@ def list_folder_contents_resource(bucket_name: str, folder_prefix: str):
     return bucket_contents
 
 
-def get_loaded_models(search_folder: str = "S3_models/") -> List[str]:
+def get_loaded_models(search_folder: str = RETRAINS_PREFIX) -> List[str]:
     """
     Retrieves a list of trained model file paths from S3.
 
-    Scans the configured S3 bucket/folder for model files stored in the 'S3_models/'
-    subdirectory. Supports common model serialization formats: pickle (.pkl),
+    Scans the configured S3 bucket/folder for model files stored under the
+    given ``search_folder`` (a retrain folder). Supports common model
+    serialization formats: pickle (.pkl),
     PyTorch Lightning checkpoints (.ckpt), and PyTorch state dicts (.pt).
 
     Environment Variables:
@@ -82,10 +83,10 @@ def get_loaded_models(search_folder: str = "S3_models/") -> List[str]:
     log.info(f"{folder_prefix = }")
 
     bucket_contents = list_folder_contents_resource(AWS_S3_BUCKET, folder_prefix)
-    # Filter for objects in the S3_models/ subdirectory
+    # Filter for objects in the search_folder subdirectory
     loaded_models = [d.key for d in bucket_contents if search_folder in d.key]
     # Keep the checkpoint files plus the per-model training_config.json (matched
-    # by its exact name, not a bare ".json", so the S3_models/champion.json
+    # by its exact name, not a bare ".json", so the models/champion.json
     # pointer is never picked up). The config must download with the model so
     # the app can validate covariates at load.
     loaded_models = [
@@ -113,7 +114,7 @@ def download_checkpoints(s3_folder: str, dest_dir: str) -> None:
 
     Args:
         s3_folder: S3 folder path containing checkpoint files
-            (e.g. ``"S3_models/2026-03-01_12-00-00/"``).
+            (e.g. ``"models/retrains/2026-03-01_12-00-00/"``).
         dest_dir: Local directory to download checkpoint files into.
     """
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
@@ -159,7 +160,7 @@ def build_champion_config(
 
 
 # Name of the per-model provenance/validation file saved next to the
-# checkpoints in each model_retrains/<ts>/ folder.
+# checkpoints in each models/retrains/<ts>/ folder.
 TRAINING_CONFIG_FILENAME = "training_config.json"
 
 
@@ -304,7 +305,7 @@ def validate_model_covariates(
 def download_champion_checkpoints(dest_dir: str) -> None:
     """Download the current champion model's checkpoint files from S3.
 
-    Reads ``S3_models/champion.json`` to determine which model folder is
+    Reads ``models/champion.json`` to determine which model folder is
     the current champion, then delegates to ``download_checkpoints``.
 
     Environment Variables:

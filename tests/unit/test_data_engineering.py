@@ -779,10 +779,10 @@ class TestCreateDatabase:
         mock_con.sql.assert_any_call("INSTALL httpfs;")
         mock_con.sql.assert_any_call("LOAD httpfs;")
 
-        # Verify execute reads each dataset from the data_im/ prefix over S3
+        # Verify execute reads each dataset from the im/ prefix over S3
         execute_calls = [str(call) for call in mock_con.execute.call_args_list]
         for ds in ['lmp', 'mtrf', 'mtlf']:
             assert any(
-                ds in call and 'read_parquet' in call and 's3://' in call and 'data_im/' in call
+                ds in call and 'read_parquet' in call and 's3://' in call and 'im/' in call
                 for call in execute_calls
             )

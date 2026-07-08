@@ -2,7 +2,7 @@
 Data collection for SPP Integrated Marketplace (RTO West) feeds.
 
 The IM successor to data_collection.py (WEIS feeds, dead since 2026-04-01).
-Collects from the Integrated Marketplace portal feeds into the `data_im/`
+Collects from the Integrated Marketplace portal feeds into the `im/`
 R2 prefix, alongside the untouched WEIS `data/` prefix. Feeds:
 
 - MTLF: Mid-Term Load Forecast, per BAA (hourly)
@@ -48,6 +48,7 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 from data_collection_utils import (  # noqa: E402
+    IM_PREFIX,
     N_JOBS,
     ProgressParallel,
     _s3_storage_options,
@@ -68,7 +69,7 @@ PORTAL_DOWNLOAD = 'https://portal.spp.org/file-browser-api/download/'
 # The daily LMP rollup for operating day D publishes at ~18:00 on D+5.
 DAILY_LMP_LAG_DAYS = 5
 
-# Dedup keys for the consolidated data_im/ tables. Every key includes BAA:
+# Dedup keys for the consolidated im/ tables. Every key includes BAA:
 # both BAAs share timestamps, so without it East and West rows clobber
 # each other in the upsert.
 UPSERT_KEYS = {
@@ -85,12 +86,12 @@ UPSERT_KEYS = {
 ###########################################################
 
 def get_s3_base_path_im() -> str:
-    """Build the base S3 path for the IM `data_im/` prefix from AWS env vars."""
+    """Build the base S3 path for the IM `im/` prefix from AWS env vars."""
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     if not AWS_S3_BUCKET:
         raise ValueError('AWS_S3_BUCKET env var is not set')
-    return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data_im/'
+    return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{IM_PREFIX}'
 
 
 def get_time_components_im(
@@ -350,7 +351,7 @@ def get_range_data_im(
         freq: Frequency - 'D' for daily, 'h' for hourly, '5min' for 5 minute.
         get_process_func: The feed's get_process_* function.
         base_path: Optional base path for output files. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
         do_parallel: If True, use parallel processing with joblib.
 
     Returns:
@@ -410,10 +411,10 @@ def _get_process_feed(
     Args:
         tc: Time components from get_time_components_im().
         url_builder: The feed's get_*_url function.
-        data_category: Output subfolder under the data_im/ prefix.
+        data_category: Output subfolder under the im/ prefix.
         transform: Feed-specific pl.DataFrame -> pl.DataFrame processing.
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -471,7 +472,7 @@ def get_process_mtlf(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -489,7 +490,7 @@ def get_process_mtrf(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -527,7 +528,7 @@ def get_process_5min_lmp(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -551,7 +552,7 @@ def get_process_daily_lmp(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -573,7 +574,7 @@ def get_process_rf_reserve_zone(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -604,7 +605,7 @@ def get_process_da_lmp(tc: dict, base_path: str | None = None) -> str:
     Args:
         tc: Time components from get_time_components_im().
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         File path if successful, or the source URL if the download or the transform failed.
@@ -658,7 +659,7 @@ def get_range_data_daily_lmp(end_ts: pd.Timestamp, n_periods: int, base_path: st
         end_ts: Reference time, normally the current time.
         n_periods: Number of published days to gather.
         base_path: Optional base path for output. If None, uses the
-            data_im/ S3 path from AWS env vars.
+            im/ S3 path from AWS env vars.
 
     Returns:
         List of file paths for successful writes, or URLs for files that failed to download or process.
@@ -693,7 +694,7 @@ def upsert_im(
     base_path: str | None = None,
 ) -> None:
     """
-    Upsert individual IM parquet files into a consolidated data_im/ table.
+    Upsert individual IM parquet files into a consolidated im/ table.
 
     Deduplicates by the target's UPSERT_KEYS (keeping the latest row by
     file_create_time_utc), merges with the existing consolidated file if
@@ -703,7 +704,7 @@ def upsert_im(
         parquet_files: Paths of individual parquet files to upsert.
         target: One of UPSERT_KEYS: 'lmp' (5-min + daily rollup), 'mtlf',
             'mtrf', 'rf_reserve_zone', 'da_lmp'.
-        base_path: Optional base path. If None, uses the data_im/ S3 path
+        base_path: Optional base path. If None, uses the im/ S3 path
             from AWS env vars.
 
     Returns:

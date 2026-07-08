@@ -1,11 +1,11 @@
 """Promote (or revert to) a retrained model by repointing champion.json.
 
 The Shiny app decides which model to serve by reading
-``S3_models/champion.json`` from R2 and loading the checkpoints in that
+``models/champion.json`` from R2 and loading the checkpoints in that
 JSON's ``champion_artifact_folder``. Retrains land in timestamped
-``model_retrains/<timestamp>/`` folders; ``model_retrain.py`` only writes
+``models/retrains/<timestamp>/`` folders; ``model_retrain.py`` only writes
 champion.json when ``PROMOTE_CHAMPION`` is true. This script is the manual
-path: point the live champion at any existing ``model_retrains/`` folder —
+path: point the live champion at any existing ``models/retrains/`` folder —
 to promote a model staged with ``PROMOTE_CHAMPION=false``, or to revert to a
 prior model by naming its older folder.
 
@@ -15,7 +15,7 @@ the three-key schema ``model_retrain.py`` writes. The app picks up the change
 on its next data/model reload.
 
 Usage:
-    # List the model_retrains/ folders available to promote (newest last)
+    # List the models/retrains/ folders available to promote (newest last)
     python scripts/r2_promote_champion.py --list
 
     # Show the model champion.json currently points at
@@ -62,7 +62,7 @@ def make_s3_client():
 
 
 def list_retrain_folders(s3, bucket: str, folder: str) -> list[str]:
-    """List the retrain timestamp folders under model_retrains/.
+    """List the retrain timestamp folders under models/retrains/.
 
     Args:
         s3: Boto3 S3 client.
@@ -155,7 +155,7 @@ def main() -> int:
         "timestamp",
         nargs="?",
         help="Retrain folder to promote, e.g. 2026-07-06_12-41-45 "
-        "(the folder name under model_retrains/). Omit with --list/--show.",
+        "(the folder name under models/retrains/). Omit with --list/--show.",
     )
     parser.add_argument(
         "--promote",
@@ -166,7 +166,7 @@ def main() -> int:
     parser.add_argument(
         "--list",
         action="store_true",
-        help="List the model_retrains/ folders available to promote and exit.",
+        help="List the models/retrains/ folders available to promote and exit.",
     )
     parser.add_argument(
         "--show",
@@ -205,7 +205,7 @@ def main() -> int:
     if not args.timestamp:
         parser.error("a timestamp is required unless --list or --show is given")
 
-    # Normalize: accept a bare timestamp or a "model_retrains/<ts>/" path.
+    # Normalize: accept a bare timestamp or a "models/retrains/<ts>/" path.
     timestamp = args.timestamp.strip("/")
     if timestamp.startswith(RETRAINS_PREFIX):
         timestamp = timestamp[len(RETRAINS_PREFIX) :].strip("/")

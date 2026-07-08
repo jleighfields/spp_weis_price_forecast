@@ -42,6 +42,15 @@ log.info(f'number of cores available: {core_count}')
 log.info(f'N_JOBS: {N_JOBS}')
 
 
+# ── R2 market-data layout ────────────────────────────────────────────────
+# Single source of truth for the top-level data prefixes (relative to
+# AWS_S3_FOLDER). The IM collector, the WEIS collector, and the app's read
+# path (data_engineering) all build their base paths from these, so a layout
+# change has exactly one home.
+IM_PREFIX = "im/"
+WEIS_PREFIX = "weis/"
+
+
 def _s3_storage_options() -> dict:
     """Return Polars storage_options for S3/R2 endpoint, if configured."""
     endpoint = os.getenv("S3_ENDPOINT_URL")

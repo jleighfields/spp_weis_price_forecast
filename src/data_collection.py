@@ -56,6 +56,7 @@ if _src_dir not in sys.path:
 # retired WEIS module. The WEIS-specific feed/URL/upsert logic below still
 # calls them.
 from data_collection_utils import (  # noqa: E402
+    WEIS_PREFIX,
     N_JOBS,
     ProgressParallel,
     _s3_storage_options,
@@ -76,7 +77,7 @@ def get_s3_base_path() -> str:
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     assert AWS_S3_BUCKET
-    return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/'
+    return f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{WEIS_PREFIX}'
 
 
 def convert_datetime_cols(
@@ -766,9 +767,9 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
         raise ValueError(f"{src_dir = } - expected one of (mtlf, mtrf, lmp_daily, lmp_5min)")
     
     if 'lmp_' in src_dir:
-        object_name = f'{AWS_S3_FOLDER}data/lmp.parquet'
+        object_name = f'{AWS_S3_FOLDER}{WEIS_PREFIX}lmp.parquet'
     else: # mtrf, mtlf
-        object_name = f'{AWS_S3_FOLDER}data/{src_dir}.parquet'
+        object_name = f'{AWS_S3_FOLDER}{WEIS_PREFIX}{src_dir}.parquet'
 
     target_path = f's3://{AWS_S3_BUCKET}/{object_name}'
     file_exists = check_file_exists_client(AWS_S3_BUCKET, object_name)
@@ -778,7 +779,7 @@ def rebuild_mtlf_mtrf_lmp_from_s3(src_dir: str):
     storage_opts = _s3_storage_options()
 
     upsert_df = (
-        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}data/{src_dir}/*.parquet', storage_options=storage_opts)
+        pl.scan_parquet(f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{WEIS_PREFIX}{src_dir}/*.parquet', storage_options=storage_opts)
         .sort(key_cols + ['file_create_time_utc'], descending=False)
         .unique(
             subset=key_cols,

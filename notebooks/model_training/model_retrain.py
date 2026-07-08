@@ -447,11 +447,11 @@ def _(
     utils,
 ):
     # Promote by updating champion.json to point at the new model's folder.
-    # The app loads models directly from model_retrains/<timestamp>/ via
-    # champion_artifact_folder, so no file copying to S3_models/ is needed.
+    # The app loads models directly from models/retrains/<timestamp>/ via
+    # champion_artifact_folder, so no file copying to models/ is needed.
     # To revert to a previous model, repoint champion.json at the old folder
     # with `python scripts/r2_promote_champion.py <timestamp> --promote`
-    # (run it with --list to see the available model_retrains/ folders).
+    # (run it with --list to see the available models/retrains/ folders).
     #
     # Set PROMOTE_CHAMPION=false to train + save the checkpoints to the
     # timestamped folder WITHOUT overwriting champion.json — used to stage a

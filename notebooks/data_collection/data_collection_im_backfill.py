@@ -1,7 +1,7 @@
 # Historical backfill for SPP RTO West / Integrated Marketplace (IM).
 #
 # One-time backfill of MTLF, MTRF, RF_RESERVE_ZONE, and LMP (via the daily
-# rollup) from BACKFILL_START to now into data_im/. Covers both Phase 2
+# rollup) from BACKFILL_START to now into im/. Covers both Phase 2
 # history segments in one pass — the collectors filter LMP to STORED_NODES and
 # fill BAA='SPP' for pre-launch (East-only) files, so:
 #   * 2026-04-01 -> now: both BAAs, all hub/BA nodes (IM era)
@@ -31,7 +31,7 @@ def _(mo):
     mo.md(
         r"""
     # IM data collection — historical backfill
-    One-time backfill of MTLF, MTRF, RF reserve zone, and LMP into data_im/.
+    One-time backfill of MTLF, MTRF, RF reserve zone, and LMP into im/.
     """
     )
     return

@@ -89,9 +89,15 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
 - Storage config (bucket, folder, endpoint) → environment variables
   (`AWS_S3_BUCKET`, `AWS_S3_FOLDER`, `S3_ENDPOINT_URL`,
   `AWS_DEFAULT_REGION`), read via `os.environ` — locally from the
-  gitignored `.env`, on Modal from the `aws-secret` secret. The tracked
-  `.env.example` documents the required keys (and why `AWS_S3_FOLDER`
-  must be `""` or end with a trailing slash).
+  gitignored `.env`. On Modal the non-secret **bucket name** comes from the
+  job's `env={"AWS_S3_BUCKET": ...}` in `modal_jobs/*.py` (so a bucket change
+  is a redeploy, not a secret edit); credentials, `S3_ENDPOINT_URL`,
+  `AWS_DEFAULT_REGION`, and `AWS_S3_FOLDER` come from the `aws-secret` secret.
+  The tracked `.env.example` documents the required keys (and why
+  `AWS_S3_FOLDER` must be `""` or end with a trailing slash). The R2 top-level
+  layout prefixes have single homes too: `IM_PREFIX`/`WEIS_PREFIX` in
+  `src/data_collection_utils.py`, `RETRAINS_PREFIX`/`CHAMPION_KEY_SUFFIX` in
+  `src/utils.py`.
 - Feed URLs and filename formats → the `get_*_url` builders in
   `src/data_collection.py`; don't paste literal portal URLs elsewhere.
 

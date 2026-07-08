@@ -12,6 +12,11 @@ import modal
 
 app = modal.App("spp-weis-model-retrain")
 
+# The bucket name is not secret, so it lives here in code (env= below) rather
+# than in the aws-secret. Credentials, S3_ENDPOINT_URL, AWS_DEFAULT_REGION, and
+# AWS_S3_FOLDER still come from the aws-secret; a bucket change is a redeploy.
+S3_BUCKET = "spp-rto"
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     # Install the exact deploy pins (requirements.txt) so the retrain stack —
@@ -33,6 +38,7 @@ image = (
     cpu=8.0,  # 8 physical cores
     memory=32768,  # 32 GiB
     gpu="A10G",
+    env={"AWS_S3_BUCKET": S3_BUCKET},
 )
 def model_retrain_weekly():
     """Retrain ensemble models (TiDE, TSMixer, TFT) and promote champion."""

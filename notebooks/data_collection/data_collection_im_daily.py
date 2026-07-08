@@ -1,7 +1,7 @@
 # Daily data collection for SPP RTO West / Integrated Marketplace (IM).
 #
 # Runs the daily-LMP repair sweep (fills the 5-min LMP history from the
-# lag-published daily rollups) and collects the Day-Ahead LMP into data_im/.
+# lag-published daily rollups) and collects the Day-Ahead LMP into im/.
 # Parallel to data_collection_daily.py (the WEIS pipeline).
 #
 # Usage:

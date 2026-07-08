@@ -142,7 +142,8 @@ are in fact fully covered on both sides of the seam.
    `set_he`) now have a single home in `src/data_collection_utils.py`. The live IM collector
    (`data_collection_im.py`) and the stitch script import from it; `data_collection.py` re-imports
    them for its WEIS-specific feed logic. Tests split into `tests/unit/test_data_collection_utils.py`.
-   `data_collection.py` stays in `src/` (still used by the live weather-collection notebook).
+   `data_collection.py` stays in `src/` for now; fully retiring it to `deprecated/` is a separate
+   cluster move (the module + the unwired weather notebook + `test_data_collection.py`).
    Still optional: R2 bucket rename `spp-weis-forecast`→`spp-im-bucket`.
 4. Open decision: whether West `RF_RESERVE_ZONE` (zone 21, post-launch only) is worth adding
    as a covariate (its `ReserveZone==21` filter is ready to wire in if so).
@@ -521,9 +522,12 @@ copy-migration — is a **later refactor**, not now.)
 > **`src/data_collection_utils.py`**, their single home. `data_collection_im.py` (live IM
 > collector) and `scripts/weis_stitch_fill.py` import from it, so neither depends on the WEIS
 > module. `data_collection.py` re-imports the same helpers for its WEIS feed logic and **stays
-> in `src/`** — `notebooks/data_collection/data_collection_weather.py` still calls
-> `data_collection.upsert_weather`, and weather is a live model covariate (used in
-> `data_engineering.py`), independent of the market migration.
+> in `src/`** for now. Its only remaining caller,
+> `notebooks/data_collection/data_collection_weather.py` (`data_collection.upsert_weather`), is
+> itself unwired — weather is **not** an active covariate (the `prep_weather` join and the
+> `temperature` column are commented out in `data_engineering.py`). Fully retiring the WEIS
+> module to `deprecated/` is therefore a self-contained follow-up (module + weather notebook +
+> `test_data_collection.py`), not blocked by anything live.
 
 **Suggested sequencing:** all work on the **feature branch**. Phase 1 → 2 → 3/3b restore +
 enrich the data pipeline and can proceed now. Phase 4 (retrain) follows once the
