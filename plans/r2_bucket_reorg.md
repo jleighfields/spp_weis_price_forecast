@@ -108,15 +108,21 @@ copy works):
 This bulk copy is safe to run anytime before cutover; the old bucket keeps
 serving live traffic throughout.
 
-## Phase 3 — Cutover — ✅ Modal done; Posit pending
+## Phase 3 — Cutover — ✅ DONE
 
-Executed: final delta sync (96,430→96,430), both Modal apps redeployed (v2,
-commit on `main`). Verified empirically that the **deployed** `collect_im_hourly`
-writes to `spp-rto/im/` (a manual invocation landed fresh LMP data there), and
-the app read path resolves the champion from `models/` + reads `im/` tables
-against `spp-rto` — so the Modal `env=` bucket takes effect (Option B confirmed
-working). Remaining: confirm the **Posit Connect app redeployed** with the new
-code (it reads `AWS_S3_BUCKET=spp-rto` + the new prefixes); then Phase 4.
+Executed and verified:
+- Final delta sync (96,430→96,430, missing=0).
+- Both Modal apps redeployed (v2). `aws-secret` trimmed to drop `AWS_S3_BUCKET`
+  (credentials/endpoint/region/folder kept), so the code `env=spp-rto` is the
+  sole bucket source. A manual invocation of the **deployed** `collect_im_hourly`
+  wrote fresh LMP to `spp-rto/im/` — Option B confirmed.
+- App read path resolves the champion from `spp-rto/models/` + reads `im/`
+  tables. Posit Connect redeployed on the new code; forecast renders.
+
+Watch-items before Phase 4:
+- **Next scheduled IM collection** (every 4 h) lands in `spp-rto/im/`.
+- **First scheduled retrain** (Sun 20:00 UTC, next 2026-07-12) writes to
+  `spp-rto/models/retrains/<ts>/` and updates `spp-rto/models/champion.json`.
 
 Original sequence, for reference:
 
