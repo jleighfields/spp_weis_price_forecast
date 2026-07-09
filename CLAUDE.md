@@ -129,10 +129,10 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   dashboard clutter. (Ephemeral `modal run` also leaves stopped-app records.)
 - **The Databricks jobs in `databricks.yaml` are PAUSED** — Modal
   replaced them. Don't revive them.
-- **R2 storage:** WEIS-era data lives under the `data/` prefix;
-  Integrated Marketplace data lands under `data_im/` (see the migration
-  plan). Keep the WEIS history — it's needed for stitched training
-  series.
+- **R2 storage:** WEIS-era data lives under the `weis/` prefix;
+  Integrated Marketplace data lands under the `im/` prefix (see the
+  migration plan). Keep the WEIS history — it's needed for stitched
+  training series.
 - **Tests:** `tests/unit` (fast, pure pytest — the default gate:
   `uv run pytest tests/unit -q`) and `tests/e2e` (Playwright driving
   the Shiny app: `uv run pytest tests/e2e -q`; needs

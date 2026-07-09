@@ -36,7 +36,7 @@ SPP Integrated Marketplace data is public and published on the SPP portal
 (https://portal.spp.org). The feeds now carry a `BAA` column (East `SPP` /
 West `SWPW`); collection filters LMP to a hub/BA node list and keeps West rows
 for modeling. Automated Modal jobs collect and upsert this data to Cloudflare R2
-under the `data_im/` prefix.
+under the `im/` prefix.
 
 ### Data types collected
 

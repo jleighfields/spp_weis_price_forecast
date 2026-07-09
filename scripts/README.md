@@ -84,11 +84,33 @@ uv run python scripts/r2_move_objects.py "" --bucket old-bucket --delete-only
 uv run python scripts/r2_move_objects.py "old/models/" "new/models/" --copy --delete
 ```
 
+## r2_reorg_copy.py
+
+One-time migration that clones the whole `spp-weis-forecast` bucket into
+`spp-rto` under the current top-level layout, remapping keys
+(`data/`→`weis/`, `data_im/`→`im/`, `model_retrains/`→`models/retrains/`,
+`S3_models/champion.json`→`models/champion.json`). Unlike the general
+`r2_move_objects.py`, it applies the full multi-prefix map in one pass and
+rewrites `champion.json`'s pointers to the new model layout.
+
+- **Server-side `copy_object`**: no download; threaded (`MAX_WORKERS`)
+- **Idempotent**: skips keys already in the target, so a re-run is a delta
+  sync (used to catch writes made between the bulk copy and cutover)
+- **Champion-safe**: leaves an existing target `models/champion.json`
+  untouched, and asserts `AWS_S3_FOLDER == ""` (the layout the remap assumes)
+- **Verifies**: asserts the prefix map is 1:1, then that every source object
+  is present in the target
+
+```bash
+uv run python scripts/r2_reorg_copy.py            # dry run
+uv run python scripts/r2_reorg_copy.py --execute  # create spp-rto and copy
+```
+
 ## r2_promote_champion.py
 
 Promote (or revert to) a retrained model by repointing
-`S3_models/champion.json` — the pointer the Shiny app reads to decide which
-`model_retrains/<timestamp>/` folder to serve.
+`models/champion.json` — the pointer the Shiny app reads to decide which
+`models/retrains/<timestamp>/` folder to serve.
 
 Retrains that run with `PROMOTE_CHAMPION=false` are *staged*: their
 checkpoints land in a timestamped folder but champion.json is untouched, so
@@ -123,9 +145,9 @@ uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45 --promote
 
 ## weis_stitch_fill.py
 
-One-time WEIS→`data_im/` West stitch-fill (Phase 2 of the RTO West
-migration). Copies the pre-launch WEIS (`data/`) consolidated
-lmp/mtlf/mtrf West rows into the `data_im/` tables with `BAA='SWPW'` and
+One-time WEIS→`im/` West stitch-fill (Phase 2 of the RTO West
+migration). Copies the pre-launch WEIS (`weis/`) consolidated
+lmp/mtlf/mtrf West rows into the `im/` tables with `BAA='SWPW'` and
 `source='weis'`, giving the West BAA a continuous training series across
 the 2026-04-01 seam.
 
@@ -149,6 +171,6 @@ Same R2 environment variables as `r2_move_objects.py` above.
 # Preview row counts without writing
 uv run python scripts/weis_stitch_fill.py --dry-run
 
-# Materialize the stitch into the data_im/ tables
+# Materialize the stitch into the im/ tables
 uv run python scripts/weis_stitch_fill.py
 ```

@@ -57,7 +57,7 @@ def remap_key(key: str) -> str:
     """Map a source object key to its target key under the new layout."""
     for old, new in PREFIX_MAP:
         if key.startswith(old):
-            return new + key[len(old):]
+            return new + key[len(old) :]
     return key
 
 
@@ -69,6 +69,17 @@ def _client():
         endpoint_url=os.environ["S3_ENDPOINT_URL"],
         config=Config(max_pool_connections=MAX_WORKERS),
     )
+
+
+def _key_exists(s3, bucket: str, key: str) -> bool:
+    """True if the object exists (False on 404)."""
+    try:
+        s3.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+            return False
+        raise
 
 
 def list_keys(s3, bucket: str) -> list[str]:
@@ -86,6 +97,13 @@ def list_keys(s3, bucket: str) -> list[str]:
 
 
 def ensure_bucket(s3, bucket: str, execute: bool) -> None:
+    """Create the target bucket if it does not already exist.
+
+    Args:
+        s3: Boto3 S3 client.
+        bucket: Target bucket name.
+        execute: If False, only log what would happen (dry run).
+    """
     existing = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
     if bucket in existing:
         log.info(f"target bucket {bucket!r} already exists")
@@ -98,7 +116,17 @@ def ensure_bucket(s3, bucket: str, execute: bool) -> None:
 
 
 def copy_champion(s3, execute: bool) -> None:
-    """Copy champion.json with its pointer values rewritten to the new layout."""
+    """Copy champion.json with its pointer values rewritten to the new layout.
+
+    Skips if the target champion already exists, so re-running the script as a
+    delta sync never reverts a champion that was promoted directly into the
+    target bucket after cutover.
+    """
+    if _key_exists(s3, TGT_BUCKET, CHAMPION_TGT_KEY):
+        log.info(
+            f"{TGT_BUCKET}/{CHAMPION_TGT_KEY} already exists; leaving it untouched"
+        )
+        return
     try:
         body = s3.get_object(Bucket=SRC_BUCKET, Key=CHAMPION_SRC_KEY)["Body"].read()
     except ClientError as e:
@@ -123,17 +151,35 @@ def copy_champion(s3, execute: bool) -> None:
 
 
 def main() -> int:
+    """Plan and (optionally) run the reorg copy, returning a process exit code.
+
+    Returns:
+        0 on success (or dry run), 1 if any copy failed or a source object is
+        missing from the target after the copy.
+    """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--execute", action="store_true", help="create the bucket and copy (default: dry run)")
+    ap.add_argument(
+        "--execute",
+        action="store_true",
+        help="create the bucket and copy (default: dry run)",
+    )
     args = ap.parse_args()
     execute = args.execute
+
+    # The prefix remap operates on bare object keys, and champion.json's
+    # pointer values are AWS_S3_FOLDER + folder — both assume an empty folder.
+    # A non-empty folder would silently mis-map, so fail loudly instead.
+    folder = os.environ.get("AWS_S3_FOLDER", "")
+    assert folder == "", f"AWS_S3_FOLDER must be '' for this reorg; got {folder!r}"
 
     s3 = _client()
     ensure_bucket(s3, TGT_BUCKET, execute)
 
     src_keys = list_keys(s3, SRC_BUCKET)
     tgt_existing = set(list_keys(s3, TGT_BUCKET))
-    log.info(f"source objects: {len(src_keys):,}  |  already in target: {len(tgt_existing):,}")
+    log.info(
+        f"source objects: {len(src_keys):,}  |  already in target: {len(tgt_existing):,}"
+    )
 
     # champion.json is handled separately (content rewrite), not a plain copy.
     plain = [k for k in src_keys if k != CHAMPION_SRC_KEY]
@@ -147,20 +193,29 @@ def main() -> int:
         if tk not in tgt_existing:
             todo.append((k, tk))
 
-    log.info("target distribution (all objects): "
-             + ", ".join(f"{p}={n:,}" for p, n in sorted(by_prefix.items())))
-    log.info(f"to copy this run: {len(todo):,} (skipping {len(plain) - len(todo):,} already present)")
+    log.info(
+        "target distribution (all objects): "
+        + ", ".join(f"{p}={n:,}" for p, n in sorted(by_prefix.items()))
+    )
+    log.info(
+        f"to copy this run: {len(todo):,} (skipping {len(plain) - len(todo):,} already present)"
+    )
 
     copy_champion(s3, execute)
 
     if not execute:
-        log.info("[dry-run] no objects copied. Re-run with --execute to perform the copy.")
+        log.info(
+            "[dry-run] no objects copied. Re-run with --execute to perform the copy."
+        )
         return 0
 
     def _copy(pair):
         src_key, tgt_key = pair
-        s3.copy_object(Bucket=TGT_BUCKET, Key=tgt_key,
-                       CopySource={"Bucket": SRC_BUCKET, "Key": src_key})
+        s3.copy_object(
+            Bucket=TGT_BUCKET,
+            Key=tgt_key,
+            CopySource={"Bucket": SRC_BUCKET, "Key": src_key},
+        )
         return tgt_key
 
     done = 0
@@ -180,14 +235,24 @@ def main() -> int:
         log.error(f"{len(errors)} copy errors; first few: {errors[:5]}")
         return 1
 
-    # Verify: every source key now has its target, and per-prefix counts match.
+    # Verify. Build the set of target keys every source object should map to
+    # (plain keys remapped, plus the champion). A collision in the prefix map
+    # would shrink this set below the source count, so assert the mapping is
+    # 1:1 before checking presence — a presence-only check could false-pass.
+    expected = {remap_key(k) for k in plain}
+    expected.add(CHAMPION_TGT_KEY)
+    if len(expected) != len(plain) + 1:
+        log.error(
+            f"prefix map is not 1:1: {len(plain) + 1} source keys collapsed to "
+            f"{len(expected)} target keys — aborting before trusting the copy."
+        )
+        return 1
+
     tgt_after = set(list_keys(s3, TGT_BUCKET))
-    missing = [remap_key(k) for k in src_keys if remap_key(k) not in tgt_after
-               and not (k == CHAMPION_SRC_KEY)]
-    # champion special-case
-    if CHAMPION_TGT_KEY not in tgt_after:
-        missing.append(CHAMPION_TGT_KEY)
-    log.info(f"verify: source={len(src_keys):,} target={len(tgt_after):,} missing={len(missing):,}")
+    missing = sorted(expected - tgt_after)
+    log.info(
+        f"verify: source={len(src_keys):,} target={len(tgt_after):,} missing={len(missing):,}"
+    )
     if missing:
         log.error(f"missing after copy (first few): {missing[:5]}")
         return 1
