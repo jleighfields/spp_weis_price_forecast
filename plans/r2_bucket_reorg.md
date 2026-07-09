@@ -81,7 +81,17 @@ the constants automatically — only their comments need a sweep.
    `uv run pytest tests/unit -q`.
 8. **`.env.example`** — `AWS_S3_BUCKET=spp-rto`.
 
-## Phase 2 — R2 copy (server-side, key-remapped)
+## Phase 2 — R2 copy (server-side, key-remapped) — ✅ DONE
+
+Implemented as `scripts/r2_reorg_copy.py` (dry-run by default; `--execute` to
+copy). Bulk copy verified: `spp-rto` holds 96,137 objects — `im/` 36,726,
+`weis/` 59,308, `models/` 103 (102 checkpoints + `models/champion.json`, both
+its pointers rewritten), byte sizes matching source, and zero old-prefix keys.
+The script is idempotent (skip-existing), so re-running it is the Phase-3 delta
+sync. A re-run already showed the live IM job had added ~293 objects to the old
+bucket since the bulk copy — the reason the cutover needs a final sync.
+
+The mechanics below describe that script:
 
 One script (`scripts/` one-off, run locally with `.env` creds), threaded
 `copy_object` (server-side, no download; every object is < 5 GB so single-part
