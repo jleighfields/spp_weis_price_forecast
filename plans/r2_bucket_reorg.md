@@ -108,7 +108,19 @@ copy works):
 This bulk copy is safe to run anytime before cutover; the old bucket keeps
 serving live traffic throughout.
 
-## Phase 3 — Cutover (pick a quiet window)
+## Phase 3 — Cutover — ✅ Modal done; Posit pending
+
+Executed: final delta sync (96,430→96,430), both Modal apps redeployed (v2,
+commit on `main`). Verified empirically that the **deployed** `collect_im_hourly`
+writes to `spp-rto/im/` (a manual invocation landed fresh LMP data there), and
+the app read path resolves the champion from `models/` + reads `im/` tables
+against `spp-rto` — so the Modal `env=` bucket takes effect (Option B confirmed
+working). Remaining: confirm the **Posit Connect app redeployed** with the new
+code (it reads `AWS_S3_BUCKET=spp-rto` + the new prefixes); then Phase 4.
+
+Original sequence, for reference:
+
+
 
 Sequence to avoid losing writes (IM job every 4 h; retrain Sun 20:00 UTC —
 avoid both):
