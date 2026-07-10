@@ -39,8 +39,10 @@ MAX_LMP = 200.0
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# load env
-from dotenv import load_dotenv
+# load env — must run before importing modules that read os.environ at import,
+# so this import is intentionally not at the top of the file.
+from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv(override=True)
 
 
@@ -91,7 +93,11 @@ app_ui = ui.page_sidebar(
         ui.input_select(
             "target",
             "Market",
-            choices={"da": "Day-ahead (DA)", "rt": "Real-time (RT)"},
+            # Default target first so the primary market sits atop the dropdown.
+            choices={
+                k: f"{parameters.TARGETS[k]['label']} ({k.upper()})"
+                for k in sorted(parameters.TARGETS, key=lambda k: k != parameters.DEFAULT_TARGET)
+            },
             selected=parameters.DEFAULT_TARGET,
         ),
         ui.hr(),
@@ -219,6 +225,10 @@ def server(input, output, session):
     # Which forecast target (parameters.TARGETS) the loaded data + model are for.
     # None until the first load.
     loaded_target_val = reactive.Value(None)
+    # False until _update_inputs has seeded the sidebar once. Gates the
+    # data-lag warning so it fires only on a real market switch, not on the
+    # first load (where fcast_date is still the browser default, not a pick).
+    inputs_seeded_val = reactive.Value(False)
     # Champion models cached per target, so switching the market reuses an
     # already-downloaded model instead of re-fetching it from R2 each time.
     # Session-scoped: {target: (model, train_timestamp)}.
@@ -298,9 +308,39 @@ def server(input, output, session):
         today = df.index.max()
         min_date = today - pd.Timedelta('60D')
 
+        # Keep the user's current date/node across a market switch or refresh
+        # when they are still valid (DA and RT share the same nodes and date
+        # range), so toggling DA<->RT compares the same period/node instead of
+        # resetting to defaults. isolate() reads the current picks without
+        # subscribing (this effect fires on data reload, not on input change).
+        with reactive.isolate():
+            cur_date = input.fcast_date()
+            cur_node = input.node_name()
+            target = input.target()
+            market = parameters.TARGETS.get(target, {}).get("label", target)
+            seeded = inputs_seeded_val()
+
+        keep_date = (
+            cur_date
+            if cur_date and min_date.date() <= cur_date <= today.date()
+            else today.date()
+        )
+        # If the picked date can't be kept because this market's data doesn't
+        # reach it (day-ahead is collected on a slower cadence than real-time, so
+        # it can lag), warn instead of silently resetting — otherwise a stale
+        # market looks like it just moved the user's date for no reason. Only
+        # after the first seed: on first load cur_date is the browser default,
+        # not a user pick, so a lag there isn't worth a warning.
+        if seeded and cur_date and cur_date > today.date():
+            ui.notification_show(
+                f"{market} data currently extends only through {today.date()}; "
+                f"the forecast date was moved from {cur_date}.",
+                type="warning",
+                duration=10,
+            )
         ui.update_date(
             "fcast_date",
-            value=today.date(),
+            value=keep_date,
             min=min_date.date(),
             max=today.date(),
         )
@@ -308,11 +348,15 @@ def server(input, output, session):
         nodes = get_price_nodes(df)
         # default to the SWPW_HUB flagship hub when present
         default_node = 'SWPW_HUB' if 'SWPW_HUB' in nodes else (nodes[0] if nodes else None)
+        keep_node = cur_node if cur_node in nodes else default_node
         ui.update_select(
             "node_name",
             choices=dict(zip(nodes, nodes)),
-            selected=default_node,
+            selected=keep_node,
         )
+        # Sidebar seeded; subsequent runs are refreshes/market switches, where
+        # a lagging date is a real change worth warning about (see above).
+        inputs_seeded_val.set(True)
 
     @reactive.effect
     def _update_hours():
@@ -321,10 +365,15 @@ def server(input, output, session):
             return
         fcast_date = input.fcast_date()
         hours = get_hour_list(fcast_date, df)
+        # Keep the current hour when it's still a valid choice (e.g. across a
+        # market switch), otherwise default to the latest available hour.
+        with reactive.isolate():
+            cur_hour = input.fcast_hour()
+        keep_hour = cur_hour if cur_hour in hours else (hours[-1] if hours else None)
         ui.update_select(
             "fcast_hour",
             choices=dict(zip(hours, hours)),
-            selected=hours[-1] if hours else None,
+            selected=keep_hour,
         )
 
     ###############################################################
@@ -496,9 +545,8 @@ def server(input, output, session):
 
         node_name = fcast_node_name_val()
         fcast_time = fcast_time_val()
-        market = {"da": "Day-ahead", "rt": "Real-time"}.get(
-            loaded_target_val(), loaded_target_val()
-        )
+        target = loaded_target_val()
+        market = parameters.TARGETS.get(target, {}).get("label", target)
         return ui.div(
             ui.h3(f"{node_name} {market} forecasts"),
             ui.p(f"Forecast start time: {fcast_time}"),

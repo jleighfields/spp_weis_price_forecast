@@ -104,6 +104,9 @@ def test_market_toggle_reloads_and_forecasts(page: Page, app):
     expect(page.locator("#target")).to_have_value("da")
     da_ts = page.locator("#train_timestamp_display").inner_text().strip()
 
+    # Pick a non-default node so we can verify the selection survives the switch.
+    page.select_option("#node_name", "TEST_NODE_B")
+
     # Switch to real-time; the app reloads that target's data + champion model.
     page.select_option("#target", "rt")
     expect(page.locator("#target")).to_have_value("rt")
@@ -119,6 +122,10 @@ def test_market_toggle_reloads_and_forecasts(page: Page, app):
     )
     # Let the post-reload dropdown refresh settle before clicking.
     page.wait_for_timeout(2_000)
+
+    # The node selection is preserved across the market switch (not reset to the
+    # default) so DA and RT can be compared for the same node.
+    expect(page.locator("#node_name")).to_have_value("TEST_NODE_B")
 
     # A forecast on the RT model renders, and the header names the market.
     page.locator("#get_fcast_btn").click()
