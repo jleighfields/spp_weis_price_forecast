@@ -128,8 +128,8 @@ Modal jobs are thin wrappers that import and run the corresponding [marimo](http
 
 | Job | File | Notebook | Resources | Schedule | Est. Runtime | Description |
 |-----|------|----------|-----------|----------|--------------|-------------|
-| `collect_im_hourly` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects IM MTLF, MTRF, RF reserve zone, 5-min LMP data |
-| `collect_im_daily` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~1 min | Runs the daily-LMP repair sweep and collects Day-Ahead LMP data |
+| `collect_im_hourly` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_hourly.py` | 16 CPU, 4 GiB | Every 4 hours | ~1 min | Collects IM MTLF, MTRF, RF reserve zone, 5-min LMP, and Day-Ahead LMP data |
+| `collect_im_daily` | `modal_jobs/data_collection_im.py` | `notebooks/data_collection/data_collection_im_daily.py` | 16 CPU, 4 GiB | Every 3 days | ~1 min | Runs the daily-LMP repair sweep and gap-catches Day-Ahead LMP data |
 | `model_retrain_weekly` | `modal_jobs/model_retrain.py` | `notebooks/model_training/model_retrain.py` | 8 CPU, 32 GiB, A10G GPU | Sundays 8 PM UTC | ~15 min | Retrains ensemble model |
 
 Runtimes are estimates based on current resource configuration. The retired WEIS

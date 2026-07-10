@@ -1,7 +1,10 @@
 # Daily data collection for SPP RTO West / Integrated Marketplace (IM).
 #
-# Runs the daily-LMP repair sweep (fills the 5-min LMP history from the
-# lag-published daily rollups) and collects the Day-Ahead LMP into im/.
+# Runs the daily-LMP repair sweep: fills the 5-min LMP history from the
+# lag-published daily rollups (~D+5), which the hourly job's live 5-min
+# feed can't reach. Also re-collects Day-Ahead LMP over a wider window as a
+# gap-catch backstop — DA rides the hourly job for freshness, and this daily
+# pass repairs any run the hourly job missed.
 # Parallel to data_collection_daily.py (the WEIS pipeline).
 #
 # Usage:
@@ -96,16 +99,17 @@ def _(dcim, daily_parquet):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Day-Ahead LMP""")
+    mo.md(r"""## Day-Ahead LMP (gap-catch)""")
     return
 
 
 @app.cell
 def _(dcim, now, pd):
-    # The DA file for operating day D publishes the prior afternoon, so
-    # look ahead one day to pick up tomorrow's file. This job runs every 3
-    # days; a 6-day window overlaps consecutive runs so one missed run leaves
-    # no gap.
+    # DA is collected primarily on the hourly job (fresh, tight window). This
+    # daily pass is a wider-window backstop: it re-scans ~6 days so a run the
+    # hourly job missed (portal outage, a late-published file) still gets
+    # filled. The upsert is idempotent, so the overlap is harmless. Look ahead
+    # one day to include tomorrow's file (publishes the prior afternoon).
     da_range = dcim.get_range_data_da_lmp(
         end_ts=now + pd.Timedelta(days=1), n_periods=6
     )

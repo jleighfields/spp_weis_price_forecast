@@ -48,7 +48,7 @@ image = (
     env={"MAX_JOBS": "15", "AWS_S3_BUCKET": S3_BUCKET},
 )
 def collect_im_hourly():
-    """Collect IM MTLF, MTRF, RF_RESERVE_ZONE, and 5-min LMP data."""
+    """Collect IM MTLF, MTRF, RF_RESERVE_ZONE, 5-min LMP, and Day-Ahead LMP."""
     import sys
 
     sys.path.insert(0, "/root")
@@ -69,7 +69,7 @@ def collect_im_hourly():
     env={"MAX_JOBS": "15", "AWS_S3_BUCKET": S3_BUCKET},
 )
 def collect_im_daily():
-    """Run the daily-LMP repair sweep and collect Day-Ahead LMP data."""
+    """Run the daily-LMP repair sweep and gap-catch Day-Ahead LMP data."""
     import sys
 
     sys.path.insert(0, "/root")

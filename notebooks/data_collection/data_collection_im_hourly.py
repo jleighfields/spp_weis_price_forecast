@@ -1,6 +1,8 @@
 # Hourly data collection for SPP RTO West / Integrated Marketplace (IM).
 #
-# Collects MTLF, MTRF, RF_RESERVE_ZONE, and 5-min LMP data into im/.
+# Collects MTLF, MTRF, RF_RESERVE_ZONE, 5-min LMP, and Day-Ahead LMP into
+# im/. DA (the primary forecast target) rides the hourly job so it stays as
+# up to date as the real-time feed.
 # Parallel to data_collection_hourly.py (the WEIS pipeline).
 #
 # Usage:
@@ -151,6 +153,35 @@ def _(dcim, end_ts):
 def _(dcim, lmp_parquet):
     if lmp_parquet:
         dcim.upsert_im(lmp_parquet, target="lmp")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Day-Ahead LMP""")
+    return
+
+
+@app.cell
+def _(dcim, end_ts, pd):
+    # DA is the primary forecast target, so collect it here (every 4 hours)
+    # rather than on the daily job — that picks up each day's file soon after
+    # it publishes and keeps DA as current as the real-time feed. The file for
+    # operating day D publishes the prior afternoon, so look ahead one day to
+    # grab tomorrow's file; a 3-day window (yesterday..tomorrow) repairs any
+    # late-published day without re-fetching a wide range every run.
+    da_range = dcim.get_range_data_da_lmp(
+        end_ts=end_ts + pd.Timedelta(days=1), n_periods=3
+    )
+    da_parquet = [pf for pf in da_range if pf.endswith(".parquet")]
+    da_parquet[:10]
+    return (da_parquet,)
+
+
+@app.cell
+def _(dcim, da_parquet):
+    if da_parquet:
+        dcim.upsert_im(da_parquet, target="da_lmp")
     return
 
 
