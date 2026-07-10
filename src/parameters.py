@@ -143,6 +143,11 @@ TSMIXER_PARAMS = [{'hidden_size': 62,
   'encoder_key': 'rel_mon_day'}]
 
 
+# ── Tuned TiDE params, per target ────────────────────────────────────────
+# The TIDE_PARAMS_<TARGET> blocks below (between the >>> / <<< markers) are
+# managed by scripts/tune_parameters.py, which replaces a block with the
+# top-TOP_N trials from that target's Optuna study. Edit via the script.
+# >>> TIDE_PARAMS_RT >>>
 # Real-time (RT) tide params from the IM-only CRPS Optuna study (2026-07-06,
 # study 'spp_west_tide', 100 trials): the top 5 trials by CRPS on the West
 # holdout (14.05-14.13), one per TOP_N ensemble member.
@@ -206,11 +211,13 @@ TIDE_PARAMS_RT = [{'num_encoder_decoder_layers': 4,  # trial #85  CRPS 14.054
   'n_epochs': 17,
   'dropout': 0.35,
   'encoder_key': 'rel'}]
+# <<< TIDE_PARAMS_RT <<<
 
-# Day-ahead (DA) tide params. Placeholder = the RT params (what the first DA
-# champion used) until the DA CRPS study lands; the sweep replaces this list
-# with the DA-tuned top-TOP_N trials.
+# >>> TIDE_PARAMS_DA >>>
+# Day-ahead (DA) tide params — placeholder (= RT) until the DA sweep bakes the
+# tuned top-TOP_N trials in via scripts/tune_parameters.py --target da.
 TIDE_PARAMS_DA = TIDE_PARAMS_RT
+# <<< TIDE_PARAMS_DA <<<
 
 # Per-target tuned TiDE params. The retrain (and the ensemble dev notebook)
 # read the active target's list; the Optuna study writes each target's slot.

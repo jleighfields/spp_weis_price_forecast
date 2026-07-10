@@ -150,6 +150,26 @@ uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45 --promote
 uv run python scripts/r2_promote_champion.py --target rt --list
 ```
 
+## tune_parameters.py
+
+Bakes the top-N Optuna trials for a target into `parameters.TIDE_PARAMS_<TARGET>`
+— the deterministic "update the params" step of a parameter sweep (no
+hand-editing of param dicts). Reads the target's TiDE study from the Optuna
+sqlite DB, takes the top-N complete trials by CRPS, and rewrites the marked
+`# >>> TIDE_PARAMS_<TARGET> >>>` block in `src/parameters.py`.
+
+- **Target-scoped**: `--target` (default `da`); only that target's block is touched.
+- **Dry run by default**: prints the top trials + the new block; `--write` applies.
+- Used standalone or as the params step of the `/tune-parameters` skill.
+
+```bash
+# Preview the top-5 DA trials and the block that would be written
+uv run python scripts/tune_parameters.py --target da
+
+# Apply (rewrite TIDE_PARAMS_DA in parameters.py)
+uv run python scripts/tune_parameters.py --target da --write
+```
+
 ## weis_stitch_fill.py
 
 One-time WEIS→`im/` West stitch-fill (Phase 2 of the RTO West

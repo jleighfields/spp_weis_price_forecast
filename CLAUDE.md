@@ -18,6 +18,7 @@ Custom skills automate the review workflows:
 | `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep READMEs for stale prose (edits in place) |
 | `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files), secret logging, and unsafe defaults (report-only) |
 | `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
+| `/tune-parameters [da\|rt]` | Run a hyperparameter sweep for a forecast target end-to-end: Optuna study → bake top-N params into `parameters.py` (via `scripts/tune_parameters.py`) → retrain → score vs the current champion → promote only if better. **Trains models + can promote** (not report-only). |
 
 Skills are defined in `.claude/skills/` and committed to the repo.
 
