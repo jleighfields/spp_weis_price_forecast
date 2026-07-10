@@ -107,15 +107,25 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
 - Deferred (Decision D): DA-specific Optuna re-tune → parametrize `model.py`
   then (not needed to reuse RT params now).
 
-## Phase 4 — Serving (app)
+## Phase 4 — Serving (app) — ✅ DONE (code; deploy pending)
 
-- `app.py`: load both champions (RT + DA) and both target series, add a UI
-  control to switch **Real-time ↔ Day-ahead** (reuses the node dropdown — both
-  cover the same 64 West nodes — and `plotting.py`). **Decision B**: toggle vs
-  side-by-side.
-- Note the DA horizon semantics in the UI copy: a DA forecast is a prediction of
-  future days' cleared prices (useful before each day's auction clears); the
-  rolling model still emits a 120 h horizon.
+- **RT champion migrated** into `models/rt/`: `models/champion.json` +
+  `models/retrains/*` copied to `models/rt/*` (champion pointer rewritten;
+  103 objects). Additive copy — the flat originals stay so the live app is
+  unaffected until the new app deploys; clean up the flat copies post-cutover.
+- `app.py`: a **Market** selector (`input.target`, Day-ahead default per
+  `parameters.DEFAULT_TARGET`) at the top of the sidebar. `_do_load_data` /
+  `_do_load_models` take a target; `_load_startup` depends on `input.target()`
+  and reloads both the data and champion when the market changes (tracked via a
+  new `loaded_target_val`); `_clear_stale_forecast` clears on switch; the
+  forecast header names the market. Reuses the node dropdown + `plotting.py`.
+- **e2e:** added a market-toggle test (switch DA→RT, wait for the model
+  timestamp to change = reload done, forecast renders with "Real-time"). Full
+  e2e suite green.
+- **Deploy (pending, user-coordinated):** merge to `main` + push → Posit Connect
+  redeploys the app (serves DA default + toggle). Then clean up the flat
+  `models/champion.json` + `models/retrains/` once RT is confirmed on `models/rt/`.
+  The Modal retrain job redeploy (both targets) is Phase 5.
 
 ## Phase 5 — Modal retrain job
 

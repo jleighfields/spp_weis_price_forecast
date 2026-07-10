@@ -8,7 +8,6 @@ heavy startup loaders so no R2/S3 credentials are needed.
 import re
 
 from playwright.sync_api import Page, expect
-from shiny.playwright import controller
 
 
 def test_app_title(page: Page, app):
@@ -91,6 +90,41 @@ def test_stale_forecast_clears(page: Page, app):
     # Forecast placeholder should re-appear (empty header = cleared)
     placeholder = page.locator("#forecast_placeholder")
     expect(placeholder).not_to_be_empty(timeout=15_000)
+
+
+def test_market_toggle_reloads_and_forecasts(page: Page, app):
+    """Switching the market (day-ahead -> real-time) reloads the model and forecasts."""
+    page.goto(app.url)
+    page.wait_for_function(
+        "document.querySelector('#node_name') !== null"
+        " && document.querySelector('#node_name').options.length > 0",
+        timeout=30_000,
+    )
+    # Day-ahead is the default market; capture its loaded-model timestamp.
+    expect(page.locator("#target")).to_have_value("da")
+    da_ts = page.locator("#train_timestamp_display").inner_text().strip()
+
+    # Switch to real-time; the app reloads that target's data + champion model.
+    page.select_option("#target", "rt")
+    expect(page.locator("#target")).to_have_value("rt")
+
+    # The RT champion has a different train timestamp than DA, so a change in the
+    # displayed timestamp signals the async reload finished — wait for it before
+    # forecasting (otherwise the reload's dropdown refresh clears a stale click).
+    page.wait_for_function(
+        "prev => { const el = document.querySelector('#train_timestamp_display');"
+        " return el && el.innerText.trim() !== '' && el.innerText.trim() !== prev; }",
+        arg=da_ts,
+        timeout=90_000,
+    )
+    # Let the post-reload dropdown refresh settle before clicking.
+    page.wait_for_timeout(2_000)
+
+    # A forecast on the RT model renders, and the header names the market.
+    page.locator("#get_fcast_btn").click()
+    forecast_header = page.locator("#forecast_header")
+    expect(forecast_header).not_to_be_empty(timeout=60_000)
+    expect(forecast_header).to_contain_text("Real-time")
 
 
 def test_download_filename(page: Page, app):

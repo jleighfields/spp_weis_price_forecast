@@ -29,6 +29,7 @@ import torch
 import src.data_engineering as de
 from src import utils
 from src import plotting
+from src import parameters
 from src.modeling import load_ensemble_from_dir
 
 # max absolute value for LMPs in given to forecast
@@ -86,6 +87,14 @@ def get_hour_list(fcast_date, lmp_pd_df: pd.DataFrame) -> List[str]:
 
 app_ui = ui.page_sidebar(
     ui.sidebar(
+        ui.h4("Forecast type"),
+        ui.input_select(
+            "target",
+            "Market",
+            choices={"da": "Day-ahead (DA)", "rt": "Real-time (RT)"},
+            selected=parameters.DEFAULT_TARGET,
+        ),
+        ui.hr(),
         ui.h4("Select forecast start date"),
         ui.input_date("fcast_date", "Forecast date"),
         ui.input_select("fcast_hour", "Forecast hour", choices=[]),
@@ -168,15 +177,18 @@ def server(input, output, session):
     plot_cov_df_val = reactive.Value(None)
     fcast_node_name_val = reactive.Value(None)
     fcast_time_val = reactive.Value(None)
+    # Which forecast target (parameters.TARGETS) the loaded data + model are for,
+    # so switching the market reloads both. None until the first load.
+    loaded_target_val = reactive.Value(None)
 
     ###############################################################
     # Load data and models on startup (parallel), refresh reloads data only
     ###############################################################
 
-    def _do_load_data():
-        '''Blocking: connect to DuckDB/R2 and return (all_df_pd, lmp_pd).'''
-        log.info('getting lmp data from R2')
-        con = de.create_database()
+    def _do_load_data(target):
+        '''Blocking: connect to DuckDB/R2 and return (all_df_pd, lmp_pd) for target.'''
+        log.info(f'getting {target} lmp data from R2')
+        con = de.create_database(target=target)
         log.info('finished getting data from R2')
 
         log.info('preparing all_df_pd')
@@ -188,10 +200,10 @@ def server(input, output, session):
         con.close()
         return all_df_pd, lmp_pd
 
-    def _do_load_models():
-        '''Blocking: download champion checkpoints from R2 and return (model, train_timestamp).'''
+    def _do_load_models(target):
+        '''Blocking: download the target's champion checkpoints and return (model, train_timestamp).'''
         with tempfile.TemporaryDirectory() as tmpdir:
-            utils.download_champion_checkpoints(tmpdir)
+            utils.download_champion_checkpoints(tmpdir, target=target)
             # Verify the champion was trained on the same covariates this app
             # now builds; a mismatch (e.g. a covariate added/removed since the
             # model was trained) would otherwise surface as a cryptic
@@ -204,25 +216,28 @@ def server(input, output, session):
 
     @reactive.effect
     async def _load_startup():
-        """Load data and models on startup; reload only data on refresh.
+        """Load data and models on startup, market switch, or refresh.
 
-        On first load, data fetching (DuckDB/R2) and model loading (S3
-        checkpoint download + PyTorch) run in parallel via asyncio.gather,
-        roughly halving startup time. On subsequent refreshes, only data
-        is reloaded since models are already in memory.
+        On first load — and whenever the market (target) changes — the target's
+        data (DuckDB/R2) and champion model (S3 checkpoints + PyTorch) load in
+        parallel via asyncio.gather. On a plain refresh of the same market, only
+        the data is reloaded since the model is already in memory. Both data and
+        model are target-specific (DA vs RT), so a market switch reloads both.
 
         Uses asyncio.to_thread to run blocking I/O off the event loop so
         the Shiny UI stays responsive during loading.
         """
-        # Take a reactive dependency on the refresh button.
-        # Also fires once on startup because the button value starts at 0.
+        # Reactive dependencies: the refresh button (also fires once on startup,
+        # value starts at 0) and the market selector (switch reloads for the
+        # new target).
         input.refresh_data()
+        target = input.target()
 
-        # Use reactive.isolate() to check the model state without
-        # subscribing — otherwise setting loaded_model_val below would
-        # immediately re-trigger this effect and cause a second load.
+        # Use reactive.isolate() to read state without subscribing — otherwise
+        # setting the values below would immediately re-trigger this effect.
+        # Reload the model on first load or when the market changed.
         with reactive.isolate():
-            need_models = loaded_model_val() is None
+            need_models = loaded_model_val() is None or loaded_target_val() != target
 
         with ui.Progress(min=0, max=2) as p:
             p.set(
@@ -233,17 +248,18 @@ def server(input, output, session):
             p.set(1, detail="Loading from R2...")
 
             if need_models:
-                # First startup: run data and model loading concurrently.
-                # Each helper is blocking I/O, so we push them to threads.
+                # First load or market switch: fetch this target's data and
+                # champion concurrently (both are blocking I/O -> threads).
                 data_result, model_result = await asyncio.gather(
-                    asyncio.to_thread(_do_load_data),
-                    asyncio.to_thread(_do_load_models),
+                    asyncio.to_thread(_do_load_data, target),
+                    asyncio.to_thread(_do_load_models, target),
                 )
                 loaded_model_val.set(model_result[0])
                 train_timestamp_val.set(str(model_result[1]))
+                loaded_target_val.set(target)
             else:
-                # Refresh click: models already loaded, just reload data.
-                data_result = await asyncio.to_thread(_do_load_data)
+                # Refresh click, same market: model in memory, just reload data.
+                data_result = await asyncio.to_thread(_do_load_data, target)
 
             all_df_pd_val.set(data_result[0])
             lmp_pd_df_val.set(data_result[1])
@@ -310,11 +326,13 @@ def server(input, output, session):
 
     @reactive.effect
     def _clear_stale_forecast():
-        # Take dependency on all forecast inputs
+        # Take dependency on all forecast inputs (incl. the market selector, so
+        # switching DA<->RT drops a forecast made for the other market).
         input.node_name()
         input.n_days()
         input.fcast_date()
         input.fcast_hour()
+        input.target()
         # Clear previous results so stale data doesn't persist
         preds_val.set(None)
 
@@ -460,8 +478,11 @@ def server(input, output, session):
 
         node_name = fcast_node_name_val()
         fcast_time = fcast_time_val()
+        market = {"da": "Day-ahead", "rt": "Real-time"}.get(
+            loaded_target_val(), loaded_target_val()
+        )
         return ui.div(
-            ui.h3(f"{node_name} forecasts"),
+            ui.h3(f"{node_name} {market} forecasts"),
             ui.p(f"Forecast start time: {fcast_time}"),
         )
 

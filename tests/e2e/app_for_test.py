@@ -78,8 +78,8 @@ def _make_all_df_pd() -> pd.DataFrame:
     return df
 
 
-def _fake_load_data():
-    """Drop-in replacement for app._do_load_data."""
+def _fake_load_data(target=None):
+    """Drop-in replacement for app._do_load_data (target-aware signature)."""
     return _make_all_df_pd(), _make_lmp_pd()
 
 
@@ -94,8 +94,8 @@ class _FakeModel:
         return TimeSeries.from_times_and_values(times=dates, values=values, columns=["LMP"])
 
 
-def _fake_load_models():
-    """Drop-in replacement for app._do_load_models."""
+def _fake_load_models(target=None):
+    """Drop-in replacement for app._do_load_models (target-aware signature)."""
     return _FakeModel(), pd.Timestamp("2025-01-15 08:00:00")
 
 
