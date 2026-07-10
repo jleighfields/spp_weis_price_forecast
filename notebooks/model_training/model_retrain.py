@@ -197,6 +197,7 @@ def _(
 
 @app.cell
 def _(
+    TARGET,
     build_fit_tide,
     futr_cov,
     parameters,
@@ -206,7 +207,8 @@ def _(
 ):
     models_tide = []
     if parameters.USE_TIDE:
-        for _i, _param in enumerate(parameters.TIDE_PARAMS[: parameters.TOP_N]):
+        _tide_params = parameters.TIDE_PARAMS_BY_TARGET[TARGET]
+        for _i, _param in enumerate(_tide_params[: parameters.TOP_N]):
             print(f"\ni: {_i} \t" + "*" * 25, flush=True)
             _model = build_fit_tide(
                 series=train_test_all_series,

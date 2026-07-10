@@ -152,10 +152,15 @@ def _():
 
 
 @app.cell
-def _(log, parameters):
+def _(log, os, parameters):
+    # Forecast target to tune (parameters.TARGETS); DA is the default. Set the
+    # TARGET env var to tune a different target (e.g. TARGET=rt).
+    TARGET = os.environ.get("TARGET", parameters.DEFAULT_TARGET)
+    MODEL_NAME = parameters.TARGETS[TARGET]["model_name"]
+    log.info(f"TARGET: {TARGET}  MODEL_NAME: {MODEL_NAME}")
     log.info(f"FORECAST_HORIZON: {parameters.FORECAST_HORIZON}")
     log.info(f"INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}")
-    return
+    return MODEL_NAME, TARGET
 
 
 @app.cell
@@ -171,8 +176,8 @@ def _(mo):
 
 
 @app.cell
-def _(de):
-    con = de.create_database()
+def _(TARGET, de):
+    con = de.create_database(target=TARGET)
     return (con,)
 
 
@@ -633,14 +638,14 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, parameters, shutil):
+def _(MODEL_NAME, MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, shutil):
     TRIAL_MODEL_DIR = f"optuna/{MODEL_TYPE}"
     MODEL_CHECKPOINT_DIR = f"model_checkpoints/{MODEL_TYPE}_model"
 
     if REMOVE_PRIOR_MODELS:
         try:
             optuna.delete_study(
-                study_name=f"{parameters.MODEL_NAME}_{MODEL_TYPE}",
+                study_name=f"{MODEL_NAME}_{MODEL_TYPE}",
                 storage="sqlite:///spp_trials.db",
             )
             shutil.rmtree(TRIAL_MODEL_DIR)
@@ -667,8 +672,8 @@ def _(MODEL_TYPE, objective_tft, objective_tide, objective_tsmixer):
 
 
 @app.cell
-def _(MODEL_TYPE, parameters):
-    study_name = f"{parameters.MODEL_NAME}_{MODEL_TYPE}"
+def _(MODEL_NAME, MODEL_TYPE):
+    study_name = f"{MODEL_NAME}_{MODEL_TYPE}"
     return (study_name,)
 
 
@@ -870,7 +875,7 @@ def _(
 
 
 @app.cell
-def _(all_series, de, log, parameters, torch):
+def _(MODEL_NAME, all_series, de, log, parameters, torch):
     # Record the training config for this study run (the same schema the retrain
     # writes to R2), documenting exactly which covariates / nodes / quantiles
     # were tuned against. The study does not save a servable model, so this is
@@ -889,7 +894,7 @@ def _(all_series, de, log, parameters, torch):
         past_covariates=de.PAST_COLS,
         nodes=_node_list.MODEL_APP_NODES,
         quantiles=parameters.QUANTILES,
-        model_name=parameters.MODEL_NAME,
+        model_name=MODEL_NAME,
         model_types=_study_model_types,
         forecast_horizon=parameters.FORECAST_HORIZON,
         input_chunk_length=parameters.INPUT_CHUNK_LENGTH,

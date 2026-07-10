@@ -87,10 +87,14 @@ def _():
 
 
 @app.cell
-def _(log, parameters):
+def _(log, os, parameters):
+    # Forecast target (parameters.TARGETS); DA is the default. Set TARGET=rt to
+    # build/test the real-time ensemble instead.
+    TARGET = os.environ.get("TARGET", parameters.DEFAULT_TARGET)
+    log.info(f"TARGET: {TARGET}")
     log.info(f"FORECAST_HORIZON: {parameters.FORECAST_HORIZON}")
     log.info(f"INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}")
-    return
+    return (TARGET,)
 
 
 @app.cell
@@ -106,8 +110,8 @@ def _(mo):
 
 
 @app.cell
-def _(de):
-    con = de.create_database()
+def _(TARGET, de):
+    con = de.create_database(target=TARGET)
     con.execute("SHOW TABLES").fetchall()
     return (con,)
 
@@ -225,6 +229,7 @@ def _(
 
 @app.cell
 def _(
+    TARGET,
     build_fit_tide,
     futr_cov,
     parameters,
@@ -234,7 +239,8 @@ def _(
 ):
     models_tide = []
     if parameters.USE_TIDE:
-        for _i, _param in enumerate(parameters.TIDE_PARAMS[: parameters.TOP_N]):
+        _tide_params = parameters.TIDE_PARAMS_BY_TARGET[TARGET]
+        for _i, _param in enumerate(_tide_params[: parameters.TOP_N]):
             print(f"\ni: {_i} \t" + "*" * 25, flush=True)
             _m = build_fit_tide(
                 series=train_test_all_series,

@@ -143,10 +143,10 @@ TSMIXER_PARAMS = [{'hidden_size': 62,
   'encoder_key': 'rel_mon_day'}]
 
 
-# best tide model params from the IM-only CRPS Optuna study (2026-07-06,
+# Real-time (RT) tide params from the IM-only CRPS Optuna study (2026-07-06,
 # study 'spp_west_tide', 100 trials): the top 5 trials by CRPS on the West
 # holdout (14.05-14.13), one per TOP_N ensemble member.
-TIDE_PARAMS = [{'num_encoder_decoder_layers': 4,  # trial #85  CRPS 14.054
+TIDE_PARAMS_RT = [{'num_encoder_decoder_layers': 4,  # trial #85  CRPS 14.054
   'decoder_output_dim': 20,
   'hidden_size': 20,
   'temporal_width_past': 5,
@@ -206,6 +206,18 @@ TIDE_PARAMS = [{'num_encoder_decoder_layers': 4,  # trial #85  CRPS 14.054
   'n_epochs': 17,
   'dropout': 0.35,
   'encoder_key': 'rel'}]
+
+# Day-ahead (DA) tide params. Placeholder = the RT params (what the first DA
+# champion used) until the DA CRPS study lands; the sweep replaces this list
+# with the DA-tuned top-TOP_N trials.
+TIDE_PARAMS_DA = TIDE_PARAMS_RT
+
+# Per-target tuned TiDE params. The retrain (and the ensemble dev notebook)
+# read the active target's list; the Optuna study writes each target's slot.
+TIDE_PARAMS_BY_TARGET = {'rt': TIDE_PARAMS_RT, 'da': TIDE_PARAMS_DA}
+
+# Back-compat single-target params = the default target's.
+TIDE_PARAMS = TIDE_PARAMS_BY_TARGET[DEFAULT_TARGET]
 
 
 # best tide model params from optuna experiment
