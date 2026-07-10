@@ -29,8 +29,21 @@ from targets import DEFAULT_TARGET, TARGETS  # noqa: E402
 PARAMS_FILE = os.path.join(os.path.dirname(__file__), "..", "src", "parameters.py")
 
 
-def build_block(var: str, trials, study_name: str) -> str:
-    """Render the TIDE_PARAMS_<TARGET> assignment from the top trials."""
+def build_block(
+    var: str, trials: list[optuna.trial.FrozenTrial], study_name: str
+) -> str:
+    """Render the ``TIDE_PARAMS_<TARGET>`` assignment source from the top trials.
+
+    Args:
+        var: The target variable name, e.g. ``"TIDE_PARAMS_DA"``.
+        trials: The top-N trials, already sorted best (lowest CRPS) first;
+            each contributes one ``{...}`` param dict to the list.
+        study_name: Optuna study name, recorded in the block's header comment.
+
+    Returns:
+        The Python source for the assignment — a header comment plus the list
+        of param dicts (each preceded by a ``# trial #N CRPS x`` comment).
+    """
     lines = [
         f"# {var} — top {len(trials)} trials by CRPS from study "
         f"'{study_name}' (CRPS {trials[0].value:.3f}-{trials[-1].value:.3f}). "
@@ -45,6 +58,12 @@ def build_block(var: str, trials, study_name: str) -> str:
 
 
 def main() -> int:
+    """Bake a target's top-N Optuna trials into parameters.py (or dry-run).
+
+    Returns:
+        Process exit code: 0 on success (or dry run), 1 if the study has no
+        complete trials or the parameters.py markers are missing.
+    """
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", default=DEFAULT_TARGET, choices=sorted(TARGETS),
                     help=f"forecast target to bake (default {DEFAULT_TARGET!r})")

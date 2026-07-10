@@ -67,7 +67,7 @@ Shiny app has a **Market** toggle to serve either.
 Key parameters (see `src/parameters.py`):
 * Forecast horizon: 120 hours (5 days)
 * Input chunk length: 168 hours (7 days)
-* Top 3 models per type are ensembled
+* Top 5 models per type are ensembled (`parameters.TOP_N`)
 
 ### Data format
 ![Time series data](./imgs/time_series_data.PNG)
