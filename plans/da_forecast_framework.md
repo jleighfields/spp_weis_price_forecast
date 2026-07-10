@@ -129,10 +129,19 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
 
 ## Phase 5 — Modal retrain job
 
-- Parametrize the retrain by target. **Decision C**: one job file with two
-  scheduled functions (`retrain_rt_weekly`, `retrain_da_weekly`, each with
-  `env={"TARGET": ...}`) vs a single env-param'd job. Collection is unchanged —
-  DA is already gathered into `im/da_lmp.parquet`.
+## Phase 5 — Modal retrain job — ✅ DONE (code; deploy pending)
+
+- `modal_jobs/model_retrain.py` now has two scheduled functions in the one app
+  (`spp-weis-model-retrain`), sharing a `_COMMON` config: `retrain_da_weekly`
+  (Sun 20:00 UTC, `env TARGET=da`, primary) and `retrain_rt_weekly` (Sun 22:00
+  UTC, `env TARGET=rt`). Both run the same notebook, which selects the target
+  from `TARGET`. Redeploying replaces the old single `model_retrain_weekly`
+  (which wrote the flat `models/champion.json`), so future retrains land in
+  `models/da/` and `models/rt/`. Collection is unchanged — DA is already gathered
+  into `im/da_lmp.parquet`.
+- **Deploy (pending, part of cutover):** `modal deploy modal_jobs/model_retrain.py`
+  together with the Posit app redeploy, so the app (reading `models/rt|da/`) and
+  the retrain (writing `models/rt|da/`) cut over together.
 
 ## Phase 6 — Tests + docs
 
