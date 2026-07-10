@@ -21,11 +21,25 @@ log = logging.getLogger(__name__)
 
 # ── R2 model-storage layout ──────────────────────────────────────────────
 # Single source of truth for where retrains are saved and where the live
-# champion pointer lives, relative to AWS_S3_FOLDER. Shared by the app read
-# path below, the model_retrain notebook (write path), and
-# scripts/r2_promote_champion.py so a layout change has exactly one home.
-RETRAINS_PREFIX = "models/retrains/"
-CHAMPION_KEY_SUFFIX = "models/champion.json"
+# champion pointer lives, relative to AWS_S3_FOLDER. Each forecast target
+# (parameters.TARGETS: 'rt', 'da', ...) gets its own namespace under models/,
+# so the two models never collide. Shared by the app read path below, the
+# model_retrain notebook (write path), and scripts/r2_promote_champion.py.
+def retrains_prefix(target: str = "rt") -> str:
+    """S3 prefix for a target's retrain folders, relative to AWS_S3_FOLDER."""
+    return f"models/{target}/retrains/"
+
+
+def champion_key_suffix(target: str = "rt") -> str:
+    """Champion-pointer key for a target, relative to AWS_S3_FOLDER."""
+    return f"models/{target}/champion.json"
+
+
+# RT-namespace values for the RT callers that predate the target dimension.
+# (The primary/default target is 'da' — see parameters.DEFAULT_TARGET — but the
+# legacy RT pipeline explicitly uses the 'rt' namespace here.)
+RETRAINS_PREFIX = retrains_prefix('rt')
+CHAMPION_KEY_SUFFIX = champion_key_suffix('rt')
 
 
 def list_folder_contents_resource(bucket_name: str, folder_prefix: str):
@@ -144,8 +158,8 @@ def build_champion_config(
     Args:
         folder_time: Timestamped folder name with a trailing slash
             (e.g. "2026-07-06_12-41-45/").
-        artifact_folder: RETRAINS_PREFIX + folder_time — the folder relative
-            to AWS_S3_FOLDER that the app loads checkpoints from.
+        artifact_folder: retrains_prefix(target) + folder_time — the folder
+            relative to AWS_S3_FOLDER that the app loads checkpoints from.
         artifact_path: AWS_S3_FOLDER + artifact_folder — the full-prefixed path.
 
     Returns:
@@ -302,11 +316,12 @@ def validate_model_covariates(
             )
 
 
-def download_champion_checkpoints(dest_dir: str) -> None:
+def download_champion_checkpoints(dest_dir: str, target: str = "rt") -> None:
     """Download the current champion model's checkpoint files from S3.
 
-    Reads ``models/champion.json`` to determine which model folder is
-    the current champion, then delegates to ``download_checkpoints``.
+    Reads ``models/<target>/champion.json`` to determine which model folder is
+    the current champion for the given target, then delegates to
+    ``download_checkpoints``.
 
     Environment Variables:
         AWS_S3_BUCKET: The S3 bucket name.
@@ -315,12 +330,13 @@ def download_champion_checkpoints(dest_dir: str) -> None:
 
     Args:
         dest_dir: Local directory to download checkpoint files into.
+        target: Forecast target namespace (parameters.TARGETS), e.g. 'rt'/'da'.
     """
     AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
     AWS_S3_FOLDER = os.getenv("AWS_S3_FOLDER", "")
     s3_client = boto3.client("s3", endpoint_url=os.getenv("S3_ENDPOINT_URL"))
 
-    champion_key = AWS_S3_FOLDER + CHAMPION_KEY_SUFFIX
+    champion_key = AWS_S3_FOLDER + champion_key_suffix(target)
     log.info(f"loading champion config from: {champion_key}")
     response = s3_client.get_object(Bucket=AWS_S3_BUCKET, Key=champion_key)
     champion_config = json.loads(response["Body"].read().decode("utf-8"))

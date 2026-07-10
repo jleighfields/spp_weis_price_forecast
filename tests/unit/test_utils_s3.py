@@ -42,7 +42,7 @@ class TestDownloadCheckpoints:
             'folder/tft_0.pt',
         ]
 
-        utils.download_checkpoints('models/retrains/2026-03-01/', '/tmp/models')
+        utils.download_checkpoints('models/rt/retrains/2026-03-01/', '/tmp/models')
 
         assert mock_s3.download_file.call_count == 3
         mock_s3.download_file.assert_any_call(
@@ -73,7 +73,7 @@ class TestDownloadCheckpoints:
         mock_boto_client.return_value = mock_s3
         mock_get_models.return_value = []
 
-        utils.download_checkpoints('models/retrains/empty/', '/tmp/models')
+        utils.download_checkpoints('models/rt/retrains/empty/', '/tmp/models')
 
         mock_s3.download_file.assert_not_called()
 
@@ -91,7 +91,7 @@ class TestDownloadCheckpoints:
             'deep/nested/folder/sub/tsmixer_0.pt',
         ]
 
-        utils.download_checkpoints('models/retrains/nested/', '/tmp/dest')
+        utils.download_checkpoints('models/rt/retrains/nested/', '/tmp/dest')
 
         mock_s3.download_file.assert_called_once_with(
             Bucket='test-bucket',
@@ -117,7 +117,7 @@ class TestDownloadChampionCheckpoints:
     def test_reads_champion_json_and_delegates(self, mock_boto_client, mock_dl):
         """Reads champion.json, extracts folder, delegates to download_checkpoints."""
         champion_config = {
-            'champion_artifact_folder': 'models/retrains/2026-02-28_10-00-00/',
+            'champion_artifact_folder': 'models/rt/retrains/2026-02-28_10-00-00/',
         }
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -128,7 +128,7 @@ class TestDownloadChampionCheckpoints:
         utils.download_champion_checkpoints('/tmp/champ')
 
         mock_dl.assert_called_once_with(
-            'models/retrains/2026-02-28_10-00-00/',
+            'models/rt/retrains/2026-02-28_10-00-00/',
             '/tmp/champ',
         )
 
@@ -140,8 +140,8 @@ class TestDownloadChampionCheckpoints:
         'S3_ENDPOINT_URL': 'https://s3.example.com',
     })
     def test_uses_aws_folder_prefix(self, mock_boto_client, mock_dl):
-        """Champion key is AWS_S3_FOLDER + 'models/champion.json'."""
-        champion_config = {'champion_artifact_folder': 'models/retrains/latest/'}
+        """Champion key is AWS_S3_FOLDER + 'models/rt/champion.json'."""
+        champion_config = {'champion_artifact_folder': 'models/rt/retrains/latest/'}
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
         mock_s3.get_object.return_value = {
@@ -152,8 +152,49 @@ class TestDownloadChampionCheckpoints:
 
         mock_s3.get_object.assert_called_once_with(
             Bucket='test-bucket',
-            Key='staging/models/champion.json',
+            Key='staging/models/rt/champion.json',
         )
+
+
+# ============================================================
+# Test per-target model namespace
+# ============================================================
+
+class TestTargetNamespace:
+    """Each forecast target gets its own models/<target>/ storage namespace."""
+
+    def test_prefix_and_key_are_target_scoped(self):
+        assert utils.retrains_prefix('rt') == 'models/rt/retrains/'
+        assert utils.retrains_prefix('da') == 'models/da/retrains/'
+        assert utils.champion_key_suffix('rt') == 'models/rt/champion.json'
+        assert utils.champion_key_suffix('da') == 'models/da/champion.json'
+
+    def test_rt_default_constants_match_helpers(self):
+        # the back-compat constants are the RT-default values
+        assert utils.RETRAINS_PREFIX == utils.retrains_prefix('rt')
+        assert utils.CHAMPION_KEY_SUFFIX == utils.champion_key_suffix('rt')
+
+    @patch('utils.download_checkpoints')
+    @patch('utils.boto3.client')
+    @patch.dict(os.environ, {
+        'AWS_S3_BUCKET': 'test-bucket',
+        'AWS_S3_FOLDER': '',
+        'S3_ENDPOINT_URL': 'https://s3.example.com',
+    })
+    def test_download_champion_reads_target_pointer(self, mock_boto_client, mock_dl):
+        """target='da' reads models/da/champion.json, not the RT pointer."""
+        mock_s3 = MagicMock()
+        mock_boto_client.return_value = mock_s3
+        mock_s3.get_object.return_value = {
+            'Body': MagicMock(read=lambda: json.dumps(
+                {'champion_artifact_folder': 'models/da/retrains/x/'}).encode('utf-8')),
+        }
+
+        utils.download_champion_checkpoints('/tmp/champ', target='da')
+
+        mock_s3.get_object.assert_called_once_with(
+            Bucket='test-bucket', Key='models/da/champion.json')
+        mock_dl.assert_called_once_with('models/da/retrains/x/', '/tmp/champ')
 
 
 # ============================================================
@@ -237,19 +278,19 @@ class TestGetLoadedModelsFilter:
     @patch('utils.list_folder_contents_resource')
     def test_includes_config_and_checkpoints(self, mock_list):
         mock_list.return_value = [self._obj(k) for k in [
-            'models/retrains/ts/tide_0.pt',
-            'models/retrains/ts/tide_0.pt.ckpt',
-            'models/retrains/ts/TRAIN_TIMESTAMP.pkl',
-            'models/retrains/ts/training_config.json',
-            'models/retrains/ts/notes.txt',
+            'models/rt/retrains/ts/tide_0.pt',
+            'models/rt/retrains/ts/tide_0.pt.ckpt',
+            'models/rt/retrains/ts/TRAIN_TIMESTAMP.pkl',
+            'models/rt/retrains/ts/training_config.json',
+            'models/rt/retrains/ts/notes.txt',
         ]]
-        keys = utils.get_loaded_models('models/retrains/ts/')
-        assert 'models/retrains/ts/training_config.json' in keys
-        assert 'models/retrains/ts/tide_0.pt' in keys
-        assert 'models/retrains/ts/notes.txt' not in keys  # unrecognized file
+        keys = utils.get_loaded_models('models/rt/retrains/ts/')
+        assert 'models/rt/retrains/ts/training_config.json' in keys
+        assert 'models/rt/retrains/ts/tide_0.pt' in keys
+        assert 'models/rt/retrains/ts/notes.txt' not in keys  # unrecognized file
 
     @patch.dict(os.environ, {'AWS_S3_BUCKET': 'b', 'AWS_S3_FOLDER': ''})
     @patch('utils.list_folder_contents_resource')
     def test_excludes_champion_json_pointer(self, mock_list):
-        mock_list.return_value = [self._obj('models/champion.json')]
+        mock_list.return_value = [self._obj('models/rt/champion.json')]
         assert utils.get_loaded_models('models/') == []

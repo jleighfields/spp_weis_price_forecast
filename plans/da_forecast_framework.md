@@ -60,16 +60,20 @@ the question is univariate-target ×2 vs bivariate-target ×1, not "2 models vs 
 A joint model is the right tool if the aim shifts to capturing the **DA→RT
 basis** or multi-task gains; noted as a future experiment, not the demo path.
 
-## Phase 1 — Target config (single home)
+## Phase 1 — Target config (single home) — ✅ DONE
 
-- Add a `TARGET`/`TARGETS` map in `src/parameters.py`: `rt` → {source table
-  `lmp`, parquet `im/lmp.parquet`, `MODEL_NAME` `spp_west`}, `da` → {parquet
-  `im/da_lmp.parquet`, `MODEL_NAME` `spp_west_da`}. One default (`rt`) preserves
-  current behavior.
-- Parametrize the champion namespace in `src/utils.py`: turn `RETRAINS_PREFIX` /
-  `CHAMPION_KEY_SUFFIX` into `retrains_prefix(target)` = `models/{target}/retrains/`
-  and `champion_key(target)` = `models/{target}/champion.json`. **Decision A**
-  (below) covers migrating the existing RT champion into `models/rt/`.
+- `src/parameters.py`: `DEFAULT_TARGET='da'` (DA is the primary/demo model; RT
+  parked) + `TARGETS` map (`rt`→{`source_dataset` `lmp`, `model_name` `spp_west`},
+  `da`→{`da_lmp`, `spp_west_da`}); `MODEL_NAME` derived from the default target
+  (now `spp_west_da`).
+- `src/utils.py`: `retrains_prefix(target)`/`champion_key_suffix(target)` →
+  `models/{target}/…`; the `RETRAINS_PREFIX`/`CHAMPION_KEY_SUFFIX` constants are
+  the RT-default values (now `models/rt/…`) so existing callers are unchanged;
+  `download_champion_checkpoints(dest, target='rt')`.
+- Tests updated + added (target namespace, TARGETS invariants); 180 pass.
+- **Deferred to deploy:** the RT champion storage migration `models/champion.json`
+  + `models/retrains/*` → `models/rt/*` (Decision A) happens when the new code is
+  deployed, not now — the live app still reads the old paths until then.
 
 ## Phase 2 — DA data path
 
