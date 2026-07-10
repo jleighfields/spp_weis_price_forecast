@@ -214,9 +214,19 @@ TIDE_PARAMS_RT = [{'num_encoder_decoder_layers': 4,  # trial #85  CRPS 14.054
 # <<< TIDE_PARAMS_RT <<<
 
 # >>> TIDE_PARAMS_DA >>>
-# Day-ahead (DA) tide params — placeholder (= RT) until the DA sweep bakes the
-# tuned top-TOP_N trials in via scripts/tune_parameters.py --target da.
-TIDE_PARAMS_DA = TIDE_PARAMS_RT
+# TIDE_PARAMS_DA — top 5 trials by CRPS from study 'spp_west_da_tide' (CRPS 3.810-4.066). Managed by scripts/tune_parameters.py.
+TIDE_PARAMS_DA = [
+    # trial #86  CRPS 3.8101
+    {'num_encoder_decoder_layers': 2, 'decoder_output_dim': 29, 'hidden_size': 40, 'temporal_width_past': 6, 'temporal_width_future': 9, 'temporal_decoder_hidden': 22, 'temporal_hidden_size_past': 10, 'temporal_hidden_size_future': 22, 'lr': 0.0005532723190569155, 'n_epochs': 24, 'dropout': 0.5, 'encoder_key': 'rel_mon'},
+    # trial #71  CRPS 3.9204
+    {'num_encoder_decoder_layers': 1, 'decoder_output_dim': 30, 'hidden_size': 38, 'temporal_width_past': 6, 'temporal_width_future': 8, 'temporal_decoder_hidden': 20, 'temporal_hidden_size_past': 9, 'temporal_hidden_size_future': 25, 'lr': 0.00028061572090196113, 'n_epochs': 28, 'dropout': 0.5, 'encoder_key': 'rel_mon'},
+    # trial #49  CRPS 3.9490
+    {'num_encoder_decoder_layers': 1, 'decoder_output_dim': 30, 'hidden_size': 31, 'temporal_width_past': 6, 'temporal_width_future': 7, 'temporal_decoder_hidden': 20, 'temporal_hidden_size_past': 9, 'temporal_hidden_size_future': 26, 'lr': 0.00024763161328855314, 'n_epochs': 25, 'dropout': 0.5, 'encoder_key': 'rel_mon'},
+    # trial #30  CRPS 4.0285
+    {'num_encoder_decoder_layers': 1, 'decoder_output_dim': 28, 'hidden_size': 55, 'temporal_width_past': 2, 'temporal_width_future': 5, 'temporal_decoder_hidden': 24, 'temporal_hidden_size_past': 8, 'temporal_hidden_size_future': 23, 'lr': 0.00033338161882574656, 'n_epochs': 19, 'dropout': 0.45000000000000007, 'encoder_key': 'rel_mon'},
+    # trial #85  CRPS 4.0657
+    {'num_encoder_decoder_layers': 1, 'decoder_output_dim': 30, 'hidden_size': 40, 'temporal_width_past': 6, 'temporal_width_future': 9, 'temporal_decoder_hidden': 23, 'temporal_hidden_size_past': 10, 'temporal_hidden_size_future': 22, 'lr': 0.00013540542936833213, 'n_epochs': 26, 'dropout': 0.5, 'encoder_key': 'rel_mon'},
+]
 # <<< TIDE_PARAMS_DA <<<
 
 # Per-target tuned TiDE params. The retrain (and the ensemble dev notebook)
