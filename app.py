@@ -216,9 +216,13 @@ def server(input, output, session):
     plot_cov_df_val = reactive.Value(None)
     fcast_node_name_val = reactive.Value(None)
     fcast_time_val = reactive.Value(None)
-    # Which forecast target (parameters.TARGETS) the loaded data + model are for,
-    # so switching the market reloads both. None until the first load.
+    # Which forecast target (parameters.TARGETS) the loaded data + model are for.
+    # None until the first load.
     loaded_target_val = reactive.Value(None)
+    # Champion models cached per target, so switching the market reuses an
+    # already-downloaded model instead of re-fetching it from R2 each time.
+    # Session-scoped: {target: (model, train_timestamp)}.
+    model_cache = {}
 
     ###############################################################
     # Load data and models on startup (parallel), refresh reloads data only.
@@ -228,51 +232,53 @@ def server(input, output, session):
 
     @reactive.effect
     async def _load_startup():
-        """Load data and models on startup, market switch, or refresh.
+        """Load data and model on startup, market switch, or refresh.
 
-        On first load — and whenever the market (target) changes — the target's
-        data (DuckDB/R2) and champion model (S3 checkpoints + PyTorch) load in
-        parallel via asyncio.gather. On a plain refresh of the same market, only
-        the data is reloaded since the model is already in memory. Both data and
-        model are target-specific (DA vs RT), so a market switch reloads both.
+        The champion model for a target is downloaded once and cached in
+        ``model_cache``, so switching the market to a target loaded earlier this
+        session reuses the cached model instead of re-downloading it. Data is
+        always (re)loaded for the active target — it is cheap relative to the
+        model download and stays fresh. On the first load of a target, data and
+        model fetch in parallel via ``asyncio.gather``.
 
         Uses asyncio.to_thread to run blocking I/O off the event loop so
         the Shiny UI stays responsive during loading.
         """
         # Reactive dependencies: the refresh button (also fires once on startup,
-        # value starts at 0) and the market selector (switch reloads for the
-        # new target).
+        # value starts at 0) and the market selector (switch loads the new
+        # target, from cache if seen before).
         input.refresh_data()
         target = input.target()
 
-        # Use reactive.isolate() to read state without subscribing — otherwise
-        # setting the values below would immediately re-trigger this effect.
-        # Reload the model on first load or when the market changed.
         with reactive.isolate():
-            need_models = loaded_model_val() is None or loaded_target_val() != target
+            need_model = target not in model_cache
 
         with ui.Progress(min=0, max=2) as p:
             p.set(
-                message="Loading data and models..."
-                if need_models
-                else "Refreshing data...",
+                message="Loading data and model..."
+                if need_model
+                else "Loading data...",
             )
             p.set(1, detail="Loading from R2...")
 
-            if need_models:
-                # First load or market switch: fetch this target's data and
-                # champion concurrently (both are blocking I/O -> threads).
+            if need_model:
+                # First load of this target: fetch its data and champion
+                # concurrently (both are blocking I/O -> threads), then cache
+                # the model.
                 data_result, model_result = await asyncio.gather(
                     asyncio.to_thread(_do_load_data, target),
                     asyncio.to_thread(_do_load_models, target),
                 )
-                loaded_model_val.set(model_result[0])
-                train_timestamp_val.set(str(model_result[1]))
-                loaded_target_val.set(target)
+                model_cache[target] = model_result
             else:
-                # Refresh click, same market: model in memory, just reload data.
+                # Model already cached (from startup or a prior switch): reload
+                # only the fresh data for this target.
                 data_result = await asyncio.to_thread(_do_load_data, target)
 
+            model, train_ts = model_cache[target]
+            loaded_model_val.set(model)
+            train_timestamp_val.set(str(train_ts))
+            loaded_target_val.set(target)
             all_df_pd_val.set(data_result[0])
             lmp_pd_df_val.set(data_result[1])
             p.set(2, detail="Done")
