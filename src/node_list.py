@@ -79,3 +79,9 @@ MODEL_APP_NODES = [
     # (one CAISO/WECC seam signal), so keep just two — Northwest and California.
     'BPA', 'CISO',
 ]
+
+# Fixed node subset for the champion/challenger promote-gate backtest. A
+# representative 5 (the flagship SWPW_HUB hub + the internal West nodes), held
+# constant so the gate scores every candidate on the same nodes and the CRPS
+# comparison stays apples-to-apples across retrains.
+EVAL_NODES = ['SWPW_HUB', 'PSCO', 'BHBA', 'WACM_CRSP_WILW', 'EPE']

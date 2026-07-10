@@ -47,38 +47,28 @@ around it and makes the promote decision.
    Then confirm the repo is still healthy: `uv run ruff check src/parameters.py`
    and `uv run pytest tests/unit -q`.
 
-3. **Retrain a candidate** with the new params, staged (not promoted):
+3. **Retrain — it self-gates the promotion.** Run the retrain with
+   `PROMOTE_CHAMPION=true`:
 
    ```
-   TARGET=<t> PROMOTE_CHAMPION=false uv run python <retrain runner>
+   TARGET=<t> PROMOTE_CHAMPION=true uv run python <retrain runner>
    ```
 
    (Runner: a 3-line script that sets the env, `load_dotenv`, then
-   `from notebooks.model_training.model_retrain import app; app.run()`.) It
-   uploads to `models/<t>/retrains/<ts>/` with a `metrics.json` and does NOT
-   touch `champion.json`.
+   `from notebooks.model_training.model_retrain import app; app.run()`.) The
+   retrain trains the candidate, uploads it to `models/<t>/retrains/<ts>/` with a
+   `metrics.json`, then runs `evaluation.compare_candidate_to_champion` — a fast
+   backtest of the candidate **and** the current champion on the same recent
+   window over the fixed `node_list.EVAL_NODES` — and **only promotes if the
+   candidate wins on CRPS** (the first champion for a target promotes
+   unconditionally). Watch the log for the `Promote gate (<t>): candidate CRPS …
+   vs champion … -> PROMOTE / KEEP champion` line.
 
-4. **Score fairly vs the current champion.** The candidate's `metrics.json` has
-   its backtest CRPS + `eval.test_start/test_end`. Because the rolling holdout
-   slides, **re-score the current champion on the same window** (load it via
-   `utils.download_champion_checkpoints(dir, target='<t>')` and run
-   `evaluation.backtest_report` on the same data) rather than trusting stored
-   numbers from different dates. Compare CRPS (primary), then coverage/bias as
-   guardrails.
-
-5. **Promote only if better.** If the candidate beats the champion's CRPS with
-   coverage within tolerance and no bias regression:
-
-   ```
-   uv run python scripts/r2_promote_champion.py <ts> --target <t> --promote
-   ```
-
-   Otherwise keep the champion and report the candidate's numbers for review.
-
-6. **Report** the top trials, the candidate vs champion CRPS/coverage, and the
-   promote decision. If params changed, remind the user to commit
-   `src/parameters.py` and (at cutover) redeploy so the scheduled retrain uses
-   the tuned params.
+4. **Report** the top trials and the gate's promote decision. If params changed,
+   remind the user to commit `src/parameters.py` and (at cutover) redeploy so the
+   scheduled retrain uses the tuned params. To override the gate — promote a
+   staged model by hand, or revert — use
+   `python scripts/r2_promote_champion.py <ts> --target <t> --promote`.
 
 ## Notes
 

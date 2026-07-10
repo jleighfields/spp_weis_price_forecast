@@ -445,39 +445,60 @@ def _(
     AWS_S3_BUCKET,
     AWS_S3_FOLDER,
     TARGET,
+    all_series,
     artifact_folder,
     artifact_path,
     folder_time,
+    futr_cov,
     io,
     json,
+    loaded_model,
     log,
     os,
+    past_cov,
     pred,
     s3,
     utils,
 ):
-    # Promote by updating champion.json to point at the new model's folder.
-    # The app loads models directly from models/<target>/retrains/<timestamp>/
-    # via champion_artifact_folder, so no file copying is needed. To revert to a
-    # previous model, repoint champion.json at the old folder with
-    # `python scripts/r2_promote_champion.py <timestamp> --promote`
-    # (run it with --list to see the available retrain folders).
+    # Champion / challenger promotion. Update champion.json to point at the new
+    # model's folder — but only if the freshly-trained candidate actually beats
+    # the current champion on the same recent window (a fast 5-node/100-sample
+    # gate; the first champion for a target promotes unconditionally). The app
+    # loads models directly from models/<target>/retrains/<timestamp>/ via
+    # champion_artifact_folder, so no file copying is needed; to revert, repoint
+    # champion.json with `python scripts/r2_promote_champion.py <ts> --promote`.
     #
-    # Set PROMOTE_CHAMPION=false to train + save the checkpoints to the
-    # timestamped folder WITHOUT overwriting champion.json — used to stage a
-    # new model (e.g. the first RTO West retrain) before its serving code is
-    # deployed, so the live app keeps its current champion until they promote
-    # together.
+    # PROMOTE_CHAMPION=false stages the model (saves checkpoints without touching
+    # champion.json) — e.g. to stage a model before its serving code is deployed.
     promote = os.environ.get("PROMOTE_CHAMPION", "true").lower() != "false"
     if pred is not None and promote:
-        champion_json = utils.build_champion_config(
-            folder_time, artifact_folder, artifact_path
+        from src.evaluation import compare_candidate_to_champion
+
+        _cand, _champ, _wins = compare_candidate_to_champion(
+            loaded_model, all_series, past_cov, futr_cov, TARGET
         )
-        _buffer = io.BytesIO(json.dumps(champion_json).encode("utf-8"))
-        champion_key = AWS_S3_FOLDER + utils.champion_key_suffix(TARGET)
-        s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=_buffer)
-        log.info(f"Uploaded champion model json: {champion_key}")
-        log.info(f"champion_json: {champion_json}")
+        if _champ is None:
+            log.info(f"No current {TARGET} champion — promoting first champion.")
+        else:
+            log.info(
+                f"Promote gate ({TARGET}): candidate CRPS {_cand['crps']:.3f} vs "
+                f"champion {_champ['crps']:.3f} -> "
+                f"{'PROMOTE' if _wins else 'KEEP champion'}"
+            )
+        if _wins:
+            champion_json = utils.build_champion_config(
+                folder_time, artifact_folder, artifact_path
+            )
+            _buffer = io.BytesIO(json.dumps(champion_json).encode("utf-8"))
+            champion_key = AWS_S3_FOLDER + utils.champion_key_suffix(TARGET)
+            s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=_buffer)
+            log.info(f"Uploaded champion model json: {champion_key}")
+            log.info(f"champion_json: {champion_json}")
+        else:
+            log.info(
+                f"Candidate did not beat champion; staged at {artifact_folder}, "
+                "NOT promoted."
+            )
     elif pred is not None:
         log.info(
             f"PROMOTE_CHAMPION=false: saved checkpoints to {artifact_folder} "

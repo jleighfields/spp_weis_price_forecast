@@ -173,6 +173,75 @@ def backtest_report(
     return per_node, aggregate, eval_meta
 
 
+def compare_candidate_to_champion(
+    candidate_model: ForecastingModel,
+    series: list[TimeSeries],
+    past_covariates: list[TimeSeries],
+    future_covariates: list[TimeSeries],
+    target: str,
+    num_samples: int = 100,
+    nodes: list[str] | None = None,
+) -> tuple[pd.Series, pd.Series | None, bool]:
+    """Decide whether a freshly-trained candidate should replace the champion.
+
+    Backtests the candidate and the target's current champion on the *same*
+    recent window over a fixed node subset with reduced samples — a fast
+    promote-gate (a relative CRPS ranking is robust to fewer nodes/samples, so
+    this is much cheaper than the full harness). Both models must be scored
+    together here because the rolling holdout slides as the series grows. The
+    node subset is held constant (``node_list.EVAL_NODES``) so gate scores are
+    comparable across retrains.
+
+    Args:
+        candidate_model: The just-trained ensemble under consideration.
+        series: Per-node target series (full node list).
+        past_covariates: Per-node past covariates, aligned with ``series``.
+        future_covariates: Per-node future covariates, aligned with ``series``.
+        target: Forecast target (parameters.TARGETS) whose champion to load.
+        num_samples: Probabilistic samples per forecast (default 100).
+        nodes: Node names to score; defaults to ``node_list.EVAL_NODES``.
+
+    Returns:
+        ``(candidate_aggregate, champion_aggregate, candidate_wins)``. The
+        champion aggregate is ``None`` and ``candidate_wins`` is ``True`` when
+        the target has no champion yet (nothing to beat).
+    """
+    import tempfile
+
+    import node_list
+    import utils
+    from botocore.exceptions import ClientError
+    from modeling import load_ensemble_from_dir
+
+    gate_nodes = node_list.EVAL_NODES if nodes is None else nodes
+    # Select the fixed gate nodes by their static-covariate id (order-independent),
+    # so the same nodes are scored regardless of the series' ordering.
+    idx = [
+        i for i, ts in enumerate(series)
+        if ts.has_static_covariates
+        and str(ts.static_covariates_values()[0][0]) in gate_nodes
+    ]
+    if len(idx) < len(gate_nodes):
+        log.warning('gate: %d/%d EVAL_NODES present in series', len(idx), len(gate_nodes))
+    s = [series[i] for i in idx]
+    p = [past_covariates[i] for i in idx]
+    f = [future_covariates[i] for i in idx]
+    _pn, cand_agg, _m = backtest_report(candidate_model, s, p, f, num_samples=num_samples)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            utils.download_champion_checkpoints(tmpdir, target=target)
+        except ClientError as e:
+            if e.response['Error']['Code'] in ('NoSuchKey', '404'):
+                log.info('no current %s champion; candidate promotes by default', target)
+                return cand_agg, None, True
+            raise
+        champ_model, _ts = load_ensemble_from_dir(tmpdir)
+
+    _pn, champ_agg, _m = backtest_report(champ_model, s, p, f, num_samples=num_samples)
+    return cand_agg, champ_agg, float(cand_agg['crps']) < float(champ_agg['crps'])
+
+
 def _tail_metrics(
     actual: np.ndarray,
     lo: np.ndarray,
