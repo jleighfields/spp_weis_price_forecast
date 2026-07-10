@@ -143,11 +143,16 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
   together with the Posit app redeploy, so the app (reading `models/rt|da/`) and
   the retrain (writing `models/rt|da/`) cut over together.
 
-## Phase 6 — Tests + docs
+## Phase 6 — Tests + docs — ✅ DONE
 
-- Unit tests for the target config + DA `create_database` branch.
-- Update `src/README.md`, `CLAUDE.md` (note the `target` dimension in the model
-  config + champion layout), and `.env`/deploy notes if a `TARGET` env is added.
+- Unit tests for the target config + DA `create_database` branch landed with
+  Phases 1–2 (TARGETS invariants, per-target namespace, RT/DA `create_database`).
+- Docs: `CLAUDE.md` (new "forecast target dimension" bullet under parameter
+  homes), `src/README.md` (parameters/utils/data_engineering rows + the
+  `data_collection_utils.py` row from the earlier extraction), root `README.md`
+  (DA LMP as primary target, RT parked, the Market toggle, retrain both targets).
+- No `TARGET` in `.env.example` — it has a code default (`DEFAULT_TARGET`) and
+  Modal sets it via `env=`; it is a run-time override, not storage config.
 
 ## Phase 7 — Accuracy metrics in artifacts → champion/challenger
 

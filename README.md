@@ -40,8 +40,10 @@ under the `im/` prefix.
 
 ### Data types collected
 
-* **LMP** - Locational marginal prices for settlement locations ([source](https://portal.spp.org/pages/rtbm-lmp-by-location)). 5-minute interval data (plus a daily rollup) aggregated to hourly. This is the forecast target.\
+* **RTBM LMP** - Real-time locational marginal prices for settlement locations ([source](https://portal.spp.org/pages/rtbm-lmp-by-location)). 5-minute interval data (plus a daily rollup) aggregated to hourly. The real-time (RT) forecast target.\
 ![LMP summary](./imgs/lmp_settlement_location.PNG)
+
+* **DA LMP** - Day-ahead locational marginal prices. Hourly cleared-auction prices per settlement location. The **primary/default** forecast target: much smoother and more autocorrelated than real-time, so far more predictable.
 
 * **MTLF** - Mid-term load forecast ([source](https://portal.spp.org/pages/mtlf-vs-actual)). Per-BAA hourly load forecast for the next 7 days (168 hours), updated every hour. Includes actuals for model training.\
 ![MTLF summary](./imgs/mtlf.PNG)
@@ -56,6 +58,11 @@ The [Darts](https://unit8co.github.io/darts/README.html) library provides a cons
 * **TiDE** - Temporal Imputation using Deep Embeddings
 * **TSMixer** - Time Series Mixer
 * **TFT** - Temporal Fusion Transformer
+
+The same pipeline trains a model per **forecast target** (`parameters.TARGETS`):
+day-ahead (`da`, the default/primary) and real-time (`rt`, parked until the
+market matures). Each has its own champion under `models/<target>/`, and the
+Shiny app has a **Market** toggle to serve either.
 
 Key parameters (see `src/parameters.py`):
 * Forecast horizon: 120 hours (5 days)
@@ -77,7 +84,7 @@ Historical and future covariates are declared in the fit function. Input and out
 ├── pyproject.toml            # Python dependencies
 ├── modal_jobs/
 │   ├── data_collection_im.py # Scheduled Integrated Marketplace collection (hourly + daily)
-│   └── model_retrain.py      # Scheduled model retraining (weekly, GPU)
+│   └── model_retrain.py      # Scheduled model retraining — day-ahead + real-time (weekly, GPU)
 ├── src/
 │   ├── darts_wrapper.py      # Darts model wrapper for Shiny integration
 │   ├── data_collection.py    # Legacy WEIS market ETL + weather upsert (WEIS feed logic; still imported by the weather notebook)

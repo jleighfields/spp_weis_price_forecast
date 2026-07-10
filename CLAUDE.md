@@ -86,6 +86,14 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   horizons, `TIDE_PARAMS` and other hyperparameter dicts) →
   `src/parameters.py`. Notebooks, Modal jobs, and the app import from
   it; they never redeclare the values.
+- Forecast **target** dimension → `parameters.TARGETS` (`'da'` day-ahead,
+  the `DEFAULT_TARGET`/primary; `'rt'` real-time, parked) + `DEFAULT_TARGET`.
+  Each target trains from its own source parquet (`create_database(target=…)`
+  loads `im/lmp.parquet` or `im/da_lmp.parquet`) into its own model namespace
+  `models/<target>/` (via `utils.retrains_prefix(target)` /
+  `champion_key_suffix(target)`). The retrain notebook + Modal jobs pick the
+  target from the `TARGET` env var; the app picks it from the `input.target`
+  selector. Never compare metrics across targets.
 - Storage config (bucket, folder, endpoint) → environment variables
   (`AWS_S3_BUCKET`, `AWS_S3_FOLDER`, `S3_ENDPOINT_URL`,
   `AWS_DEFAULT_REGION`), read via `os.environ` — locally from the

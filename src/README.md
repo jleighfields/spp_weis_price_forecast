@@ -8,14 +8,15 @@ they don't reimplement this logic.
 | Module | Responsibility |
 |--------|----------------|
 | `node_list.py` | Single home for the West/East node lists and West-scoping constants (`STORED_NODES`, `MODEL_APP_NODES`, `WEST_BAA`, `RTO_WEST_LAUNCH`). Deliberately dependency-light (no sklearn/darts) so the Modal collection image can import it. |
-| `data_collection.py` | Shared collection helpers (`get_csv_from_url`, `_s3_storage_options`, `set_he`, `ProgressParallel`, …) **plus** the legacy WEIS ETL. The helpers are still imported by `data_collection_im.py`; the WEIS-specific collectors are retired (see `deprecated/weis/`). |
+| `data_collection_utils.py` | Shared, feed-agnostic collection helpers (`get_csv_from_url`, `_s3_storage_options`, `set_he`, `ProgressParallel`, …) plus the `IM_PREFIX`/`WEIS_PREFIX` R2-layout constants. Imported by both collectors. |
+| `data_collection.py` | Legacy WEIS ETL (retired feeds, see `deprecated/weis/`); imports the shared helpers from `data_collection_utils.py`. Kept for its WEIS-specific processors and the weather-collection notebook. |
 | `data_collection_im.py` | Integrated Marketplace collectors — RTBM 5-min + daily LMP, MTLF, MTRF, `RF_RESERVE_ZONE`, DA LMP — writing to the `im/` R2 prefix. Handles the `BAA` column, DST duplicate-hour files, and the daily-rollup publication lag. |
-| `data_engineering.py` | Reads `im/` via DuckDB, filters to the West BAA (`BAA=='SWPW'`) and `MODEL_APP_NODES`, engineers features (renewable ratios, load-net-of-renewables, rolling diffs, the 2026-04-01 break indicator), and builds the Darts `TimeSeries` the models consume. |
+| `data_engineering.py` | `create_database(target=…)` loads the target's price table (real-time `im/lmp.parquet` or day-ahead `im/da_lmp.parquet`, aliased to a common schema) via DuckDB, filters to the West BAA (`BAA=='SWPW'`) and `MODEL_APP_NODES`, engineers features (renewable ratios, load-net-of-renewables, rolling diffs), and builds the Darts `TimeSeries` the models consume. |
 | `modeling.py` | Builds and fits the Darts models (TiDE / TSMixer / TFT) and loads a saved ensemble (`load_ensemble_from_dir`). |
-| `parameters.py` | Hyperparameters and run config — `MODEL_NAME`, `TRAIN_START`, forecast horizons, the `*_PARAMS` dicts, encoders. The single source of truth for model config. Imports sklearn/darts, so keep it out of the collection image (that's why node lists live in `node_list.py`). |
+| `parameters.py` | Hyperparameters and run config — `MODEL_NAME`, `TRAIN_START`, forecast horizons, the `*_PARAMS` dicts, encoders, and the forecast-target set (`TARGETS` / `DEFAULT_TARGET`; `'da'` is primary, `'rt'` parked). The single source of truth for model config. Imports sklearn/darts, so keep it out of the collection image (that's why node lists live in `node_list.py`). |
 | `darts_wrapper.py` | mlflow PyFunc wrapper for serving a Darts model/ensemble. |
 | `plotting.py` | Forecast visualizations for the Shiny app. |
-| `utils.py` | R2/S3 utilities (listing, champion-checkpoint download). |
+| `utils.py` | R2/S3 utilities (listing, champion-checkpoint download) and the per-target model namespace (`retrains_prefix(target)` / `champion_key_suffix(target)` → `models/<target>/`). |
 
 ## Conventions
 
