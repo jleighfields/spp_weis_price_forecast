@@ -761,28 +761,39 @@ class TestGetPastCov:
 class TestCreateDatabase:
     """Tests for create_database function."""
 
-    def test_creates_duckdb_connection(self):
-        """Test that function returns a DuckDB connection and creates tables from S3."""
+    @staticmethod
+    def _execute_sql(target):
+        """Return the list of SQL strings create_database sends to con.execute."""
         import data_engineering as de
 
-        # Create a mock connection
         mock_con = MagicMock(spec=duckdb.DuckDBPyConnection)
-
         with patch('data_engineering.duckdb.connect', return_value=mock_con):
             with patch.dict(os.environ, {'AWS_S3_BUCKET': 'test-bucket', 'AWS_S3_FOLDER': 'test-folder'}):
-                con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf'])
+                con = de.create_database(datasets=['lmp', 'mtrf', 'mtlf'], target=target)
+        return con, mock_con, [str(c) for c in mock_con.execute.call_args_list]
 
-        # Verify connection was returned
+    def test_creates_duckdb_connection(self):
+        """Returns the connection and installs/loads httpfs."""
+        con, mock_con, _ = self._execute_sql('rt')
         assert con == mock_con
-
-        # Verify httpfs was installed and loaded
         mock_con.sql.assert_any_call("INSTALL httpfs;")
         mock_con.sql.assert_any_call("LOAD httpfs;")
 
-        # Verify execute reads each dataset from the im/ prefix over S3
-        execute_calls = [str(call) for call in mock_con.execute.call_args_list]
-        for ds in ['lmp', 'mtrf', 'mtlf']:
-            assert any(
-                ds in call and 'read_parquet' in call and 's3://' in call and 'im/' in call
-                for call in execute_calls
-            )
+    def test_rt_target_reads_lmp_parquet_without_rename(self):
+        """RT loads the 'lmp' table from im/lmp.parquet as-is (already hour-ending)."""
+        _, _, sql = self._execute_sql('rt')
+        lmp_sql = [s for s in sql if 'CREATE TABLE lmp' in s]
+        assert lmp_sql and 'im/lmp.parquet' in lmp_sql[0]
+        assert 'RENAME' not in lmp_sql[0]
+        # covariate tables still map name -> im/<name>.parquet
+        for ds in ['mtrf', 'mtlf']:
+            assert any(f'im/{ds}.parquet' in s for s in sql)
+
+    def test_da_target_reads_da_parquet_and_aliases_hour_ending(self):
+        """DA loads 'lmp' from im/da_lmp.parquet, renaming interval cols to *_HE."""
+        _, _, sql = self._execute_sql('da')
+        lmp_sql = [s for s in sql if 'CREATE TABLE lmp' in s]
+        assert lmp_sql and 'im/da_lmp.parquet' in lmp_sql[0]
+        for he in ['Interval_HE', 'GMTIntervalEnd_HE', 'timestamp_mst_HE']:
+            assert he in lmp_sql[0]
+        assert 'RENAME' in lmp_sql[0]

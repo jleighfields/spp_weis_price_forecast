@@ -83,7 +83,8 @@ IDS = ['unique_id']
 # create database
 #############################################
 def create_database(
-    datasets: List[str]=['lmp', 'mtrf', 'mtlf']
+    datasets: List[str]=['lmp', 'mtrf', 'mtlf'],
+    target: str | None = None,
 ) -> duckdb.DuckDBPyConnection:
     """
     Create an in-memory DuckDB database from S3 parquet files.
@@ -93,8 +94,15 @@ def create_database(
 
     Args:
         datasets: List of dataset names to load. Each name corresponds
-            to a parquet file in S3 (e.g., 'lmp' -> 'im/lmp.parquet').
+            to a parquet file in S3 (e.g., 'mtlf' -> 'im/mtlf.parquet').
             Defaults to ['lmp', 'mtrf', 'mtlf'].
+        target: Forecast target (parameters.TARGETS); defaults to
+            parameters.DEFAULT_TARGET. The price target table is always named
+            'lmp' downstream, but is loaded from the target's source parquet —
+            real-time ('im/lmp.parquet') or day-ahead ('im/da_lmp.parquet').
+            DA is already hourly, so its Interval/GMTIntervalEnd/timestamp_mst
+            columns are renamed to the *_HE (hour-ending) names the RT-shaped
+            pipeline expects, making the 'lmp' table schema-identical either way.
 
     Returns:
         duckdb.DuckDBPyConnection: Connection to in-memory DuckDB database
@@ -104,12 +112,17 @@ def create_database(
         AWS_S3_BUCKET: S3 bucket containing the parquet files.
         AWS_S3_FOLDER: Folder prefix within the bucket where data is stored.
     """
+    if target is None:
+        target = parameters.DEFAULT_TARGET
+    source_dataset = parameters.TARGETS[target]['source_dataset']
+
     AWS_S3_BUCKET = os.environ.get('AWS_S3_BUCKET')
     AWS_S3_FOLDER = os.environ.get('AWS_S3_FOLDER', '')
     if not AWS_S3_BUCKET:
         raise ValueError('AWS_S3_BUCKET env var is not set')
     log.info(f'{AWS_S3_BUCKET = }')
     log.info(f'{AWS_S3_FOLDER = }')
+    log.info(f'target = {target!r} (price source: {source_dataset})')
 
     con = duckdb.connect()
     con.sql("INSTALL httpfs;")
@@ -129,12 +142,24 @@ def create_database(
         con.sql(f"SET s3_region = '{s3_region}';")
 
     for ds in datasets:
-        # Match dataset name to S3 parquet file key. RTO West / Integrated
-        # Marketplace data lives under the IM prefix (WEIS data is retired).
-        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{IM_PREFIX}{ds}.parquet'
-        log.info(f'loading {ds} from {pf}')
-        # ds (dataset name) and pf (S3 path) are code-controlled, not user input
-        con.execute(f"CREATE TABLE {ds} AS SELECT * FROM read_parquet('{pf}')")  # noqa: S608
+        # The price target table is always named 'lmp' downstream; load it from
+        # the target's source parquet. Other datasets map name -> im/<name>.parquet.
+        parquet_ds = source_dataset if ds == 'lmp' else ds
+        pf = f's3://{AWS_S3_BUCKET}/{AWS_S3_FOLDER}{IM_PREFIX}{parquet_ds}.parquet'
+        log.info(f'loading table {ds} from {pf}')
+        if ds == 'lmp' and source_dataset == 'da_lmp':
+            # DA is already hourly: rename its interval columns to the *_HE names
+            # (RENAME, not alias — no duplicate columns), so the 'lmp' table is
+            # schema-identical to RT and every downstream step is reused as-is.
+            select = (
+                "SELECT * RENAME (Interval AS Interval_HE, "
+                "GMTIntervalEnd AS GMTIntervalEnd_HE, "
+                f"timestamp_mst AS timestamp_mst_HE) FROM read_parquet('{pf}')"
+            )
+        else:
+            select = f"SELECT * FROM read_parquet('{pf}')"
+        # ds and pf are code-controlled, not user input
+        con.execute(f"CREATE TABLE {ds} AS {select}")  # noqa: S608
 
     return con
 

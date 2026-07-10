@@ -75,18 +75,20 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
   + `models/retrains/*` → `models/rt/*` (Decision A) happens when the new code is
   deployed, not now — the live app still reads the old paths until then.
 
-## Phase 2 — DA data path
+## Phase 2 — DA data path — ✅ DONE
 
-- `create_database(target='rt'|'da')`: for `da`, read `im/da_lmp.parquet` and
-  `SELECT *, timestamp_mst AS timestamp_mst_HE, GMTIntervalEnd AS
-  GMTIntervalEnd_HE, Interval AS Interval_HE` so the `lmp` table matches the RT
-  schema. `prep_lmp` and everything after are unchanged.
-- DA specifics to verify: DA has one price/hour (no 5-min aggregation — the
-  `group_by(...).mean()` in `prep_lmp` is a harmless no-op at 1 row/hour); DA is
-  post-launch only (~3 months, no WEIS stitch — same clamp as RT already uses);
-  keep `clip_outliers=False` default (DA barely has outliers).
-- Add a unit test that the DA branch yields the canonical columns and aligns
-  hour-for-hour with the RT frame.
+- `create_database(datasets, target=None)` (default `parameters.DEFAULT_TARGET`):
+  the price table is always named `lmp` but loaded from the target's source
+  parquet. For `da` it uses DuckDB `SELECT * RENAME (Interval AS Interval_HE,
+  GMTIntervalEnd AS GMTIntervalEnd_HE, timestamp_mst AS timestamp_mst_HE)` —
+  RENAME (not alias) so no duplicate columns — making the `lmp` table
+  schema-identical to RT. `prep_lmp` and everything after are unchanged.
+- Verified against real `spp-rto` data: the RT and DA `lmp` tables have the
+  identical 13-column schema, and both reduce through `prep_lmp` to the canonical
+  `{unique_id, timestamp_mst, LMP, lmp_diff}` frame. DA's one-row-per-hour makes
+  the `group_by(...).mean()` a no-op; `clip_outliers` stays False.
+- Unit tests: RT reads `im/lmp.parquet` without RENAME; DA reads
+  `im/da_lmp.parquet` with the `*_HE` RENAME (182 pass).
 
 ## Phase 3 — Training both targets
 
