@@ -143,11 +143,36 @@ tail_* / neg_* / n_windows. The retrain notebook's scoring cell currently
 discards that return — instead capture it and write a **`metrics.json`** into
 `models/<target>/retrains/<ts>/`, alongside `training_config.json`. Keep the two
 separate: `training_config.json` = provenance/inputs (covariates, versions,
-window), `metrics.json` = evaluation results. `metrics.json` should also record
-the **eval config that makes the numbers comparable** — holdout definition,
-stride, `forecast_horizon`, `target`, and `train_timestamp` — plus the primary
-metric name (`crps`). Add `metrics.json` to the `get_loaded_models` download
-filter if the app should surface the champion's CRPS.
+window), `metrics.json` = evaluation results.
+
+`metrics.json` **must record the exact testing date range** and the full eval
+config, so any two models' numbers can be checked for comparability:
+- `test_start` / `test_end` — the actual min/max realized-hour timestamp scored
+  (not just "last 21 days"). `backtest_report` should surface this (return the
+  scored window, or the notebook derives it from the series end + `holdout_days`
+  + `forecast_horizon`).
+- eval config: `holdout_days`, `stride`, `forecast_horizon`, `num_samples`,
+  `interval`, `tail_threshold`, `target`, `train_timestamp`, and the primary
+  metric name (`crps`).
+
+Add `metrics.json` to the `get_loaded_models` download filter if the app should
+surface the champion's CRPS.
+
+**The test-window problem (why the date range matters).** `backtest_report`'s
+holdout is defined *relative to each series' `end_time()`* (the last
+`holdout_days`). Every retrain adds days, so the window slides forward — two
+models trained on different dates are scored on **different** date ranges and
+their stored CRPS are not directly comparable. Options, to decide before Step B:
+1. **Pin an absolute test window** — a fixed held-out date range (e.g.
+   `2026-06-10 .. 2026-07-01`) passed to `backtest_report` (add `test_start`/
+   `test_end` params) so every model, champion or challenger, is scored on the
+   identical set. Simplest path to apples-to-apples; the cost is the pinned
+   window ages and must be advanced deliberately (a versioned "eval window").
+2. **Record the range + re-score on demand** — keep the rolling holdout but
+   record `test_start`/`test_end`, and at promote time re-score the champion on
+   the challenger's exact window rather than trusting stored numbers.
+Recommend **(1) a pinned, versioned test window** for the champion/challenger
+comparison, with the rolling backtest kept for quick per-retrain telemetry.
 
 **Step B — the champion/challenger framework (future).**
 On retrain, treat the new model as a *challenger*:
