@@ -487,15 +487,48 @@ def _(
 
 
 @app.cell
-def _(all_series, futr_cov, loaded_model, log, past_cov):
+def _(
+    AWS_S3_BUCKET,
+    TARGET,
+    all_series,
+    artifact_path,
+    futr_cov,
+    io,
+    json,
+    loaded_model,
+    log,
+    past_cov,
+    s3,
+    utc_timestamp,
+):
     # Score the freshly-trained ensemble on the West holdout so every retrain
-    # reports its backtest metrics (CRPS, coverage/width, MAE/RMSE/bias, tail).
-    # Runs after promotion and is wrapped so a scoring error never aborts a
-    # retrain that already staged/promoted.
+    # reports its backtest metrics (CRPS, coverage/width, MAE/RMSE/bias, tail)
+    # AND persists them next to the checkpoints as metrics.json — the record a
+    # future champion/challenger promotion compares. metrics.json carries the
+    # exact test window (eval.test_start/test_end) so numbers are only compared
+    # on the same test set. Wrapped so a scoring error never aborts a retrain
+    # that already staged/promoted.
     try:
         from src.evaluation import backtest_report
 
-        backtest_report(loaded_model, all_series, past_cov, futr_cov)
+        _per_node, _agg, _eval_meta = backtest_report(
+            loaded_model, all_series, past_cov, futr_cov
+        )
+        _metrics = {
+            "target": TARGET,
+            "train_timestamp": str(utc_timestamp),
+            "primary_metric": "crps",
+            "metrics": {k: float(v) for k, v in _agg.to_dict().items()},
+            "eval": _eval_meta,
+        }
+        _metrics_key = artifact_path + "metrics.json"
+        s3.put_object(
+            Bucket=AWS_S3_BUCKET,
+            Key=_metrics_key,
+            Body=io.BytesIO(json.dumps(_metrics, indent=2).encode("utf-8")),
+        )
+        log.info(f"wrote metrics.json: {_metrics_key}")
+        log.info(f"metrics: {_metrics}")
     except Exception as _e:
         log.warning(f"backtest scoring skipped: {_e}")
     return

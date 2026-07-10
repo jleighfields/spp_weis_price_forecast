@@ -79,12 +79,17 @@ def backtest_report(
 
     Returns:
         A tuple of (per-node metrics DataFrame indexed by node name, aggregate
-        metrics Series pooled across all windows and nodes). Metric columns:
-        ``crps, coverage, width, mae, rmse, bias, tail_mae, tail_coverage,
-        neg_mae, neg_coverage, n_windows, n_tail, n_neg``. Note ``n_tail`` /
-        ``n_neg`` count forecast-instance hours: with ``stride < forecast_horizon``
-        the rolling windows overlap, so a realized hour is counted once per
-        forecast that covers it, not once overall.
+        metrics Series pooled across all windows and nodes, eval-metadata dict).
+        Metric columns: ``crps, coverage, width, mae, rmse, bias, tail_mae,
+        tail_coverage, neg_mae, neg_coverage, n_windows, n_tail, n_neg``. Note
+        ``n_tail`` / ``n_neg`` count forecast-instance hours: with
+        ``stride < forecast_horizon`` the rolling windows overlap, so a realized
+        hour is counted once per forecast that covers it, not once overall. The
+        eval-metadata dict records the exact scored window (``test_start`` /
+        ``test_end`` — the realized-hour range) and the eval config
+        (``holdout_days, stride, forecast_horizon, num_samples, interval,
+        tail_threshold``), so a model's metrics carry the test set they were
+        computed on.
     """
     if node_names is None:
         node_names = [
@@ -95,6 +100,9 @@ def backtest_report(
 
     q_lo, q_hi = interval
     rows = []
+    # Track the exact realized-hour range actually scored, across all nodes.
+    win_start = None
+    win_end = None
     for i, name in enumerate(node_names):
         # Series are hourly, so the rolling-origin window is expressed in hours:
         # back off holdout_days plus one horizon from the series end so the first
@@ -119,6 +127,11 @@ def backtest_report(
             continue
 
         actuals = [series[i].slice_intersect(f) for f in forecasts]
+        # Widen the scored-window bounds to the realized hours this node covered.
+        node_start = min(a.start_time() for a in actuals)
+        node_end = max(a.end_time() for a in actuals)
+        win_start = node_start if win_start is None else min(win_start, node_start)
+        win_end = node_end if win_end is None else max(win_end, node_end)
         # Headline metrics via Darts (probabilistic + median-quantile point).
         row = {
             'node': name,
@@ -143,7 +156,21 @@ def backtest_report(
     per_node = pd.DataFrame(rows).set_index('node')
     aggregate = _aggregate(per_node)
     _log_summary(per_node, aggregate, interval, tail_threshold)
-    return per_node, aggregate
+    # Record exactly what/how was scored so metrics from different retrains can
+    # be checked for comparability — the rolling holdout slides forward as the
+    # series grows, so two models' numbers are only comparable on the same
+    # test_start..test_end and eval config.
+    eval_meta = {
+        'test_start': str(win_start) if win_start is not None else None,
+        'test_end': str(win_end) if win_end is not None else None,
+        'holdout_days': holdout_days,
+        'stride': stride,
+        'forecast_horizon': forecast_horizon,
+        'num_samples': num_samples,
+        'interval': list(interval),
+        'tail_threshold': tail_threshold,
+    }
+    return per_node, aggregate, eval_meta
 
 
 def _tail_metrics(

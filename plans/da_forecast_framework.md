@@ -136,27 +136,19 @@ Persist each retrain's backtest accuracy next to its checkpoints so promotion
 can become a metric-gated champion/challenger decision instead of the current
 blunt `PROMOTE_CHAMPION` (first-wins / manual) flow.
 
-**Step A — persist metrics at train time (near-term, cheap).**
-`evaluation.backtest_report` already returns `(per_node, aggregate)` where
-`aggregate` is a pandas Series of crps / cov90 / width / mae / rmse / bias /
-tail_* / neg_* / n_windows. The retrain notebook's scoring cell currently
-discards that return — instead capture it and write a **`metrics.json`** into
-`models/<target>/retrains/<ts>/`, alongside `training_config.json`. Keep the two
-separate: `training_config.json` = provenance/inputs (covariates, versions,
-window), `metrics.json` = evaluation results.
+**Step A — persist metrics at train time — ✅ DONE.**
+`backtest_report` now returns `(per_node, aggregate, eval_meta)`; `eval_meta`
+records the exact scored window (`test_start`/`test_end` — the realized-hour
+range across nodes) and the eval config (`holdout_days, stride,
+forecast_horizon, num_samples, interval, tail_threshold`). The retrain notebook's
+scoring cell captures the return and writes **`metrics.json`** into
+`models/<target>/retrains/<ts>/`, alongside `training_config.json` (kept
+separate: config = provenance/inputs, metrics = evaluation results). Structure:
+`{target, train_timestamp, primary_metric: 'crps', metrics: {...}, eval: {...}}`.
+The existing DA champion was backfilled with a re-scored `metrics.json`.
 
-`metrics.json` **must record the exact testing date range** and the full eval
-config, so any two models' numbers can be checked for comparability:
-- `test_start` / `test_end` — the actual min/max realized-hour timestamp scored
-  (not just "last 21 days"). `backtest_report` should surface this (return the
-  scored window, or the notebook derives it from the series end + `holdout_days`
-  + `forecast_horizon`).
-- eval config: `holdout_days`, `stride`, `forecast_horizon`, `num_samples`,
-  `interval`, `tail_threshold`, `target`, `train_timestamp`, and the primary
-  metric name (`crps`).
-
-Add `metrics.json` to the `get_loaded_models` download filter if the app should
-surface the champion's CRPS.
+Still optional: add `metrics.json` to the `get_loaded_models` download filter if
+the app should surface the champion's CRPS.
 
 **The test-window problem (why the date range matters).** `backtest_report`'s
 holdout is defined *relative to each series' `end_time()`* (the last
