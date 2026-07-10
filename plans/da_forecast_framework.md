@@ -130,6 +130,47 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
 - Update `src/README.md`, `CLAUDE.md` (note the `target` dimension in the model
   config + champion layout), and `.env`/deploy notes if a `TARGET` env is added.
 
+## Phase 7 — Accuracy metrics in artifacts → champion/challenger
+
+Persist each retrain's backtest accuracy next to its checkpoints so promotion
+can become a metric-gated champion/challenger decision instead of the current
+blunt `PROMOTE_CHAMPION` (first-wins / manual) flow.
+
+**Step A — persist metrics at train time (near-term, cheap).**
+`evaluation.backtest_report` already returns `(per_node, aggregate)` where
+`aggregate` is a pandas Series of crps / cov90 / width / mae / rmse / bias /
+tail_* / neg_* / n_windows. The retrain notebook's scoring cell currently
+discards that return — instead capture it and write a **`metrics.json`** into
+`models/<target>/retrains/<ts>/`, alongside `training_config.json`. Keep the two
+separate: `training_config.json` = provenance/inputs (covariates, versions,
+window), `metrics.json` = evaluation results. `metrics.json` should also record
+the **eval config that makes the numbers comparable** — holdout definition,
+stride, `forecast_horizon`, `target`, and `train_timestamp` — plus the primary
+metric name (`crps`). Add `metrics.json` to the `get_loaded_models` download
+filter if the app should surface the champion's CRPS.
+
+**Step B — the champion/challenger framework (future).**
+On retrain, treat the new model as a *challenger*:
+1. Score the challenger on the current holdout.
+2. **Re-score the current champion on the *same* holdout** — stored metrics from
+   different dates are NOT directly comparable, because the rolling training
+   window (and thus the holdout) grows over time. The only fair comparison is
+   champion vs challenger evaluated together on identical data/config.
+3. Apply a promotion rule: promote iff the challenger beats the champion on the
+   primary metric (CRPS) by a margin, subject to guardrails (coverage within a
+   tolerance of nominal; no bias/RMSE regression beyond a threshold). Otherwise
+   keep the champion and log the challenger for review.
+4. Replace the boolean `PROMOTE_CHAMPION` with this metric-gated promote, per
+   target (`r2_promote_champion.py` can grow a `--if-better` mode).
+5. Telemetry: append each retrain's metrics to a per-target
+   `models/<target>/metrics_history.jsonl` to track drift over time.
+
+**Comparability guardrails to honor:**
+- Never compare across targets (DA vs RT are different scales/series);
+  champion/challenger is always within one target's `models/<target>/` namespace.
+- Prefer re-scoring both models together at promote time over trusting stored
+  numbers computed on different windows.
+
 ## Open decisions
 
 - **A. Champion namespace.** Namespace both (`models/rt/`, `models/da/`) —
