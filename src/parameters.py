@@ -2,8 +2,22 @@
 set up global parameters
 '''
 
+import os
+import sys
+
 from sklearn.preprocessing import RobustScaler
 from darts.dataprocessing.transformers import Scaler
+
+# Put src/ on sys.path so the bare `import targets` resolves regardless of how
+# this module is imported (matches the other src/ modules).
+_src_dir = os.path.dirname(os.path.abspath(__file__))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+# Forecast targets live in the darts-free leaf module `targets`; re-export them
+# here so existing `parameters.TARGETS` / `parameters.DEFAULT_TARGET` callers
+# keep working (single source of truth: src/targets.py).
+from targets import DEFAULT_TARGET, TARGETS  # noqa: E402
 
 
 TRAIN_START = '365D'
@@ -11,21 +25,6 @@ TRAIN_START = '365D'
 FORECAST_HORIZON = 24*5
 INPUT_CHUNK_LENGTH = 24*7
 PRECISION = 'float32'
-
-# Forecast target selector. Each target trains an independent model from its own
-# source table into its own model namespace (models/<target>/...):
-#   'da' — day-ahead auction prices (im/da_lmp.parquet), smooth/predictable
-#          (the primary/default model)
-#   'rt' — real-time RTBM prices (im/lmp.parquet), spiky/hard to predict
-#          (parked until the market matures)
-# This is the canonical set of targets; the training notebooks, the app, and the
-# champion helpers in utils.py select a target from here. 'source_dataset' is the
-# parquet basename under the IM prefix (data_engineering builds im/<ds>.parquet).
-DEFAULT_TARGET = 'da'
-TARGETS = {
-    'rt': {'source_dataset': 'lmp', 'model_name': 'spp_west'},
-    'da': {'source_dataset': 'da_lmp', 'model_name': 'spp_west_da'},
-}
 
 # Default (primary target) model name, kept for callers that predate the target
 # dimension.

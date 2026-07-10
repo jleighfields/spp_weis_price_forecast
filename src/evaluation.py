@@ -51,7 +51,7 @@ def backtest_report(
     num_samples: int = 200,
     interval: tuple[float, float] = (0.05, 0.95),
     tail_threshold: float = 100.0,
-) -> tuple[pd.DataFrame, pd.Series]:
+) -> tuple[pd.DataFrame, pd.Series, dict]:
     """Score a model with a rolling-origin backtest over a West holdout.
 
     For each node, forecasts are generated at daily origins across the last

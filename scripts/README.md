@@ -108,9 +108,11 @@ uv run python scripts/r2_reorg_copy.py --execute  # create spp-rto and copy
 
 ## r2_promote_champion.py
 
-Promote (or revert to) a retrained model by repointing
-`models/champion.json` — the pointer the Shiny app reads to decide which
-`models/retrains/<timestamp>/` folder to serve.
+Promote (or revert to) a retrained model by repointing a forecast target's
+`models/<target>/champion.json` — the pointer the Shiny app reads to decide
+which `models/<target>/retrains/<timestamp>/` folder to serve. Each target
+(`parameters.TARGETS`: `da` day-ahead, `rt` real-time) has its own champion;
+`--target` selects which one, defaulting to `da` (the primary model).
 
 Retrains that run with `PROMOTE_CHAMPION=false` are *staged*: their
 checkpoints land in a timestamped folder but champion.json is untouched, so
@@ -118,6 +120,8 @@ the live app keeps its current model. This script is the manual promote/revert
 step — it only rewrites the small JSON pointer (matching the schema
 `model_retrain.py` writes), never moving checkpoints.
 
+- **Target-scoped**: operates on one target's namespace at a time via
+  `--target` (default `da`); pass `--target rt` for the real-time model.
 - **Dry run by default**: prints the current → target change; pass `--promote`
   to write.
 - **Validated**: refuses to point at a folder with no objects, so a typo can't
@@ -141,6 +145,9 @@ uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45
 
 # Promote / revert to that folder
 uv run python scripts/r2_promote_champion.py 2026-07-06_12-41-45 --promote
+
+# Operate on the real-time target instead of the default day-ahead one
+uv run python scripts/r2_promote_champion.py --target rt --list
 ```
 
 ## weis_stitch_fill.py

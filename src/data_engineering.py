@@ -151,13 +151,13 @@ def create_database(
             # DA is already hourly: rename its interval columns to the *_HE names
             # (RENAME, not alias — no duplicate columns), so the 'lmp' table is
             # schema-identical to RT and every downstream step is reused as-is.
-            select = (
+            select = (  # noqa: S608  (pf is code-controlled, not user input)
                 "SELECT * RENAME (Interval AS Interval_HE, "
                 "GMTIntervalEnd AS GMTIntervalEnd_HE, "
                 f"timestamp_mst AS timestamp_mst_HE) FROM read_parquet('{pf}')"
             )
         else:
-            select = f"SELECT * FROM read_parquet('{pf}')"
+            select = f"SELECT * FROM read_parquet('{pf}')"  # noqa: S608
         # ds and pf are code-controlled, not user input
         con.execute(f"CREATE TABLE {ds} AS {select}")  # noqa: S608
 

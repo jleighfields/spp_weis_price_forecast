@@ -166,6 +166,45 @@ app_ui = ui.page_sidebar(
 # Server
 ###############################################################
 
+def _do_load_data(target):
+    """Blocking: connect to DuckDB/R2 and return (all_df_pd, lmp_pd) for target.
+
+    Module-level (not a server() closure) so tests/e2e/app_for_test.py can
+    monkeypatch it with fixture data — a name re-defined inside server() could
+    not be rebound from the module.
+    """
+    log.info(f'getting {target} lmp data from R2')
+    con = de.create_database(target=target)
+    log.info('finished getting data from R2')
+
+    log.info('preparing all_df_pd')
+    all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
+    log.info('preparing lmp')
+    lmp_result = de.prep_lmp(con)
+    log.info('preparing lmp_pd_df')
+    lmp_pd = lmp_result.to_pandas().set_index('timestamp_mst')
+    con.close()
+    return all_df_pd, lmp_pd
+
+
+def _do_load_models(target):
+    """Blocking: download the target's champion checkpoints -> (model, train_timestamp).
+
+    Module-level (see _do_load_data) so the e2e harness can monkeypatch it.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        utils.download_champion_checkpoints(tmpdir, target=target)
+        # Verify the champion was trained on the same covariates this app
+        # now builds; a mismatch (e.g. a covariate added/removed since the
+        # model was trained) would otherwise surface as a cryptic
+        # component-mask error on every forecast. Raise loud instead so the
+        # model stays unloaded and the reason is obvious in the logs.
+        config = utils.load_training_config(tmpdir)
+        if config is not None:
+            utils.validate_model_covariates(config, de.FUTR_COLS, de.PAST_COLS)
+        return load_ensemble_from_dir(tmpdir)
+
+
 def server(input, output, session):
 
     # Reactive values for stored state
@@ -182,37 +221,10 @@ def server(input, output, session):
     loaded_target_val = reactive.Value(None)
 
     ###############################################################
-    # Load data and models on startup (parallel), refresh reloads data only
+    # Load data and models on startup (parallel), refresh reloads data only.
+    # The blocking loaders (_do_load_data / _do_load_models) are module-level
+    # above so the e2e harness can monkeypatch them.
     ###############################################################
-
-    def _do_load_data(target):
-        '''Blocking: connect to DuckDB/R2 and return (all_df_pd, lmp_pd) for target.'''
-        log.info(f'getting {target} lmp data from R2')
-        con = de.create_database(target=target)
-        log.info('finished getting data from R2')
-
-        log.info('preparing all_df_pd')
-        all_df_pd = de.all_df_to_pandas(de.prep_all_df(con))
-        log.info('preparing lmp')
-        lmp_result = de.prep_lmp(con)
-        log.info('preparing lmp_pd_df')
-        lmp_pd = lmp_result.to_pandas().set_index('timestamp_mst')
-        con.close()
-        return all_df_pd, lmp_pd
-
-    def _do_load_models(target):
-        '''Blocking: download the target's champion checkpoints and return (model, train_timestamp).'''
-        with tempfile.TemporaryDirectory() as tmpdir:
-            utils.download_champion_checkpoints(tmpdir, target=target)
-            # Verify the champion was trained on the same covariates this app
-            # now builds; a mismatch (e.g. a covariate added/removed since the
-            # model was trained) would otherwise surface as a cryptic
-            # component-mask error on every forecast. Raise loud instead so the
-            # model stays unloaded and the reason is obvious in the logs.
-            config = utils.load_training_config(tmpdir)
-            if config is not None:
-                utils.validate_model_covariates(config, de.FUTR_COLS, de.PAST_COLS)
-            return load_ensemble_from_dir(tmpdir)
 
     @reactive.effect
     async def _load_startup():

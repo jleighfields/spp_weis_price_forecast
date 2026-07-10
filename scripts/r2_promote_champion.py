@@ -50,10 +50,9 @@ from utils import (  # noqa: E402
     retrains_prefix,
 )
 
-# Default forecast target (parameters.TARGETS canonical set; 'da' is the primary
-# model). Kept as a literal so this CLI stays darts-free like the rest of the
-# script — pass --target rt to operate on the real-time model.
-DEFAULT_TARGET = "da"
+# Single source of truth for the default target, from the darts-free leaf module
+# (so this CLI stays darts-free). Pass --target rt for the real-time model.
+from targets import DEFAULT_TARGET  # noqa: E402
 
 
 def make_s3_client():

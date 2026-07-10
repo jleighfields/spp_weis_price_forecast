@@ -95,8 +95,14 @@ class _FakeModel:
 
 
 def _fake_load_models(target=None):
-    """Drop-in replacement for app._do_load_models (target-aware signature)."""
-    return _FakeModel(), pd.Timestamp("2025-01-15 08:00:00")
+    """Drop-in replacement for app._do_load_models (target-aware signature).
+
+    Returns a target-dependent train timestamp so a market switch changes the
+    displayed "model last trained" value — the signal the toggle e2e test waits
+    on to know the reload finished.
+    """
+    ts = "2025-02-01 08:00:00" if target == "rt" else "2025-01-15 08:00:00"
+    return _FakeModel(), pd.Timestamp(ts)
 
 
 # ---------------------------------------------------------------------------
