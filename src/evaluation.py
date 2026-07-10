@@ -205,7 +205,15 @@ def compare_candidate_to_champion(
         ``(candidate_aggregate, champion_aggregate, candidate_wins)``. The
         champion aggregate is ``None`` and ``candidate_wins`` is ``True`` when
         the target has no champion yet (nothing to beat).
+
+    Raises:
+        botocore.exceptions.ClientError: If loading the current champion fails
+            for any reason other than a missing object (``NoSuchKey`` / ``404``,
+            which is treated as "no champion yet"), the error is re-raised
+            rather than silently promoting.
     """
+    # Deferred imports: only the promote-gate path needs the champion loader /
+    # boto error type, so they stay out of the module-level import surface.
     import tempfile
 
     import node_list
@@ -221,6 +229,8 @@ def compare_candidate_to_champion(
         if ts.has_static_covariates
         and str(ts.static_covariates_values()[0][0]) in gate_nodes
     ]
+    if not idx:
+        raise ValueError(f'none of the gate nodes {gate_nodes} are present in the series')
     if len(idx) < len(gate_nodes):
         log.warning('gate: %d/%d EVAL_NODES present in series', len(idx), len(gate_nodes))
     s = [series[i] for i in idx]
@@ -239,7 +249,13 @@ def compare_candidate_to_champion(
         champ_model, _ts = load_ensemble_from_dir(tmpdir)
 
     _pn, champ_agg, _m = backtest_report(champ_model, s, p, f, num_samples=num_samples)
-    return cand_agg, champ_agg, float(cand_agg['crps']) < float(champ_agg['crps'])
+    cand_crps, champ_crps = float(cand_agg['crps']), float(champ_agg['crps'])
+    # A NaN CRPS makes the < comparison False (keeps the champion). Surface it so
+    # a retrain that didn't promote for a scoring failure isn't a silent mystery.
+    if np.isnan(cand_crps) or np.isnan(champ_crps):
+        log.warning('gate: NaN CRPS (candidate=%s, champion=%s); keeping champion',
+                    cand_crps, champ_crps)
+    return cand_agg, champ_agg, cand_crps < champ_crps
 
 
 def _tail_metrics(

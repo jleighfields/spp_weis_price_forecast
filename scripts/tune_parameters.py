@@ -101,7 +101,11 @@ def main() -> int:
     if not pattern.search(src):
         print(f"ERROR: markers {begin} / {end} not found in {PARAMS_FILE}")
         return 1
-    new_src = pattern.sub(f"{begin}\n{block}\n{end}", src)
+    # Function replacement so `block` (which contains repr'd param values) is
+    # inserted literally — a plain string replacement would interpret any
+    # backslash / \g<> / \1 in it. count=1 documents the single-block intent.
+    replacement = f"{begin}\n{block}\n{end}"
+    new_src = pattern.sub(lambda _m: replacement, src, count=1)
 
     if not args.write:
         print("[dry-run] pass --write to update parameters.py")

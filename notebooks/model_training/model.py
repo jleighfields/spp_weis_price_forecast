@@ -638,11 +638,13 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_NAME, MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, shutil):
+def _(MODEL_NAME, MODEL_TYPE, REMOVE_PRIOR_MODELS, log, optuna, os, shutil):
     TRIAL_MODEL_DIR = f"optuna/{MODEL_TYPE}"
     MODEL_CHECKPOINT_DIR = f"model_checkpoints/{MODEL_TYPE}_model"
 
     if REMOVE_PRIOR_MODELS:
+        # Best-effort reset of a prior study + its scratch dirs; a fresh run has
+        # nothing to delete, so log at debug rather than fail.
         try:
             optuna.delete_study(
                 study_name=f"{MODEL_NAME}_{MODEL_TYPE}",
@@ -650,8 +652,8 @@ def _(MODEL_NAME, MODEL_TYPE, REMOVE_PRIOR_MODELS, optuna, os, shutil):
             )
             shutil.rmtree(TRIAL_MODEL_DIR)
             shutil.rmtree(MODEL_CHECKPOINT_DIR)
-        except Exception:
-            pass
+        except Exception as _e:  # noqa: S110  (best-effort cleanup, logged below)
+            log.debug(f"no prior study/dirs to remove: {_e}")
 
     os.makedirs(TRIAL_MODEL_DIR, exist_ok=True)
     os.makedirs(MODEL_CHECKPOINT_DIR, exist_ok=True)
