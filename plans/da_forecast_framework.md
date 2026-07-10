@@ -90,16 +90,22 @@ basis** or multi-task gains; noted as a future experiment, not the demo path.
 - Unit tests: RT reads `im/lmp.parquet` without RENAME; DA reads
   `im/da_lmp.parquet` with the `*_HE` RENAME (182 pass).
 
-## Phase 3 — Training both targets
+## Phase 3 — Training both targets — ✅ DONE (DA champion trained + promoted)
 
-- Parametrize `notebooks/model_training/model.py` (Optuna) and
-  `model_retrain.py` by target: select source table, `MODEL_NAME`, and champion
-  path; write `target` into `training_config.json`.
-- Reuse the RT-tuned `TIDE_PARAMS` for the first DA champion (DA is smoother, so
-  they should transfer or over-fit less). **Decision D**: optional DA-specific
-  Optuna re-tune later.
-- Produce a DA champion under `models/da/` and score it with the existing
-  `evaluation.backtest_report` — expect much lower CRPS / better coverage than RT.
+- `notebooks/model_training/model_retrain.py` parametrized by target (env
+  `TARGET`, default `parameters.DEFAULT_TARGET`): `create_database(target=…)`,
+  `MODEL_NAME` from `TARGETS`, uploads to `utils.retrains_prefix(TARGET)`,
+  champion to `utils.champion_key_suffix(TARGET)`.
+- `scripts/r2_promote_champion.py` gained `--target` (default `da`); its
+  helpers thread the target's retrains prefix / champion key.
+- First DA champion trained on the GPU box reusing RT `TIDE_PARAMS` (Decision D)
+  and promoted: `models/da/champion.json` → `models/da/retrains/2026-07-10_14-43-38/`
+  (5 TiDE models). Isolated from the live RT champion at `models/champion.json`.
+- **Backtest (harness): CRPS 4.43, cov90 0.87, MAE 6.09, bias −1.72** — vs the
+  RT champion's ~17.2 CRPS, a ~4× improvement, confirming the data analysis.
+- `download_champion_checkpoints(target='da')` load path verified end-to-end.
+- Deferred (Decision D): DA-specific Optuna re-tune → parametrize `model.py`
+  then (not needed to reuse RT params now).
 
 ## Phase 4 — Serving (app)
 

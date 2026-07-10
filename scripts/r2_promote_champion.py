@@ -45,10 +45,15 @@ load_dotenv(override=True)
 # does (utils is light — boto3/json/os only, no darts).
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from utils import (  # noqa: E402
-    CHAMPION_KEY_SUFFIX,
-    RETRAINS_PREFIX,
     build_champion_config,
+    champion_key_suffix,
+    retrains_prefix,
 )
+
+# Default forecast target (parameters.TARGETS canonical set; 'da' is the primary
+# model). Kept as a literal so this CLI stays darts-free like the rest of the
+# script — pass --target rt to operate on the real-time model.
+DEFAULT_TARGET = "da"
 
 
 def make_s3_client():
@@ -61,20 +66,21 @@ def make_s3_client():
     return boto3.client("s3", endpoint_url=os.getenv("S3_ENDPOINT_URL"))
 
 
-def list_retrain_folders(s3, bucket: str, folder: str) -> list[str]:
-    """List the retrain timestamp folders under models/retrains/.
+def list_retrain_folders(s3, bucket: str, folder: str, retr_prefix: str) -> list[str]:
+    """List the retrain timestamp folders under the target's retrains prefix.
 
     Args:
         s3: Boto3 S3 client.
         bucket: Bucket name.
         folder: AWS_S3_FOLDER prefix ("" or trailing-slash prefix).
+        retr_prefix: The target's retrains prefix (e.g. "models/da/retrains/").
 
     Returns:
         Timestamp folder names (e.g. "2026-07-06_12-41-45"), sorted ascending
         so the newest retrain is last. The lexical sort works because the
         folders are "%Y-%m-%d_%H-%M-%S" stamps.
     """
-    prefix = folder + RETRAINS_PREFIX
+    prefix = folder + retr_prefix
     paginator = s3.get_paginator("list_objects_v2")
     names = set()
     # Delimiter="/" makes S3 return the immediate subfolders as CommonPrefixes
@@ -121,7 +127,7 @@ def get_current_champion(s3, bucket: str, champion_key: str) -> dict | None:
     return json.loads(resp["Body"].read().decode("utf-8"))
 
 
-def build_champion_json(folder: str, timestamp: str) -> dict:
+def build_champion_json(folder: str, timestamp: str, retr_prefix: str) -> dict:
     """Build the champion.json payload for a target retrain folder.
 
     Derives the path pieces from the CLI timestamp and delegates the schema
@@ -131,13 +137,14 @@ def build_champion_json(folder: str, timestamp: str) -> dict:
     Args:
         folder: AWS_S3_FOLDER prefix ("" or trailing-slash prefix).
         timestamp: The retrain folder name (e.g. "2026-07-06_12-41-45").
+        retr_prefix: The target's retrains prefix (e.g. "models/da/retrains/").
 
     Returns:
         The champion config dict with champion / champion_artifact_folder /
         champion_artifact_path keys.
     """
     folder_time = timestamp + "/"
-    artifact_folder = RETRAINS_PREFIX + folder_time
+    artifact_folder = retr_prefix + folder_time
     return build_champion_config(folder_time, artifact_folder, folder + artifact_folder)
 
 
@@ -173,6 +180,11 @@ def main() -> int:
         action="store_true",
         help="Print the current champion.json and exit.",
     )
+    parser.add_argument(
+        "--target",
+        default=DEFAULT_TARGET,
+        help=f"Forecast target to operate on (models/<target>/); default {DEFAULT_TARGET!r}.",
+    )
     args = parser.parse_args()
 
     bucket = os.getenv("AWS_S3_BUCKET")
@@ -181,15 +193,16 @@ def main() -> int:
         print("ERROR: AWS_S3_BUCKET is not set (check your .env).", flush=True)
         return 1
 
+    retr_prefix = retrains_prefix(args.target)
     s3 = make_s3_client()
-    champion_key = folder + CHAMPION_KEY_SUFFIX
+    champion_key = folder + champion_key_suffix(args.target)
 
     if args.list:
-        folders = list_retrain_folders(s3, bucket, folder)
+        folders = list_retrain_folders(s3, bucket, folder, retr_prefix)
         if not folders:
-            print(f"No retrain folders under {folder + RETRAINS_PREFIX}", flush=True)
+            print(f"No retrain folders under {folder + retr_prefix}", flush=True)
             return 0
-        print(f"Available retrains under {folder + RETRAINS_PREFIX} (newest last):")
+        print(f"Available retrains under {folder + retr_prefix} (newest last):")
         for name in folders:
             print(f"  {name}")
         return 0
@@ -205,12 +218,12 @@ def main() -> int:
     if not args.timestamp:
         parser.error("a timestamp is required unless --list or --show is given")
 
-    # Normalize: accept a bare timestamp or a "models/retrains/<ts>/" path.
+    # Normalize: accept a bare timestamp or a "models/<target>/retrains/<ts>/" path.
     timestamp = args.timestamp.strip("/")
-    if timestamp.startswith(RETRAINS_PREFIX):
-        timestamp = timestamp[len(RETRAINS_PREFIX) :].strip("/")
+    if timestamp.startswith(retr_prefix):
+        timestamp = timestamp[len(retr_prefix) :].strip("/")
 
-    target = build_champion_json(folder, timestamp)
+    target = build_champion_json(folder, timestamp, retr_prefix)
     target_prefix = target["champion_artifact_path"]
 
     # Refuse to point the live app at a folder that has no checkpoints.

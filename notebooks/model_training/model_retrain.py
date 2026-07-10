@@ -98,11 +98,17 @@ def _():
 
 
 @app.cell
-def _(log, parameters):
+def _(log, os, parameters):
+    # Forecast target (parameters.TARGETS): 'da' (day-ahead) is the default
+    # primary model; set TARGET=rt to retrain the real-time model. Each target
+    # trains from its own source table into its own models/<target>/ namespace.
+    TARGET = os.environ.get("TARGET", parameters.DEFAULT_TARGET)
+    MODEL_NAME = parameters.TARGETS[TARGET]["model_name"]
+    log.info(f"TARGET: {TARGET}")
+    log.info(f"MODEL_NAME: {MODEL_NAME}")
     log.info(f"FORECAST_HORIZON: {parameters.FORECAST_HORIZON}")
     log.info(f"INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}")
-    log.info(f"MODEL_NAME: {parameters.MODEL_NAME}")
-    return
+    return MODEL_NAME, TARGET
 
 
 @app.cell
@@ -130,8 +136,8 @@ def _(mo):
 
 
 @app.cell
-def _(de):
-    con = de.create_database()
+def _(TARGET, de):
+    con = de.create_database(target=TARGET)
     return (con,)
 
 
@@ -246,14 +252,14 @@ def _(mo):
 
 
 @app.cell
-def _(AWS_S3_FOLDER, log, pd, utils):
+def _(AWS_S3_FOLDER, TARGET, log, pd, utils):
     utc_timestamp = pd.Timestamp.now("UTC")
     log.info(f"{utc_timestamp = }")
 
     folder_time = utc_timestamp.strftime("%Y-%m-%d_%H-%M-%S") + "/"
     log.info(f"{folder_time = }")
 
-    artifact_folder = utils.RETRAINS_PREFIX + folder_time
+    artifact_folder = utils.retrains_prefix(TARGET) + folder_time
     log.info(f"{artifact_folder = }")
 
     artifact_path = AWS_S3_FOLDER + artifact_folder
@@ -320,6 +326,7 @@ def _(
 @app.cell
 def _(
     AWS_S3_BUCKET,
+    MODEL_NAME,
     artifact_path,
     de,
     io,
@@ -347,7 +354,7 @@ def _(
         past_covariates=de.PAST_COLS,
         nodes=_node_list.MODEL_APP_NODES,
         quantiles=parameters.QUANTILES,
-        model_name=parameters.MODEL_NAME,
+        model_name=MODEL_NAME,
         model_types=_model_types,
         forecast_horizon=parameters.FORECAST_HORIZON,
         input_chunk_length=parameters.INPUT_CHUNK_LENGTH,
@@ -435,6 +442,7 @@ def _(pred):
 def _(
     AWS_S3_BUCKET,
     AWS_S3_FOLDER,
+    TARGET,
     artifact_folder,
     artifact_path,
     folder_time,
@@ -447,11 +455,11 @@ def _(
     utils,
 ):
     # Promote by updating champion.json to point at the new model's folder.
-    # The app loads models directly from models/retrains/<timestamp>/ via
-    # champion_artifact_folder, so no file copying to models/ is needed.
-    # To revert to a previous model, repoint champion.json at the old folder
-    # with `python scripts/r2_promote_champion.py <timestamp> --promote`
-    # (run it with --list to see the available models/retrains/ folders).
+    # The app loads models directly from models/<target>/retrains/<timestamp>/
+    # via champion_artifact_folder, so no file copying is needed. To revert to a
+    # previous model, repoint champion.json at the old folder with
+    # `python scripts/r2_promote_champion.py <timestamp> --promote`
+    # (run it with --list to see the available retrain folders).
     #
     # Set PROMOTE_CHAMPION=false to train + save the checkpoints to the
     # timestamped folder WITHOUT overwriting champion.json — used to stage a
@@ -464,7 +472,7 @@ def _(
             folder_time, artifact_folder, artifact_path
         )
         _buffer = io.BytesIO(json.dumps(champion_json).encode("utf-8"))
-        champion_key = AWS_S3_FOLDER + utils.CHAMPION_KEY_SUFFIX
+        champion_key = AWS_S3_FOLDER + utils.champion_key_suffix(TARGET)
         s3.put_object(Bucket=AWS_S3_BUCKET, Key=champion_key, Body=_buffer)
         log.info(f"Uploaded champion model json: {champion_key}")
         log.info(f"champion_json: {champion_json}")
