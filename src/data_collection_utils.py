@@ -164,13 +164,19 @@ def format_df_colnames(df: pl.DataFrame) -> None:
 def get_csv_from_url(
         url: str,
         timeout: int=120,
+        connect_timeout: int=10,
 ) -> pl.DataFrame:
     """
     Read a CSV file from an SPP portal URL into a Polars DataFrame.
 
     Args:
         url: URL path to the CSV file.
-        timeout: Request timeout in seconds.
+        timeout: Read timeout in seconds (once connected).
+        connect_timeout: Connection timeout in seconds. Kept short so an
+            unreachable portal fails fast instead of blocking the full read
+            timeout on every file — when the portal is down, a slow-connect
+            per file otherwise multiplies across hundreds of files and blows
+            the collection job's Modal timeout.
 
     Returns:
         pl.DataFrame created from reading in the csv from the url;
@@ -178,7 +184,7 @@ def get_csv_from_url(
         is returned.
     """
     try:
-        response = requests.get(url, timeout=timeout)
+        response = requests.get(url, timeout=(connect_timeout, timeout))
         if response.ok:
             # infer dtypes from the whole file, not the default 100-row
             # sample: price components (MCC, MLC, ...) can be integer-valued
@@ -189,11 +195,14 @@ def get_csv_from_url(
             df = pl.DataFrame()
             log.error(f'ERROR READING URL: {url}')
             log.error(response.reason)
+        # Be polite to the portal between requests we actually reached. Skip
+        # this pause on a connection failure (below) so a portal outage fails
+        # fast rather than adding 2s to every timed-out file.
+        sleep(2)
 
     except Exception as e:
         # By this way we can know about the type of error occurring
         log.error(e)
         df = pl.DataFrame()
 
-    sleep(2)
     return df

@@ -139,6 +139,41 @@ class TestGetCsvFromUrl:
         assert isinstance(df, pl.DataFrame)
         assert df.is_empty()
 
+    def test_uses_split_connect_read_timeout(self, sample_mtlf_csv):
+        """requests.get gets a (connect, read) tuple so a dead portal fails fast.
+
+        A single combined timeout blocks the full read budget on connect; the
+        tuple caps connect at the short value, which is what keeps a portal
+        outage from overrunning the collection job's Modal timeout.
+        """
+        import data_collection_utils as u
+
+        mock_response = MagicMock()
+        mock_response.ok = True
+        mock_response.text = sample_mtlf_csv
+
+        with patch('data_collection_utils.requests.get', return_value=mock_response) as mock_get, \
+                patch('data_collection_utils.sleep'):
+            u.get_csv_from_url('http://test.url', timeout=120, connect_timeout=10)
+
+        _, kwargs = mock_get.call_args
+        assert kwargs['timeout'] == (10, 120)
+
+    def test_no_sleep_on_connection_error(self):
+        """A connection failure skips the politeness sleep (fail fast).
+
+        Sleeping after a timeout would add the pause to every unreachable file,
+        multiplying across hundreds of files during a portal outage.
+        """
+        import data_collection_utils as u
+
+        with patch('data_collection_utils.requests.get', side_effect=Exception('boom')), \
+                patch('data_collection_utils.sleep') as mock_sleep:
+            df = u.get_csv_from_url('http://test.url')
+
+        assert df.is_empty()
+        mock_sleep.assert_not_called()
+
 
 class TestProgressParallel:
     """Tests for ProgressParallel class."""
