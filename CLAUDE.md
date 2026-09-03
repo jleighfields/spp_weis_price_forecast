@@ -8,54 +8,18 @@ Connect. The project is migrating from the retired WEIS market to RTO
 West / Integrated Marketplace feeds; in-progress and completed design
 plans live under `plans/` (finished ones in `plans/completed/`).
 
-## Skills (Slash Commands)
+## Skills and agents
 
-Custom skills automate the review workflows:
+Six review skills live in `.claude/skills/` and two subagents in
+`.claude/agents/`; `.claude/README.md` indexes them, gives each agent's default
+target, records which file owns which kind of rule, and lists where the shared
+facts live. Their names and descriptions are injected at session start, so none
+is listed here.
 
-| Command | What it does |
-|---------|-------------|
-| `/code-quality-review [file-or-dir]` | Review code for correctness bugs plus readability, documentation, and minimal form (simplification per Minimalism rules) — report-only. (Named to avoid colliding with Claude Code's built-in `/code-review`.) |
-| `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep READMEs for stale prose (edits in place) |
-| `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files), secret logging, and unsafe defaults (report-only) |
-| `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
-| `/test-review <file-or-dir>` | Mutation pass: breaks the code a test covers, in a throwaway worktree, to confirm the test can still fail. Report-only: the mutations happen in a throwaway worktree that is torn down before it reports, so the reviewed tree is never written to. |
-| `/tune-parameters [da\|rt]` | Run a hyperparameter sweep for a forecast target end-to-end: Optuna study → bake top-N params into `parameters.py` (via `scripts/tune_parameters.py`) → retrain → score vs the current champion → promote only if better. **Trains models + can promote** (not report-only). |
-
-Skills are defined in `.claude/skills/` and committed to the repo.
-
-## Agents
-
-Custom subagents bundle a workflow into a single delegated pass — to
-combine multiple steps, or to run a heavy read-only pass in an isolated
-context so the main session stays clean:
-
-| Agent | What it does |
-|-------|-------------|
-| `code-reviewer` | Two-tier review pass. `code-reviewer commit` runs the `code-quality-review` and `security-scan` skills (report-only) then `comment-docstring` (edits in place) over what is being committed. With no argument it adds the suite over the whole branch, a `test-review` mutation phase, and a phase writing a failing test for any confirmed defect. |
-| `simplify-auditor` | Runs the `simplify-audit` skill in an isolated context and returns a report-only bloat delete-list; keeps the repo-wide grep/read churn out of the main session |
-
-**Run the `code-reviewer` agent before committing non-trivial changes**, and
-the full pass before opening a pull request — see *Review in two tiers*
-below.
-Invoke agents by name, optionally with a file or directory. With no
-argument, `code-reviewer` defaults to the changed files
-(`git diff --name-only HEAD` plus untracked) and `simplify-auditor`
-defaults to the whole repo:
-
-```
-> use the code-reviewer agent
-> code-reviewer commit    # the per-commit tier, over the changed files
-> code-reviewer src/data_collection.py
-> code-reviewer            # the full branch pass, before a pull request
-> use the simplify-auditor agent
-> simplify-auditor         # whole-repo bloat audit, isolated context
-```
-
-Each agent reads its skill's `SKILL.md` at runtime rather than copying
-the checklist, so it stays in sync as the skills evolve. Agents are
-defined in `.claude/agents/` and committed to the repo. New agent
-files are discovered at CLI start, so restart the session after adding
-one.
+**Run `code-reviewer commit` before committing non-trivial changes**, and the
+full pass — `code-reviewer` with no argument — before opening a pull request.
+With no argument it reviews the branch diff against `origin/main`; `commit`
+reviews the changed files.
 
 ## Review in two tiers
 
@@ -75,9 +39,10 @@ scope" — surface it for an explicit decision.
 
 `main` is protected and takes no direct pushes, so every change arrives
 through a squash-merged pull request. The required `test` check runs the
-default suite — 178 of the 192 tests, of which 177 pass and 1 skips. It omits
-torch and the CUDA stack, so `src/modeling.py` is not exercised there; the
-`torch` and `e2e` markers run after the merge in `heavy.yml`.
+default marker set, `-m "not torch and not e2e"`. That set omits torch and the
+CUDA stack, so `src/modeling.py` is not exercised on the gate; the `torch` and
+`e2e` markers run after the merge in `heavy.yml`. Get the current split with
+`uv run pytest --collect-only -q` rather than trusting a count written here.
 
 ## Prose is professional and factual
 
@@ -191,8 +156,10 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   layout prefixes have single homes too: `IM_PREFIX`/`WEIS_PREFIX` in
   `src/data_collection_utils.py`, `RETRAINS_PREFIX`/`CHAMPION_KEY_SUFFIX` in
   `src/utils.py`.
-- Feed URLs and filename formats → the `get_*_url` builders in
-  `src/data_collection.py`; don't paste literal portal URLs elsewhere.
+- Feed URLs and filename formats → the `get_*_url` builders:
+  `src/data_collection_im.py` for the Integrated Marketplace feeds,
+  `src/data_collection.py` for the retired WEIS ones. Don't paste literal
+  portal URLs elsewhere.
 
 **Common anti-patterns to refuse / fix on sight:**
 - A notebook or app module hardcoding a value that `src/parameters.py`
@@ -220,7 +187,7 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   after any change. Do **not** `modal app stop` and deploy a renamed app:
   Modal has no way to delete a stopped app, so that leaves permanent
   dashboard clutter. (Ephemeral `modal run` also leaves stopped-app records.)
-- **The Databricks jobs in `databricks.yaml` are PAUSED** — Modal
+- **The Databricks jobs in `deprecated/databricks.yaml` are PAUSED** — Modal
   replaced them. Don't revive them.
 - **R2 storage:** WEIS-era data lives under the `weis/` prefix;
   Integrated Marketplace data lands under the `im/` prefix. Keep the WEIS

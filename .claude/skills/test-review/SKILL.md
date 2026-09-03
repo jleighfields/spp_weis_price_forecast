@@ -124,7 +124,7 @@ cd "$WT"
 uv run python - "$WT/src/<the module under test>.py" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
-t = p.read_text(encoding="utf-8", newline="")
+t = p.read_text(encoding="utf-8")
 old = "    return compute(value)"
 assert t.count(old) == 1, f"mutation site not unique: {t.count(old)}"
 p.write_text(t.replace(old, "    return None"), encoding="utf-8", newline="")
@@ -135,9 +135,11 @@ PY
 untouched, the test passes, and the run reports a test as checked without
 changing the code it covers.
 
-**`newline=""` on both the read and the write.** Without it Python translates
-line endings, so on Windows a one-line edit rewrites every line — and a hash or
-manifest test then fails for a reason unrelated to the mutation.
+**`newline=""` on the write only.** It stops Python translating `\n` on the
+way out, so a one-line edit stays one line instead of rewriting the file. Do
+not pass it to `read_text` — that parameter arrived in Python 3.13 and this
+project runs older, so the read raises `TypeError`, the mutation never lands,
+and the targeted test passes while reporting itself as checked.
 
 **If the canary does not fail, the run is invalid.** Report that and stop.
 

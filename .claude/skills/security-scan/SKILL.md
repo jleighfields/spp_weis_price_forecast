@@ -17,7 +17,8 @@ the remaining cases with `git` checks and `grep`:
 
 1. **`ruff` `S` rules (flake8-bandit)** — mechanical insecure-pattern
    detection (hardcoded passwords, `eval`/`exec`, `shell=True`, unsafe
-   deserialization). Configured in `pyproject.toml`.
+   deserialization). **Not** selected in `pyproject.toml` — this skill turns
+   them on with `--select S`; the file records only the per-file ignores.
 2. **`detect-secrets`** — entropy + regex secret detection with a committed
    `.secrets.baseline` so known false positives stay suppressed.
 3. **`git ls-files` + `grep`** — tracked-credential-file checks and a regex
@@ -82,17 +83,31 @@ Fallback / supplement (also useful for explaining a finding): scan for
 assignments of a secret-looking name to a literal, and known token shapes.
 Pattern reference (ripgrep regex):
 
-| What | Pattern |
-|---|---|
-| Secret-named literal | `(?i)(pass(word|wd)?\|secret\|token\|api[_-]?key\|client[_-]?secret\|access[_-]?key\|auth[_-]?token\|private[_-]?key)\s*[:=]\s*["'][^"']{6,}["']` |
-| Private key block | `-----BEGIN (RSA \|EC \|OPENSSH \|DSA \|PGP )?PRIVATE KEY-----` |
-| AWS access key id | `AKIA[0-9A-Z]{16}` |
-| GitHub token | `gh[pousr]_[A-Za-z0-9]{36,}` or `github_pat_[A-Za-z0-9_]{60,}` |
-| Slack token | `xox[baprs]-[A-Za-z0-9-]{10,}` |
-| Bearer/JWT | `(?i)bearer\s+[A-Za-z0-9._\-]{20,}` / `eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}` |
-| URL with embedded creds | `[a-z][a-z0-9+.\-]*://[^/\s:@]+:[^/\s:@]+@` |
-| Connection-string password | `(?i)(password\|pwd)=[^;"'\s]{4,}` |
-| Modal token | `a[ks]-[A-Za-z0-9]{20,}` |
+These are in a fenced block rather than a table because a markdown cell needs
+`|` escaped as `\|`, and a pattern pasted with the escapes intact matches a
+literal pipe and reports clean — the silent no-op this scan exists to catch.
+Written for `grep -rniE`, whose `-i` supplies the case-insensitivity a PCRE
+`(?i)` prefix would, and which `grep -E` does not accept.
+
+```
+# Secret-named literal
+(pass(word|wd)?|secret|token|api[_-]?key|client[_-]?secret|access[_-]?key|auth[_-]?token|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'][^"']{6,}["']
+# Private key block
+-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----
+# Token shapes: AWS, GitHub, Slack, JWT, Modal
+AKIA[0-9A-Z]{16}
+gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}
+xox[baprs]-[A-Za-z0-9-]{10,}
+bearer[[:space:]]+[A-Za-z0-9._-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}
+a[ks]-[A-Za-z0-9]{20,}
+# Credentials in a URL or a connection string
+[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]:@]+@
+(password|pwd)=[^;"'[:space:]]{4,}
+```
+
+**Watch one of these match before trusting a clean run.** Point it at a file
+you have planted a fixture secret in; a pattern that finds nothing looks
+exactly like a repo that holds nothing.
 
 For each hit, **redact the value in your report** — show the variable name
 and first few characters only, never the full secret.
@@ -139,6 +154,11 @@ records audited non-secrets — respect both. **Read the actual per-file
 ignores in `pyproject.toml` rather than assuming**; that file is the
 authority and this section can fall behind it.
 
+- **`S101` also fires outside the ignored paths** — in `src/data_collection.py`
+  and `scripts/r2_reorg_copy.py`, as internal invariants rather than input
+  validation. `pyproject.toml` ignores `S101` only under `tests/**` and
+  `notebooks/**`, so these recur on every run. Report a *new* `S101` in
+  `src/`, not these; get the current set with `uv run ruff check --select S101 src scripts`.
 - **`tests/**` here ignores `S101` *and* `S105-S107`**, on the stated grounds
   that the test data is code-generated fixtures rather than real credentials.
   That is a real gap, not a reassurance: **ruff will not report a hardcoded
@@ -146,12 +166,13 @@ authority and this section can fall behind it.
   about test files. `detect-secrets` and the grep patterns are what cover
   `tests/`, and a credential found there is still a **Must Fix** with
   rotation. Do not cite a clean ruff run as evidence for `tests/`.
-- **`S108` (hardcoded `/tmp`) fires 19 times under `tests/` and is known
-  noise.** Twelve in `test_utils_s3.py` and seven in `test_modeling_load.py`,
-  every one a `/tmp/...` string inside a mock assertion rather than a path
-  the code writes to. `pyproject.toml` does not ignore `S108`, so these
-  recur on every run; report a *new* `S108` outside those two files, not
-  these.
+- **`S108` (hardcoded `/tmp`) is known noise under `tests/`.** Every current
+  hit is a `/tmp/...` string inside a mock assertion rather than a path the
+  code writes to, and `pyproject.toml` does not ignore `S108`, so they recur
+  on every run. There are more in `scripts/node_geometry_prototype/`, which is
+  prototype code and out of scope. Report a hit only where the path is one the
+  code actually writes to; get the current set with
+  `uv run ruff check --select S108 tests scripts`.
 
 ## The `.env.example` caveat
 

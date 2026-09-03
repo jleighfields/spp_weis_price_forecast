@@ -3,7 +3,7 @@ name: tune-parameters
 description: Run a hyperparameter sweep for a forecast target (da/rt) and, if it wins, promote a re-tuned champion. Orchestrates the Optuna study, bakes the top-N params into parameters.py, retrains, scores vs the current champion on the same harness, and promotes only if better.
 disable-model-invocation: false
 allowed-tools: Read, Edit, Bash
-argument-hint: [da|rt] [--trials N]
+argument-hint: [da|rt]
 ---
 
 # Tune a forecast target
@@ -13,8 +13,11 @@ End-to-end hyperparameter tuning for one forecast target (`parameters.TARGETS`:
 edit is done by `scripts/tune_parameters.py`; this skill orchestrates the flow
 around it and makes the promote decision.
 
-**Target** = the argument (`da` if omitted). **Trials** = `--trials N` (default
-100). Everything runs on the local GPU box.
+**Target** = the argument (`da` if omitted). **Trials** are set by
+`NUM_TRIALS` in the first config cell of `notebooks/model_training/model.py`
+— edit it there before launching; there is no command-line override. Launch it
+in the background: a full study is hours, not minutes, so poll the study
+database for the completed-trial count rather than watching the log.
 
 ## Steps
 

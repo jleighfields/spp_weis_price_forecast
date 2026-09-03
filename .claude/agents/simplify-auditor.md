@@ -20,7 +20,7 @@ you pick up any edits:
 
 - `.claude/skills/simplify-audit/SKILL.md`
 
-Read that file first, then follow its **Audit Checklist**, **Output
+Read that file first, then follow its **Audit checklist (minimalism)**, **Output
 Format**, and **Steps** sections exactly.
 
 **What the audit covers belongs to the skill, not here.** `SKILL.md` is where

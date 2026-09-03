@@ -123,10 +123,13 @@ This skill stays report-only: propose the test, do not write it.
 
 ## Read for what the linter cannot see
 
-`ruff` has already run by the time you read anything, with the rule selection
-in `pyproject.toml`, and the build fails on what it finds. Several checklist
-items below are in that set — they are written down because they are project
-rules, not because a reading pass is how they get caught:
+`ruff` runs in CI over `src`, `tests` and `app.py` only — that is
+`test.yml`'s Lint step — with the default `E4`/`E7`/`E9`/`F` selection, and
+the build fails on what it finds **there**. For a diff under `notebooks/`,
+`modal_jobs/` or `scripts/`, run `uv run ruff check <paths>` yourself; nothing
+else does, and there are live uncaught findings in those trees today. Several
+checklist items below are in ruff's set — written down because they are
+project rules, not because a reading pass is how they get caught:
 
 | Already mechanical | Rule |
 |---|---|
@@ -193,9 +196,10 @@ and the **wrong result** (a crash, a silent wrong value, a corrupted
 output). Per **Verify by running**, trigger it rather than arguing it, and
 say which findings you confirmed that way and which you did not. If you
 cannot construct a failing case, mark it a lower-confidence **Consider**,
-not a Must Fix. Ruff `F`/`B` findings (`F821` undefined name,
-`B006` mutable default, `B008`, …) are mechanical bugs — fold them in here as
-Must Fix.
+not a Must Fix. Ruff `F` findings (`F821` undefined name, `F841` unused
+local) are mechanical bugs — fold them in here as Must Fix. Bugbear (`B`)
+rules are **not** selected in this repo, so a mutable default or a call in a
+default argument reaches you only if you read for it.
 
 ### Readability
 
@@ -258,10 +262,8 @@ a **Should Fix** at 2 copies and a **Must Fix** at 3+.
   >50% of their logic with only minor parameter differences (e.g.
   different format strings, different column names). Extract the
   shared body into a parameterized helper and make the public
-  functions thin wrappers. Example: the `get_process_mtlf` /
-  `get_process_mtrf` family in `src/data_collection.py` — same body, a
-  different feed slug and column names each time. They should share a
-  parameterized helper rather than duplicating the fetch-parse-upsert body.
+  functions thin wrappers. This repo's canonical example is in the
+  *Project-specific additions* section below — do not restate it here.
 - **Repeated multi-line patterns in notebooks** — if the same 3+
   line sequence appears in multiple cells (build a figure → add a
   series → reorder → restyle), extract it into a notebook-local helper
@@ -364,7 +366,7 @@ When flagging a source-of-truth violation, include:
 Apply the **Minimalism (write less)** hierarchy from `CLAUDE.md` to the
 changed code: walk it top to bottom and flag where the diff skipped an
 earlier Minimalism step. This lens is about the *form* of the new code (is it
-minimal?), as distinct from **Code Duplication & Helper Functions** above
+minimal?), as distinct from **Code duplication & helper functions** above
 (is it repeated?) and the `simplify-audit` skill (is there dead/excess
 code across the *whole repo*?). Report only — do not edit.
 
@@ -379,7 +381,7 @@ code across the *whole repo*?). Report only — do not edit.
   group-and-sum call does in one line).
 - **Single-use abstraction** — a wrapper, helper, or class the diff
   introduces for exactly one call site. Recommend inlining. This is the
-  inverse of the **Code Duplication & Helper Functions** section above:
+  inverse of the **Code duplication & helper functions** section above:
   extract at 2–3 copies, inline at one.
 - **Premature generalization** — parameters, `**kwargs`, or branches that
   handle cases which do not occur in the codebase yet.
@@ -395,8 +397,10 @@ are an ordered hierarchy you walk until one solves the problem.
 
 - **Near-identical functions are this repo's canonical duplication shape.**
   The `get_process_mtlf` / `get_process_mtrf` / `get_process_5min_lmp` family
-  in `src/data_collection.py` is the local example: same body, different feed
-  slug and column names. Extract the shared body into a parameterized helper
+  in `src/data_collection_im.py` is the local example: same body, different
+  feed slug and column names. Note the same names also exist in
+  `src/data_collection.py`, which `src/README.md` records as the retired WEIS
+  ETL — refactor the Integrated Marketplace copies, not those. Extract the shared body into a parameterized helper
   and leave the public functions as thin wrappers.
 - **`src/parameters.py` is the single source of truth for model knobs.** A
   hardcoded scalar in `src/`, `modal_jobs/`, `app.py` or a notebook that
@@ -415,7 +419,8 @@ are an ordered hierarchy you walk until one solves the problem.
   kwarg. Align the default to the constant rather than documenting the
   difference.
 - **Other source-of-truth cases this repo has already had:**
-  `src.data_collection.agg_lmp`, `timestamp_mst`, and the app rebuilding the
+  `src.data_collection.agg_lmp`, the `timestamp_mst` column convention, and
+  the app rebuilding the
   settlement-location universe instead of importing it.
 - **An arbitrary constant needs its provenance**, and the `-7h` timezone
   offset is the local example — a reader cannot tell a considered choice from
@@ -509,8 +514,10 @@ Example layout:
      skips the twenty. Review ALL files returned — do not skip any.
 2. Run static checks on the changed files first — these surface
    issues mechanically before you start reading:
-   - `uv run ruff check <changed-files>` — unused imports, undefined
-     names, style violations, marker for X | None vs Optional[X]
+   - `uv run ruff check <changed-files>` — unused imports, unused locals and
+     undefined names (`F`), plus the syntax-level `E4`/`E7`/`E9`. It does
+     **not** flag `Optional[X]`, line length or import order; those are the
+     manual read.
 
    **This skill does not run the test suite.** Whether the change set passes
    is a fact about the change, not a review finding, and its caller
@@ -522,10 +529,9 @@ Example layout:
    name the suite among what was not run, rather than letting silence imply a
    pass.
 
-   Treat any ruff finding as **at least Should Fix**; F821 (undefined
-   name) and most B-class rules are **Must Fix** since they're real
-   bugs. Cite the rule code (e.g. `F401`, `B008`) in each finding so
-   the user knows what `--fix` would do. Skip the **Dead code** checklist
+   Treat any ruff finding as **at least Should Fix**; `F821` (undefined
+   name) is **Must Fix** since it is a real bug. Cite the rule code (e.g.
+   `F401`, `F841`) in each finding so the user knows what `--fix` would do. Skip the **Dead code** checklist
    item — `F401`/`F811` cover it. **Skip nothing else on ruff's account.**
    `pyproject.toml` sets no `[tool.ruff.lint] select`, so ruff runs its
    defaults — `E4`, `E7`, `E9` and `F` — and nothing else. Line length,
@@ -552,9 +558,9 @@ Example layout:
    does, what a docstring says a function returns, what a doc says a command
    prints — and settle them per **Verify by running** before moving on.
 4. Apply the checklist to every changed file, checking for **correctness bugs
-   first** (the **Correctness & Bugs** section — every confirmed bug is a
+   first** (the **Correctness & bugs** section — every confirmed bug is a
    Must Fix), then paying special attention to the **Single Source of
-   Truth for Parameter Values**, **Code Duplication & Helper Functions**,
+   truth for parameter values**, **Code duplication & helper functions**,
    and **Simplification** sections. For each duplication finding, include
    a concrete helper signature so the fix is actionable; for each
    simplification finding, cite the Minimalism step (1–6) it maps to; for

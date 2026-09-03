@@ -199,7 +199,7 @@ of them does, it is unsettled in the sense above — say which, and name the run
 that would settle it.
 
 **Which suite the full pass runs here.** `uv run pytest -m "not torch and not
-e2e" -q` — the default set, which collects 178 of the 192 tests, of which 177
+e2e" -q` — the default set. It omits torch and the CUDA stack, so
 pass and 1 skips (it needs network access). The default install omits torch
 and the CUDA stack, so `src/modeling.py` is the one module the review cannot
 exercise; a finding in it is unsettled unless you are on a machine with torch.

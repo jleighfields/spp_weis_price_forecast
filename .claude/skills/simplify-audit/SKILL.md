@@ -21,10 +21,10 @@ readability and documentation:
 | Output | readability findings | a delete-list (LOC removable) |
 
 For **duplication** specifically, defer to `code-quality-review`'s
-**Code Duplication & Helper Functions** section — do not restate that
+**Code duplication & helper functions** section — do not restate that
 checklist here. Point the user at it when you spot repeated patterns.
 Likewise, repeated *parameter values* belong to that skill's **Single
-Source of Truth for Parameter Values** section.
+source of truth for parameter values** section.
 
 ## Arguments
 
@@ -81,7 +81,9 @@ Source of Truth for Parameter Values** section.
 - **Repo-wide dead exports** — public symbols (functions, classes,
   constants) with no references anywhere in live code. This is broader
   than `code-quality-review`, which only sees the diff.
-- **Size signals** — files > ~800 lines or functions > ~80 lines,
+- **Size signals** — files over ~800 lines, and functions over the length
+  threshold in `code-quality-review`'s **Readability** checklist — do not
+  carry a second copy of that number here,
   reported as bloat candidates. Cite them; do NOT prescribe the split here
   (defer the "how" to `code-quality-review`'s function-length guidance).
 - **Dead scaffolding** — commented-out code blocks and stale TODO stubs
