@@ -7,7 +7,7 @@ Two suites with different scopes and speeds.
 Pure `pytest` over `src/`. This is the default gate:
 
 ```bash
-uv run pytest tests/unit -q
+uv run pytest -m "not torch and not e2e" -q
 ```
 
 Fixtures under `unit/fixtures/` are **trimmed real portal CSVs** — one
@@ -22,10 +22,11 @@ changes:
 
 ```bash
 uv run playwright install chromium   # one-time
-uv run pytest tests/e2e -q
+uv run pytest -m e2e -q
 ```
 
 `e2e/app_for_test.py` is a lightweight harness that imports the real `app.py`
 UI/server and feeds it fixture data; `conftest.py` provides the Shiny app
-fixture. The forecast tests exercise the live champion + serving code, so they
-depend on the deployed model matching the app's covariate set.
+fixture. `app_for_test.py` replaces `_do_load_data` and `_do_load_models`
+with functions returning synthetic frames built in the file itself, so the
+suite reaches no champion model, no checkpoint and no R2 bucket.

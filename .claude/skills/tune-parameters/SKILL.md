@@ -44,8 +44,8 @@ around it and makes the promote decision.
    uv run python scripts/tune_parameters.py --target <t> --write    # apply
    ```
 
-   Then confirm the repo is still healthy: `uv run ruff check src/parameters.py`
-   and `uv run pytest tests/unit -q`.
+   Then confirm the repo is still healthy: `uv run ruff check
+   src/parameters.py` and `uv run pytest -m "not torch and not e2e" -q`.
 
 3. **Retrain — it self-gates the promotion.** Run the retrain with
    `PROMOTE_CHAMPION=true`:
@@ -64,11 +64,11 @@ around it and makes the promote decision.
    unconditionally). Watch the log for the `Promote gate (<t>): candidate CRPS …
    vs champion … -> PROMOTE / KEEP champion` line.
 
-4. **Report** the top trials and the gate's promote decision. If params changed,
-   remind the user to commit `src/parameters.py` and (at cutover) redeploy so the
-   scheduled retrain uses the tuned params. To override the gate — promote a
-   staged model by hand, or revert — use
-   `python scripts/r2_promote_champion.py <ts> --target <t> --promote`.
+4. **Report** the top trials and the gate's promote decision. If params
+   changed, remind the user to commit `src/parameters.py` and (at cutover)
+   redeploy so the scheduled retrain uses the tuned params. To override the
+   gate — promote a staged model by hand, or revert — use `uv run python
+   scripts/r2_promote_champion.py <ts> --target <t> --promote`.
 
 ## Notes
 

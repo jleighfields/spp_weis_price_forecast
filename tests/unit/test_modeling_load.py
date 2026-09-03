@@ -9,17 +9,24 @@ Tests cover:
 """
 
 import os
-import pickle
 import sys
 
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock, mock_open, create_autospec
+from unittest.mock import patch, MagicMock, mock_open
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-import modeling
+# `modeling` imports torch, which the default install omits — see the `torch`
+# marker in pyproject.toml. A marker alone cannot save this file: it is read
+# only after the module is imported, so the import has to be guarded here,
+# above it.
+pytest.importorskip("torch", reason="modeling imports torch, which the default install omits")
+
+import modeling  # noqa: E402  (must follow the sys.path insert and the guard)
+
+pytestmark = pytest.mark.torch
 
 
 def _make_model_mock(name):

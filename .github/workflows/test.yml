@@ -1,0 +1,71 @@
+name: test
+
+# The required check on pull requests into main.
+#
+# It installs and runs everything except torch. torch is pinned to the PyTorch
+# CUDA index (see [tool.uv.sources] in pyproject.toml, which explains why: the
+# GB10 / Blackwell box needs cu128 wheels). torch plus its GPU closure
+# measures about 3.5 GB on linux, and a runner would download every byte to
+# run tests that mock S3 and never touch a GPU.
+#
+# darts installs and imports without torch, so skipping it costs almost no
+# coverage: 178 of the 192 tests run here, of which 177 pass and 1 skips
+# (it needs network access). The remainder are the seven
+# src/modeling.py tests (marker `torch`) and the seven browser tests (marker
+# `e2e`, whose fixture imports app.py and so needs torch as well), which run
+# in heavy.yml after the merge.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# No paths: filter. A required status check that does not run leaves a pull
+# request permanently "expected" — unable to merge and unable to fail.
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails when uv.lock does not match pyproject.toml rather than
+      # resolving something else. The --no-install-package list is torch plus
+      # its GPU dependency closure — the CUDA packages come from PyPI, only
+      # torch itself from the cu128 index. Regenerate it from uv.lock if the
+      # torch pin ever changes.
+      - name: Install dependencies (without the CUDA stack)
+        run: |
+          uv sync --locked $(printf -- '--no-install-package %s ' \
+            torch triton \
+            cuda-bindings cuda-pathfinder cuda-toolkit \
+            nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 nvidia-cuda-nvrtc-cu12 \
+            nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 \
+            nvidia-cufile-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 \
+            nvidia-cusparse-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12 \
+            nvidia-nvjitlink-cu12 nvidia-nvshmem-cu12 nvidia-nvtx-cu12)
+
+      # Scoped to the code that is maintained. scripts/node_geometry_prototype
+      # and deprecated/ carry findings nobody is acting on; linting them here
+      # would block merges on files the change did not touch.
+      - name: Lint
+        run: uv run ruff check src tests app.py
+
+      # addopts in pyproject.toml already deselects `torch` and `e2e`; naming
+      # them here too means this job keeps doing the right thing if that
+      # default is ever relaxed.
+      - name: Tests
+        run: uv run pytest -m "not torch and not e2e" -q
