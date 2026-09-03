@@ -1,5 +1,5 @@
 """
-Playwright E2E tests for the SPP Weis Nodal Price Forecast Shiny app.
+Playwright E2E tests for the SPP IM West Nodal Price Forecast Shiny app.
 
 These tests use a lightweight test app (app_for_test.py) that patches
 heavy startup loaders so no R2/S3 credentials are needed.
@@ -7,7 +7,12 @@ heavy startup loaders so no R2/S3 credentials are needed.
 
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
+
+# Needs a real browser (`playwright install chromium`), so it is out of the
+# default run and out of the required CI check.
+pytestmark = pytest.mark.e2e
 
 
 def test_app_title(page: Page, app):

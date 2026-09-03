@@ -8,50 +8,99 @@ Connect. The project is migrating from the retired WEIS market to RTO
 West / Integrated Marketplace feeds; in-progress and completed design
 plans live under `plans/` (finished ones in `plans/completed/`).
 
-## Skills (Slash Commands)
+## Skills and agents
 
-Custom skills automate the review workflows:
+Six review skills live in `.claude/skills/` and two subagents in
+`.claude/agents/`; `.claude/README.md` indexes them, gives each agent's default
+target, records which file owns which kind of rule, and lists where the shared
+facts live. Their names and descriptions are injected at session start, so none
+is listed here.
 
-| Command | What it does |
-|---------|-------------|
-| `/code-quality [file-or-dir]` | Review code for readability, documentation, onboarding, and minimal form (simplification per Minimalism rules) — report-only. (Named to avoid colliding with Claude Code's built-in `/code-review`.) |
-| `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep READMEs for stale prose (edits in place) |
-| `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files), secret logging, and unsafe defaults (report-only) |
-| `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
-| `/tune-parameters [da\|rt]` | Run a hyperparameter sweep for a forecast target end-to-end: Optuna study → bake top-N params into `parameters.py` (via `scripts/tune_parameters.py`) → retrain → score vs the current champion → promote only if better. **Trains models + can promote** (not report-only). |
+**Run `code-reviewer commit` before committing non-trivial changes**, and the
+full pass — `code-reviewer` with no argument — before opening a pull request.
+With no argument it reviews the branch diff against `origin/main`; `commit`
+reviews the changed files.
 
-Skills are defined in `.claude/skills/` and committed to the repo.
+## Review in two tiers
 
-## Agents
+Both tiers are run by the `code-reviewer` agent, and the difference is what
+each is defined over:
 
-Custom subagents bundle a workflow into a single delegated pass — to
-combine multiple steps, or to run a heavy read-only pass in an isolated
-context so the main session stays clean:
+- **`commit`, per commit, over what is being committed.** The three
+  report-and-fix skills, and nothing else. It does **not** run the suite —
+  you run the tests the commit can reach.
+- **The full pass, per branch, before its pull request opens.** Adds the
+  suite over the whole change, the `test-review` mutation phase, and a
+  failing test pinning any confirmed defect.
 
-| Agent | What it does |
-|-------|-------------|
-| `code-reviewer` | Pre-commit pass: runs the `code-quality` and `security-scan` skills (report-only) then the `comment-docstring` skill (edits in place) over the changed files or a given path |
-| `simplify-auditor` | Runs the `simplify-audit` skill in an isolated context and returns a report-only bloat delete-list; keeps the repo-wide grep/read churn out of the main session |
+**Resolve or waive every Must Fix and Should Fix before opening the pull
+request.** Never let a finding lapse by calling it "pre-existing" or "out of
+scope" — surface it for an explicit decision.
 
-**Run the `code-reviewer` agent before committing non-trivial changes.**
-Invoke agents by name, optionally with a file or directory. With no
-argument, `code-reviewer` defaults to the changed files
-(`git diff --name-only HEAD` plus untracked) and `simplify-auditor`
-defaults to the whole repo:
+`main` is protected and takes no direct pushes, so every change arrives
+through a squash-merged pull request. The required `test` check runs the
+default marker set, `-m "not torch and not e2e"`. That set omits torch and the
+CUDA stack, so `src/modeling.py` is not exercised on the gate; the `torch` and
+`e2e` markers run after the merge in `heavy.yml`. Get the current split with
+`uv run pytest --collect-only -q` rather than trusting a count written here.
 
-```
-> use the code-reviewer agent
-> code-reviewer src/data_collection.py
-> code-reviewer            # defaults to all changed files
-> use the simplify-auditor agent
-> simplify-auditor         # whole-repo bloat audit, isolated context
-```
+## Prose is professional and factual
 
-Each agent reads its skill's `SKILL.md` at runtime rather than copying
-the checklist, so it stays in sync as the skills evolve. Agents are
-defined in `.claude/agents/` and committed to the repo. New agent
-files are discovered at CLI start, so restart the session after adding
-one.
+**Everything written here — comments, docstrings, READMEs, plans, commit
+messages, pull-request bodies, skills and agents — states what is true and
+how the reader can check it.** A sentence that rates something without
+evidence describes the author's opinion, not the code's behavior. When the
+code changes, unsupported ratings do not update with it.
+
+Common categories to avoid: unmeasured rankings, personified programs where
+the verb stands in for a mechanism, unmeasured cost or effort claims,
+aesthetic verdicts like "elegant" or "hacky", aphorisms, and filler run-ups.
+See `comment-docstring` for rewrites, greps, and the categories that need
+manual review.
+
+**A model-performance claim is a measurement or it is nothing.** Name the
+metric, the evaluation window, and the nodes it was scored over. "The new
+model is better" is the exact sentence this section exists to prevent —
+`compare_candidate_to_champion` produces the numbers, so quote them.
+
+**Argument is not editorializing.** State each claim with its reason, in the
+same sentence or the next one — for example, "two copies of the same value
+drift apart over time." Give the reader something to check; keep the
+reasoning and drop unsupported ratings.
+
+Judge sentences in context — some individual words that look like offenders
+are fine. See `comment-docstring` for details.
+
+## Comments & docstrings are self-contained
+
+**Every comment, docstring, marimo cell, and doc must stand on its own for a
+reader who has the repo and nothing else**, and must describe the code as it
+is now. References that only make sense outside the repo, or only to people
+involved in the original conversation, break for future readers.
+
+Common categories to avoid: references to commits, tickets, "as discussed",
+earlier versions of the code, shortened domain terms that collapse to common
+English words, and bare dates. See `comment-docstring` for examples and
+greps.
+
+Describe the thing directly — what it does, what the constraint is, why this
+way rather than the obvious alternative. Test: **delete every ticket and
+commit message; would this sentence still teach a new reader anything?**
+
+Point to durable references freely: a README section, another module, an
+external spec. **Not a plan under `plans/`** — this repo's convention is that
+code, comments, docstrings and READMEs do not reference plan files, and that
+rule wins here. Ask whether the reference will still exist a year from now: a
+README section will, a ticket number may not.
+
+- **Pull-request and issue bodies, at a stricter bar.** Their reader has the
+  diff and little else, so even a pointer into this repo fails when the diff
+  omits the file it points at. Name the thing, not its number.
+  `.github/PULL_REQUEST_TEMPLATE.md` carries this reminder at the point of
+  writing.
+- **Directory READMEs point, never restate.** Each says what belongs in its
+  directory and links to whatever owns the detail. Duplicated descriptions go
+  stale when the code moves.
 
 ## Minimalism (write less)
 
@@ -107,8 +156,10 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   layout prefixes have single homes too: `IM_PREFIX`/`WEIS_PREFIX` in
   `src/data_collection_utils.py`, `RETRAINS_PREFIX`/`CHAMPION_KEY_SUFFIX` in
   `src/utils.py`.
-- Feed URLs and filename formats → the `get_*_url` builders in
-  `src/data_collection.py`; don't paste literal portal URLs elsewhere.
+- Feed URLs and filename formats → the `get_*_url` builders:
+  `src/data_collection_im.py` for the Integrated Marketplace feeds,
+  `src/data_collection.py` for the retired WEIS ones. Don't paste literal
+  portal URLs elsewhere.
 
 **Common anti-patterns to refuse / fix on sight:**
 - A notebook or app module hardcoding a value that `src/parameters.py`
@@ -136,15 +187,14 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   after any change. Do **not** `modal app stop` and deploy a renamed app:
   Modal has no way to delete a stopped app, so that leaves permanent
   dashboard clutter. (Ephemeral `modal run` also leaves stopped-app records.)
-- **The Databricks jobs in `databricks.yaml` are PAUSED** — Modal
+- **The Databricks jobs in `deprecated/databricks.yaml` are PAUSED** — Modal
   replaced them. Don't revive them.
 - **R2 storage:** WEIS-era data lives under the `weis/` prefix;
-  Integrated Marketplace data lands under the `im/` prefix (see the
-  migration plan). Keep the WEIS history — it's needed for stitched
-  training series.
+  Integrated Marketplace data lands under the `im/` prefix. Keep the WEIS
+  history — the stitched training series needs it.
 - **Tests:** `tests/unit` (fast, pure pytest — the default gate:
-  `uv run pytest tests/unit -q`) and `tests/e2e` (Playwright driving
-  the Shiny app: `uv run pytest tests/e2e -q`; needs
+  `uv run pytest -m "not torch and not e2e" -q`) and `tests/e2e` (Playwright driving
+  the Shiny app: `uv run pytest -m e2e -q`; needs
   `uv run playwright install chromium`). Run e2e whenever `app.py` or
   `src/plotting.py` changes.
 - **Tooling:** `uv` for envs/commands, `ruff` for lint/format
@@ -155,7 +205,7 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   runtime deps change.
 - **Style:** Google-style docstrings (summary, Args, Returns),
   `X | None` over `Optional[X]`, direct imports for type hints, no `_`
-  prefix on function names except internal helpers.
+  prefix on function names — internal helpers get real names too.
 - **Don't reference `plans/` files from code, comments, docstrings, or
   READMEs.** Plans get moved (e.g. to `plans/completed/`), renamed, or
   deleted, which turns any such reference into a broken pointer. Make the

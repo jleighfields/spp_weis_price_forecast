@@ -3,7 +3,7 @@ name: tune-parameters
 description: Run a hyperparameter sweep for a forecast target (da/rt) and, if it wins, promote a re-tuned champion. Orchestrates the Optuna study, bakes the top-N params into parameters.py, retrains, scores vs the current champion on the same harness, and promotes only if better.
 disable-model-invocation: false
 allowed-tools: Read, Edit, Bash
-argument-hint: [da|rt] [--trials N]
+argument-hint: [da|rt]
 ---
 
 # Tune a forecast target
@@ -13,8 +13,11 @@ End-to-end hyperparameter tuning for one forecast target (`parameters.TARGETS`:
 edit is done by `scripts/tune_parameters.py`; this skill orchestrates the flow
 around it and makes the promote decision.
 
-**Target** = the argument (`da` if omitted). **Trials** = `--trials N` (default
-100). Everything runs on the local GPU box.
+**Target** = the argument (`da` if omitted). **Trials** are set by
+`NUM_TRIALS` in the first config cell of `notebooks/model_training/model.py`
+— edit it there before launching; there is no command-line override. Launch it
+in the background: a full study is hours, not minutes, so poll the study
+database for the completed-trial count rather than watching the log.
 
 ## Steps
 
@@ -44,8 +47,8 @@ around it and makes the promote decision.
    uv run python scripts/tune_parameters.py --target <t> --write    # apply
    ```
 
-   Then confirm the repo is still healthy: `uv run ruff check src/parameters.py`
-   and `uv run pytest tests/unit -q`.
+   Then confirm the repo is still healthy: `uv run ruff check
+   src/parameters.py` and `uv run pytest -m "not torch and not e2e" -q`.
 
 3. **Retrain — it self-gates the promotion.** Run the retrain with
    `PROMOTE_CHAMPION=true`:
@@ -64,11 +67,11 @@ around it and makes the promote decision.
    unconditionally). Watch the log for the `Promote gate (<t>): candidate CRPS …
    vs champion … -> PROMOTE / KEEP champion` line.
 
-4. **Report** the top trials and the gate's promote decision. If params changed,
-   remind the user to commit `src/parameters.py` and (at cutover) redeploy so the
-   scheduled retrain uses the tuned params. To override the gate — promote a
-   staged model by hand, or revert — use
-   `python scripts/r2_promote_champion.py <ts> --target <t> --promote`.
+4. **Report** the top trials and the gate's promote decision. If params
+   changed, remind the user to commit `src/parameters.py` and (at cutover)
+   redeploy so the scheduled retrain uses the tuned params. To override the
+   gate — promote a staged model by hand, or revert — use `uv run python
+   scripts/r2_promote_champion.py <ts> --target <t> --promote`.
 
 ## Notes
 

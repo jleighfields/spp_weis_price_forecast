@@ -39,6 +39,21 @@ explicit = true
 torch = { index = "pytorch-cu128" }
 
 [project.optional-dependencies]
+# NOTE: this extra is dead — `uv sync` installs the `dev` dependency-group
+# below, not this, and the two have already drifted (pytest 8 vs 9). Removing
+# it is correct; it is left here only to keep this change set free of
+# lockfile churn. Removing it invalidates uv.lock, and re-locking with a
+# current uv also drops 19 dependency-edge markers across seven packages:
+# cuda-toolkit (11), cuda-bindings, nvidia-cudnn-cu12, nvidia-cufft-cu12,
+# nvidia-cusolver-cu12 (3), nvidia-cusparse-cu12, and pexpect's ptyprocess
+# edge. No version moves. Those are all second-level edges: torch's own keep
+# `sys_platform == 'linux'` either way, and a macOS `uv sync` fails on torch
+# itself (2.11.0+cu128 ships manylinux and win_amd64 wheels only) before
+# reaching any of them. The ptyprocess edge is neither CUDA nor reached
+# through torch, but it drops `sys_platform != 'win32'`, which changes only a
+# Windows install — not a platform this targets. So the rewrite is cosmetic,
+# not a behaviour change. Delete this extra in its own change, with the lock
+# regenerated deliberately.
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
@@ -55,12 +70,54 @@ dev = [
     "detect-secrets>=1.5.0",
 ]
 
+[tool.pytest.ini_options]
+# tests/e2e/app_for_test.py is the Shiny app the browser fixture launches,
+# not a test module — but it matches pytest's default `*_test.py` glob and
+# was being imported at collection time. Every real test here is `test_*.py`.
+python_files = ["test_*.py"]
+
+# The markers keep the default run — and the required CI check — off two
+# things that cost far more than the tests they cover.
+#
+# `torch`: torch is pinned to the PyTorch CUDA index (see [tool.uv.sources]
+# above, which explains why the GB10 box needs cu128 wheels). Those wheels
+# measure 3.5 GB on linux — torch 782 MB, nvidia-cudnn 627 MB, nvidia-cublas
+# and fifteen more. torch is imported directly by src/modeling.py,
+# src/darts_wrapper.py and app.py — but darts itself installs and imports
+# without it, so most of the suite runs on a torch-free install. Measured
+# rather than assumed: 177 of the 192 tests pass with torch absent. The 7 the
+# `torch` marker covers are src/modeling.py's; the 7 `e2e` tests need torch
+# too, because tests/e2e/app_for_test.py imports app.py.
+#
+# This splits on what a test needs *installed*, not on what it costs to
+# execute. A `torch` test is not slow; it is unrunnable without a
+# multi-gigabyte download, which is a different problem wanting a different
+# cadence.
+markers = [
+    "torch: needs torch installed (3.5 GB of CUDA wheels); deselect with '-m \"not torch\"'",
+    "e2e: browser end-to-end tests (require 'playwright install chromium')",
+]
+# Without this a bare `pytest` collects the Playwright tests and fails for
+# anyone who has not run `playwright install chromium`. An explicit `-m` on
+# the command line overrides it, so `pytest -m torch` still works.
+addopts = "-m 'not torch and not e2e'"
+
 [tool.ruff.lint.per-file-ignores]
 # marimo's reactive graph relies on bare expressions (B018), cross-cell
 # imports and redefinitions (F401/F811/F821), and generated cell code
 # (E501/I001); notebooks also use assert as an interactive sanity check
-# (S101).
+# (S101). Only F401/F811/F821 fire under a plain `ruff check` — no select is
+# configured, so ruff runs its E4/E7/E9/F default and B018, E501 and I001 are
+# inert here. S101 becomes live under the security scan's --extend-select S.
+# The four are listed anyway so the exception survives a widened select.
 "notebooks/**/*.py" = ["B018", "E501", "F401", "F811", "F821", "I001", "S101"]
 # pytest's whole model is assert (S101); test data is code-generated
 # fixtures, not real credentials (S105-S107).
 "tests/**" = ["S101", "S105", "S106", "S107"]
+# Both modules put src/ on sys.path — and configure logging — before importing
+# their intra-src siblings, so those imports cannot sit at the top of the file
+# (E402). The comment above each block in the source says why. One of the
+# lines already carries an inline noqa (src/data_collection.py); this covers
+# the file rather than scattering more of them.
+"src/data_collection.py" = ["E402"]
+"src/modeling.py" = ["E402"]

@@ -102,9 +102,13 @@ Historical and future covariates are declared in the fit function. Input and out
 │   │   ├── test_app.py       # App helper function tests
 │   │   ├── test_data_collection.py
 │   │   ├── test_data_collection_im.py
+│   │   ├── test_data_collection_utils.py
 │   │   ├── test_data_engineering.py
+│   │   ├── test_evaluation.py
 │   │   ├── test_modeling_load.py
+│   │   ├── test_parameters.py
 │   │   └── test_utils_s3.py
+│   ├── README.md             # What each suite covers and how to run it
 │   └── e2e/                  # Playwright browser tests (requires chromium)
 │       ├── conftest.py       # Shiny app fixture
 │       ├── app_for_test.py   # Lightweight app with mock data/models
@@ -252,18 +256,34 @@ Tests are split into two directories:
 The E2E tests use a lightweight test app (`tests/e2e/app_for_test.py`) that monkeypatches the heavy startup loaders (`_do_load_data`, `_do_load_models`) with synthetic fixture data, so no R2/S3 credentials or model checkpoints are needed.
 
 ```bash
-# Install dev dependencies and Playwright browser
+# Install dev dependencies and Playwright browser. This pulls torch and its
+# CUDA closure — about 3.5 GB — and fails on macOS, where torch 2.11.0+cu128
+# has no wheel. Use the torch-free install below instead on either.
 uv sync --group dev
 uv run playwright install chromium
 
-# Run all tests
+# On a machine without a CUDA GPU — and on macOS, where torch 2.11.0+cu128
+# has no wheel at all — install without the CUDA stack. This is what CI does;
+# the list is kept in .github/workflows/test.yml. Everything except the
+# `torch` and `e2e` markers runs on it (the e2e fixture imports app.py, which
+# imports torch).
+uv sync --locked $(printf -- '--no-install-package %s ' \
+  torch triton \
+  cuda-bindings cuda-pathfinder cuda-toolkit \
+  nvidia-cublas-cu12 nvidia-cuda-cupti-cu12 nvidia-cuda-nvrtc-cu12 \
+  nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12 nvidia-cufft-cu12 \
+  nvidia-cufile-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 \
+  nvidia-cusparse-cu12 nvidia-cusparselt-cu12 nvidia-nccl-cu12 \
+  nvidia-nvjitlink-cu12 nvidia-nvshmem-cu12 nvidia-nvtx-cu12)
+
+# The default run: everything except the `torch` and `e2e` markers
 uv run pytest -v
 
-# Run only unit tests
-uv run pytest tests/unit -v
+# The torch-only tests (src/modeling.py) — needs torch installed
+uv run pytest -m torch -v
 
 # Run only E2E tests
-uv run pytest tests/e2e -v
+uv run pytest -m e2e -v
 ```
 
 ## Local development
@@ -271,6 +291,8 @@ uv run pytest tests/e2e -v
 The project uses Python 3.11. Dependencies are managed via `pyproject.toml` and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# Create virtual environment and install dependencies
+# Create virtual environment and install dependencies. On macOS, or any
+# machine without a CUDA GPU, use the torch-free variant under Testing —
+# a bare `uv sync` installs torch, which has no macOS wheel.
 uv sync
 ```

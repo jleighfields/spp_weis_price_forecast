@@ -181,3 +181,8 @@ spp_trials.db
 
 # Claude Code local settings (personal permission grants)
 .claude/settings.local.json
+
+# credential files this project can grow — both hold a working token once
+# written, and `security-scan` lists them as tracked-file findings.
+.modal.toml
+rsconnect-python/
