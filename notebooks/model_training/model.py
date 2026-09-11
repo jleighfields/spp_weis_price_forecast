@@ -138,7 +138,7 @@ def _():
     from src import plotting
     from src import selection
     from src.modeling import (
-        ci_err_metric,
+        coverage_metric,
         build_fit_tsmixerx,
         build_fit_tide,
         build_fit_tft,
@@ -149,7 +149,7 @@ def _():
         build_fit_tft,
         build_fit_tide,
         build_fit_tsmixerx,
-        ci_err_metric,
+        coverage_metric,
         de,
         log_pretty,
         parameters,
@@ -344,16 +344,22 @@ def _(mo):
 
 
 @app.cell
-def _(MODE, ci_err_metric, mae, mcrps, np, parameters, selection):
+def _(MODE, coverage_metric, mae, mcrps, np, parameters, selection):
     def score_trial(model, trial, test_series, past_cov, futr_cov):
         """Backtest one trial and return the active mode's objective values.
 
-        One backtest produces every metric: MAE, CRPS, and coverage error at
-        each band in ``selection.DIAGNOSTIC_BANDS``. The mode picks which of
-        those become Optuna objectives; the rest are stored as ``user_attrs``,
-        so a study run under one mode can be re-ranked under another without
-        re-running it. The extra bands cost arithmetic, not forecasts — Darts
-        scores every metric against the same flattened forecasts.
+        One backtest produces every metric: MAE, CRPS, and realized coverage
+        at each band in ``selection.DIAGNOSTIC_BANDS``, from which each band's
+        coverage error is derived. The mode picks which of those become Optuna
+        objectives; the rest are stored as ``user_attrs``, so a study run under
+        one mode can be re-ranked under another without re-running it. The
+        extra bands cost arithmetic, not forecasts — Darts scores every metric
+        against the same flattened forecasts.
+
+        Both the raw coverage and the error are recorded per band. The error is
+        unsigned, so on its own it cannot say whether a band over- or
+        under-covers; the raw coverage is what makes a miscalibrated sweep
+        diagnosable while it runs.
 
         ``test_series`` is a list of nodes, so ``backtest`` returns one row of
         metrics per node (each reduced over that node's windows); average
@@ -375,7 +381,7 @@ def _(MODE, ci_err_metric, mae, mcrps, np, parameters, selection):
             value becomes ``inf`` so the trial loses rather than poisoning the
             study.
         """
-        band_metrics = [ci_err_metric(b) for b in selection.DIAGNOSTIC_BANDS]
+        band_metrics = [coverage_metric(b) for b in selection.DIAGNOSTIC_BANDS]
         val_backtest = model.backtest(
             series=test_series,
             past_covariates=past_cov,
@@ -390,19 +396,24 @@ def _(MODE, ci_err_metric, mae, mcrps, np, parameters, selection):
         )
         # Metric columns come back in the order they were passed above.
         names = ["mae", "crps"] + [
-            selection.band_label(b) for b in selection.DIAGNOSTIC_BANDS
+            selection.coverage_label(b) for b in selection.DIAGNOSTIC_BANDS
         ]
         scored = {
             name: float(np.mean([row[i] for row in val_backtest]))
             for i, name in enumerate(names)
         }
-        # get_ci_err already returns percentage points, so weight them with
-        # selection.weight_ci_errs — the same step the promote gate uses, so
-        # the study cannot optimize a differently-weighted number than the gate
-        # decides on.
-        scored["ci_err"] = selection.weight_ci_errs(
-            {b: scored[selection.band_label(b)] for b in MODE["intervals"]}, MODE
+        # Derive each band's (unsigned) error from its realized coverage, then
+        # weight the mode's own bands with selection.weight_ci_errs — the same
+        # step the promote gate uses, so the study cannot optimize a
+        # differently-weighted number than the gate decides on.
+        band_errs = {
+            b: selection.coverage_error(scored[selection.coverage_label(b)], b)
+            for b in selection.DIAGNOSTIC_BANDS
+        }
+        scored.update(
+            {selection.band_label(b): err for b, err in band_errs.items()}
         )
+        scored["ci_err"] = selection.weight_ci_errs(band_errs, MODE)
 
         # Whatever the mode does not optimize is recorded as a diagnostic.
         for name, value in scored.items():
@@ -657,22 +668,16 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL_NAME, MODEL_TYPE, REMOVE_PRIOR_MODELS, log, optuna, os, shutil):
+def _(MODEL_TYPE, REMOVE_PRIOR_MODELS, os, shutil):
+    # Scratch dirs for trial checkpoints. Cleared best-effort — they are absent
+    # on a first run. Resetting the Optuna *study* is deliberately NOT done
+    # here: it has to happen immediately before create_study, in that cell.
     TRIAL_MODEL_DIR = f"optuna/{MODEL_TYPE}"
     MODEL_CHECKPOINT_DIR = f"model_checkpoints/{MODEL_TYPE}_model"
 
     if REMOVE_PRIOR_MODELS:
-        # Best-effort reset of a prior study + its scratch dirs; a fresh run has
-        # nothing to delete, so log at debug rather than fail.
-        try:
-            optuna.delete_study(
-                study_name=f"{MODEL_NAME}_{MODEL_TYPE}",
-                storage="sqlite:///spp_trials.db",
-            )
-            shutil.rmtree(TRIAL_MODEL_DIR)
-            shutil.rmtree(MODEL_CHECKPOINT_DIR)
-        except Exception as _e:  # noqa: S110  (best-effort cleanup, logged below)
-            log.debug(f"no prior study/dirs to remove: {_e}")
+        for _dir in (TRIAL_MODEL_DIR, MODEL_CHECKPOINT_DIR):
+            shutil.rmtree(_dir, ignore_errors=True)
 
     os.makedirs(TRIAL_MODEL_DIR, exist_ok=True)
     os.makedirs(MODEL_CHECKPOINT_DIR, exist_ok=True)
@@ -701,7 +706,22 @@ def _(MODEL_NAME, MODEL_TYPE, OBJECTIVE_MODE, selection):
 
 
 @app.cell
-def _(MODE, log, optuna, study_name):
+def _(MODE, REMOVE_PRIOR_MODELS, log, optuna, study_name):
+    # Reset lives here, not in the scratch-dir cell, so it cannot be reordered
+    # to run AFTER create_study and silently delete the study just created —
+    # marimo is a DAG, and these two cells would otherwise have no dependency
+    # between them. Delete by `study_name` (selection.study_name): deleting by
+    # any other name is a silent no-op that leaves the prior trials in place,
+    # so the sweep appends to trials scored by different code or data.
+    if REMOVE_PRIOR_MODELS:
+        try:
+            optuna.delete_study(
+                study_name=study_name, storage="sqlite:///spp_trials.db"
+            )
+            log.info(f"removed prior study {study_name!r}")
+        except KeyError:
+            log.info(f"no prior study {study_name!r} to remove")
+
     study = optuna.create_study(
         directions=["minimize"] * len(MODE["metrics"]),
         storage="sqlite:///spp_trials.db",

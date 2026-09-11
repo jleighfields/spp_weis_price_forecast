@@ -112,7 +112,9 @@ separate study rather than mixing incomparable trials. Modes:
   sweep would burn ~1.5 h and exit cleanly with nothing usable. The mode-suffixed
   study name prevents this, and a guard in the notebook catches a hand-edited
   name; do not work around either.
-- Every trial records MAE, CRPS and coverage error at all four diagnostic bands
-  (50/80/90/95), whichever mode ran. So a finished study can be **re-ranked**
-  under a different weighting offline — no re-running needed to compare
-  objectives.
+- Every trial records MAE, CRPS, and both the realized coverage and the
+  coverage error at each band in `selection.DIAGNOSTIC_BANDS` (80% and 90%),
+  whichever mode ran. So a finished study can be **re-ranked** under a different
+  weighting offline — no re-running needed to compare objectives. The raw
+  coverage is what says whether a band over- or under-covers; the error is
+  unsigned.

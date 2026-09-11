@@ -2,7 +2,7 @@
 
 QUANTILES is the single home for the QuantileRegression quantile set, and
 three consumers select specific levels by exact float lookup — the eval
-harness (0.05/0.5/0.95), get_ci_err (0.1/0.9), and the app/plotting
+harness (0.05/0.5/0.95), the scored bands (0.1/0.9), and the app/plotting
 (0.1/0.5/0.9). These guard against an edit that drops, reorders, or drifts a
 required level.
 """
@@ -25,7 +25,7 @@ class TestQuantiles:
         assert all(0.0 < x < 1.0 for x in parameters.QUANTILES)
 
     def test_contains_levels_downstream_code_selects(self):
-        # exact-float lookups in the harness / get_ci_err / plotting
+        # exact-float lookups in the harness / scored bands / plotting
         for level in (0.05, 0.1, 0.5, 0.9, 0.95):
             assert level in parameters.QUANTILES
 

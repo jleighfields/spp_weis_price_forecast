@@ -113,10 +113,14 @@ class TestWeightedCiErr:
         coverages = {(0.1, 0.9): 0.8, (0.05, 0.95): 0.9}
         assert selection.weighted_ci_err(coverages, mode) == pytest.approx(0.0)
 
-    def test_extra_diagnostic_bands_are_ignored(self):
+    def test_bands_outside_the_mode_are_ignored(self):
+        # A caller may hand over coverage for more bands than the mode ranks
+        # on (a mode scoring a subset, or a caller reusing one dict across
+        # modes); only the mode's own bands may reach the score. The 50% band
+        # here is deliberately one no mode ranks on.
         mode = selection.resolve_mode('mae_ci')
-        coverages = {b: 0.5 for b in selection.DIAGNOSTIC_BANDS}
-        coverages.update({(0.1, 0.9): 0.8, (0.05, 0.95): 0.9})
+        coverages = {(0.1, 0.9): 0.8, (0.05, 0.95): 0.9, (0.25, 0.75): 0.0}
+        assert (0.25, 0.75) not in mode['intervals']
         assert selection.weighted_ci_err(coverages, mode) == pytest.approx(0.0)
 
     def test_mode_without_bands_scores_zero(self):

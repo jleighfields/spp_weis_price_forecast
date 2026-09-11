@@ -28,6 +28,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 
 from darts import TimeSeries
+from darts.metrics import mic
 from darts.utils.likelihood_models import QuantileRegression
 
 from darts.models import (
@@ -485,111 +486,33 @@ def build_fit_tft(
     
 
 
-def get_ci_err(
-    actual_series: List[TimeSeries],
-    pred_series: List[TimeSeries],
-    interval: Tuple[float, float] = (0.1, 0.9),
-    n_jobs: int = 1,
-    verbose: bool = False,
-) -> List[float]:
-    """
-    Calculate prediction-interval coverage error for probabilistic forecasts.
+def coverage_metric(interval: Tuple[float, float]) -> Callable[..., List[float]]:
+    """Build a Darts metric reporting realized coverage of one quantile band.
 
-    Computes how far a band's realized coverage deviates from its nominal
-    level, for each series. The band is an argument so one function serves
-    every band in ``selection.OBJECTIVES`` / ``selection.DIAGNOSTIC_BANDS``;
-    the nominal level is derived as ``q_high - q_low``.
+    Thin naming wrapper around ``darts.metrics.mic`` — the same coverage
+    definition ``evaluation.backtest_report`` uses, so the Optuna study and the
+    promote gate measure calibration identically rather than from two
+    definitions that could drift at the band edges.
 
-    Usable directly as a Darts ``backtest`` metric: Darts calls metrics once
-    with the flattened lists of actuals and forecasts, which is the calling
-    convention below. Bind the band with ``functools.partial`` to score
-    several bands off one backtest.
+    ``backtest(metric=[...])`` identifies metrics by signature and name, so each
+    band needs its own named callable rather than one shared partial. Pass
+    several to score every band off the same forecasts — the extra bands cost
+    arithmetic, not forecasts.
+
+    Coverage is returned raw (a fraction in [0, 1]) rather than as an error, so
+    callers can see the *direction* of miscalibration; turn it into the ranking
+    term with ``selection.coverage_error``, which takes the absolute deviation.
 
     Args:
-        actual_series: List of actual target TimeSeries.
-        pred_series: List of predicted TimeSeries with quantiles, aligned with
-            ``actual_series``.
-        interval: The ``(q_low, q_high)`` band to score.
-        n_jobs: Number of parallel jobs (currently unused).
-        verbose: Enable verbose output (currently unused).
+        interval: The ``(q_low, q_high)`` band to measure.
 
     Returns:
-        List[float]: Coverage error in percentage points for each series, where
-            0 means perfectly calibrated and higher values indicate worse
-            calibration.
-
-    Raises:
-        TypeError: If passed bare ``TimeSeries`` rather than sequences of them.
-            Iterating a TimeSeries yields timesteps, so the per-series loop
-            below would silently return one degenerate 0%-or-100% coverage per
-            hour instead of one calibration number per series — a wrong answer
-            with no error, so refuse it.
+        A callable with ``mic``'s signature, that band already bound, and
+        ``__name__`` set to the band's coverage label (e.g. ``coverage_80``).
     """
-    for name, arg in (('actual_series', actual_series), ('pred_series', pred_series)):
-        if isinstance(arg, TimeSeries):
-            raise TypeError(
-                f'{name} must be a sequence of TimeSeries, not a bare TimeSeries; '
-                'iterating one yields timesteps and would silently produce '
-                'per-hour coverage instead of per-series calibration'
-            )
-
-    q_low, q_high = interval
-
-    ci_cover_err = []
-    for i, pred in enumerate(pred_series):
-        series_qs = pred.quantile([q_low, q_high]).to_dataframe()
-        val_y = actual_series[i].to_dataframe()
-
-        eval_df = series_qs.merge(
-            val_y,
-            how='inner',
-            left_index=True,
-            right_index=True,
-        )
-
-        # Darts 0.41+ names quantile columns `<component>_q<0.000>`, in the
-        # order requested; the merged frame is those two plus the single actual
-        # column, whichever the target component is named. Both assumptions hold
-        # only for a single-component target, so check rather than mis-slice.
-        if len(series_qs.columns) != 2:
-            raise ValueError(
-                f'expected 2 quantile columns for band {interval}, got '
-                f'{list(series_qs.columns)}; get_ci_err assumes a '
-                'single-component target series'
-            )
-        q_low_col, q_high_col = series_qs.columns
-        actual_col = val_y.columns[0]
-        cover = (
-            (eval_df[q_high_col] > eval_df[actual_col]) &
-            (eval_df[q_low_col] < eval_df[actual_col])
-        ).mean()  # should be about the band's nominal level
-
-        # selection.coverage_error is the one home for this formula — the
-        # promote gate scores the same quantity from its own coverage numbers,
-        # and the two must not drift.
-        ci_cover_err += [selection.coverage_error(cover, interval)]
-
-    return ci_cover_err
-
-
-def ci_err_metric(interval: Tuple[float, float]) -> Callable[..., List[float]]:
-    """Build a Darts-compatible metric scoring coverage error on one band.
-
-    ``backtest(metric=[...])`` identifies metrics by their signature and name,
-    so each band needs its own named callable rather than one shared partial.
-    Pass several of these in one ``backtest`` call to score every band off the
-    same forecasts — the extra bands cost arithmetic, not forecasts.
-
-    Args:
-        interval: The ``(q_low, q_high)`` band to score.
-
-    Returns:
-        A callable with ``get_ci_err``'s signature and ``__name__`` set to that
-        band's label (e.g. ``ci_err_80``), with the band already bound.
-    """
-    bound = functools.partial(get_ci_err, interval=interval)
-    functools.update_wrapper(bound, get_ci_err)
-    bound.__name__ = selection.band_label(interval)
+    bound = functools.partial(mic, q_interval=interval)
+    functools.update_wrapper(bound, mic)
+    bound.__name__ = selection.coverage_label(interval)
     return bound
 
 

@@ -211,21 +211,15 @@ class TestLoadEnsembleFromDir:
         mock_tft.load.assert_called_once()
 
 
-class TestGetCiErr:
-    """Coverage-error scoring for probabilistic forecasts.
-
-    Fixtures are deterministic: a flat actual series and a prediction whose
-    samples are a known uniform spread, so the realized coverage of each band
-    is exactly computable rather than sampled.
-    """
+class TestCoverageMetric:
+    """Per-band coverage metric used to score every band off one backtest."""
 
     @staticmethod
-    def _series(n=100, n_samples=1000):
-        """Actuals at 0.0, and predictions uniform on [-1, 1] at every hour.
+    def _series(n=100, n_samples=1001):
+        """Actuals at 0.0, predictions spread uniformly on [-1, 1].
 
-        Coverage of a band is then the width of its quantile range around 0 —
-        e.g. the 80% band spans [-0.8, 0.8] and covers every actual, while a
-        band that excludes 0 covers none.
+        Every band straddles 0, so realized coverage is 1.0 and the deviation
+        from nominal is exactly computable rather than sampled.
         """
         import numpy as np
         from darts import TimeSeries
@@ -240,74 +234,25 @@ class TestGetCiErr:
         )
         return actual, pred
 
-    def test_bands_containing_the_actual_are_fully_covered(self):
-        # Every band here straddles 0, so coverage is 1.0 and the error is the
-        # distance from that band's nominal level.
-        actual, pred = self._series()
-        for interval, nominal in (
-            ((0.25, 0.75), 0.5),
-            ((0.1, 0.9), 0.8),
-            ((0.05, 0.95), 0.9),
-        ):
-            err = modeling.get_ci_err([actual], [pred], interval=interval)[0]
-            assert err == pytest.approx(100 * (1 - nominal), abs=0.5)
-
-    def test_nominal_is_derived_from_the_band(self):
-        # The same forecast scores differently per band purely because the
-        # nominal level differs — the band is not hardcoded to 80%.
-        actual, pred = self._series()
-        wide = modeling.get_ci_err([actual], [pred], interval=(0.05, 0.95))[0]
-        narrow = modeling.get_ci_err([actual], [pred], interval=(0.25, 0.75))[0]
-        assert narrow > wide
-
-    def test_defaults_to_the_80_percent_band(self):
-        actual, pred = self._series()
-        assert modeling.get_ci_err([actual], [pred]) == pytest.approx(
-            modeling.get_ci_err([actual], [pred], interval=(0.1, 0.9))
-        )
-
-    def test_one_error_per_series(self):
-        actual, pred = self._series()
-        assert len(modeling.get_ci_err([actual] * 3, [pred] * 3)) == 3
-
-    def test_bare_timeseries_raises_rather_than_scoring_timesteps(self):
-        # Iterating a TimeSeries yields timesteps, which would silently return
-        # one degenerate coverage per hour instead of one per series.
-        actual, pred = self._series()
-        with pytest.raises(TypeError):
-            modeling.get_ci_err(actual, pred)
-        with pytest.raises(TypeError):
-            modeling.get_ci_err([actual], pred)
-
-    def test_reads_the_target_column_off_the_frame(self):
-        # The actual column is whatever the target component is named, not a
-        # hardcoded 'LMP'.
-
-        actual, pred = self._series()
-        renamed_actual = actual.with_columns_renamed('LMP', 'DA_LMP')
-        renamed_pred = pred.with_columns_renamed('LMP', 'DA_LMP')
-        assert modeling.get_ci_err([renamed_actual], [renamed_pred]) == pytest.approx(
-            modeling.get_ci_err([actual], [pred])
-        )
-
-
-class TestCiErrMetric:
-    """Per-band metric factory used to score every band off one backtest."""
-
-    def test_binds_the_band(self):
+    def test_reports_raw_coverage_not_error(self):
+        # Raw coverage is what makes the direction of miscalibration visible;
+        # the error is derived from it and is unsigned.
         import numpy as np
-        from darts import TimeSeries
 
-        idx = pd.date_range('2026-01-01', periods=50, freq='h')
-        actual = TimeSeries.from_times_and_values(
-            idx, np.zeros((50, 1)), columns=['LMP']
-        )
-        pred = TimeSeries.from_times_and_values(
-            idx, np.tile(np.linspace(-1.0, 1.0, 500), (50, 1, 1)), columns=['LMP']
-        )
-        metric = modeling.ci_err_metric((0.05, 0.95))
-        assert metric([actual], [pred]) == pytest.approx(
-            modeling.get_ci_err([actual], [pred], interval=(0.05, 0.95))
+        actual, pred = self._series()
+        cov = float(np.mean(modeling.coverage_metric((0.1, 0.9))(actual, pred)))
+        assert cov == pytest.approx(1.0, abs=0.01)
+
+    def test_agrees_with_the_harness_coverage(self):
+        # The study and the promote gate must measure calibration the same way;
+        # both go through darts' mic.
+        import numpy as np
+        from darts.metrics import mic
+
+        actual, pred = self._series()
+        band = (0.05, 0.95)
+        assert float(np.mean(modeling.coverage_metric(band)(actual, pred))) == (
+            pytest.approx(float(np.mean(mic(actual, pred, q_interval=band))))
         )
 
     def test_each_band_gets_a_distinct_name(self):
@@ -316,14 +261,17 @@ class TestCiErrMetric:
         import selection
 
         names = [
-            modeling.ci_err_metric(b).__name__ for b in selection.DIAGNOSTIC_BANDS
+            modeling.coverage_metric(b).__name__
+            for b in selection.DIAGNOSTIC_BANDS
         ]
-        assert names == [selection.band_label(b) for b in selection.DIAGNOSTIC_BANDS]
+        assert names == [
+            selection.coverage_label(b) for b in selection.DIAGNOSTIC_BANDS
+        ]
         assert len(set(names)) == len(names)
 
     def test_keeps_the_wrapped_signature(self):
         # backtest passes metric_kwargs only for params in the signature.
         import inspect
 
-        params = inspect.signature(modeling.ci_err_metric((0.1, 0.9))).parameters
+        params = inspect.signature(modeling.coverage_metric((0.1, 0.9))).parameters
         assert 'actual_series' in params and 'pred_series' in params

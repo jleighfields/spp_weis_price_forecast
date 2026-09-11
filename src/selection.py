@@ -36,17 +36,15 @@ predictive distribution.
 
 import os
 
-# Bands whose coverage is recorded on every trial and every backtest, in every
-# mode — not merely the bands the active mode ranks on. Coverage error is a
-# function of the band, so a study that recorded only its own bands could not be
-# re-ranked under a different weighting later; all of these come off the same
-# forecasts at negligible cost, which keeps that comparison available offline.
-# Every edge must be a level in parameters.QUANTILES (enforced by the tests).
+# Bands whose coverage is measured on every trial and every backtest, in every
+# mode — including modes that do not rank on calibration at all, so a model
+# scored under one mode can be re-judged under another (or under different
+# weights on these bands) without re-running anything. Must cover the union of
+# every mode's `intervals`, which the tests enforce, and every edge must be a
+# level in parameters.QUANTILES.
 DIAGNOSTIC_BANDS = (
-    (0.25, 0.75),    # 50%
-    (0.1, 0.9),      # 80%
-    (0.05, 0.95),    # 90%
-    (0.025, 0.975),  # 95%
+    (0.1, 0.9),    # 80%
+    (0.05, 0.95),  # 90%
 )
 
 OBJECTIVES = {

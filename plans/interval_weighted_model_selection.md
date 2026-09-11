@@ -6,25 +6,37 @@
 > Optuna study to single-objective CRPS"), behind a selectable objective-mode
 > flag.
 >
-> Code complete and verified offline: `src/selection.py` + `parameters` re-export,
-> band-parametrized `get_ci_err`, mode-driven study/bake/gate, per-band coverage
-> in `backtest_report`, `evaluation.score_aggregate`, docs. 222 unit tests pass
+> Code complete: `src/selection.py` + `parameters` re-export, per-band
+> `coverage_metric`, mode-driven study/bake/gate, per-band coverage in
+> `backtest_report`, `evaluation.score_aggregate`, docs. 222 unit tests pass
 > (30 new), zero new ruff findings against the HEAD baseline, both notebooks
 > clean under `marimo check`. The metric path was smoke-tested end to end on a
-> synthetic `LinearRegressionModel`: all four bands score through Darts
+> synthetic `LinearRegressionModel`: both bands score through Darts
 > `backtest`, and all three modes produce sensible composites. Both silent-failure
 > guards (T1 direction mismatch, T2 objective-count mismatch) were fired
 > deliberately and exit with a named error.
 >
 > A `code-reviewer` pass then found four single-source-of-truth violations and
-> one display bug, all fixed: `get_ci_err` and `_log_summary` had their own
-> copies of the coverage-error / band-percent arithmetic; the study cell
+> one display bug, all fixed: the band-error helper and `_log_summary` had their
+> own copies of the coverage-error / band-percent arithmetic; the study cell
 > hand-wrote the band weighting (now `selection.weight_ci_errs`, shared with the
 > gate); the Optuna study-name format lived in both the notebook and the bake CLI
 > (now `selection.study_name`); and `plot_param_importances` silently rendered
 > nothing in single-objective mode. `TOP_N` also moved into `selection.py` so the
 > bake CLI reads the same value the retrain slices to — it could not import
 > `parameters`. 233 unit tests pass.
+>
+> **Phase 6 step 2 done (2026-09-11):** the `NUM_TRIALS=2` smoke ran on real DA
+> data. Mode resolved, fresh two-objective study, both trials COMPLETE with
+> finite `(mae, ci_err)` tuples, all bands recorded, bake ranked them. It also
+> caught two things offline testing could not: `REMOVE_PRIOR_MODELS=True` had
+> become a silent no-op (it deleted the un-suffixed study name, so sweeps would
+> have appended to stale trials), and the study reset had no dependency edge to
+> `create_study` — it is now inside that cell so it cannot be reordered after it.
+> The study was also switched from a bespoke coverage helper to Darts' `mic`,
+> the same definition `backtest_report` uses, and now records raw per-band
+> coverage alongside the unsigned error so the direction of miscalibration is
+> visible while a sweep runs.
 >
 > **Remaining (Phase 6 steps 3-6):** the real Optuna sweeps, the bake, the
 > retrain, and the rank-stability comparison. Those need the GPU box and R2
@@ -225,7 +237,7 @@ Band edges must be trained quantile levels. Verified against
 `parameters.QUANTILES` (27 levels): the 50%, 80%, 90%, 95% and 98% bands all
 have both edges in the set, so any of them can be listed without interpolation.
 
-**Coverage is recorded at a fixed diagnostic set — 50/80/90/95 — in every mode**,
+**Coverage is recorded at a fixed diagnostic set — every band any mode ranks on — in every mode**,
 not merely at the bands the active mode ranks on. `ci_err` is a function of the
 band, so a study that records only its own bands cannot be re-ranked under a
 different weighting later, which would silently defeat the Phase 6 comparison.
@@ -255,7 +267,7 @@ assertion from T1 stays as a belt-and-braces guard against a hand-edited name.
 `get_ci_err` currently hardcodes the **80%** band; `backtest_report` defaults to
 `interval=(0.05, 0.95)` (**90%**) for the app bands and `metrics.json`. Under the
 mode table neither is a single global choice: selection scores the mode's own
-bands, and the diagnostic set (50/80/90/95) is recorded alongside regardless.
+bands, and the diagnostic set is recorded alongside regardless.
 `backtest_report` keeps its 90% default for the single headline `coverage` /
 `width` columns the app and `metrics.json` already use, and gains per-band
 coverage for the gate. This stays unambiguous rather than duplicated because
@@ -309,11 +321,11 @@ comment, so no artifact is ambiguous about how it was chosen.
 - Replace `score_trial_crps` with a mode-driven `score_trial` that runs **one**
   backtest with `stride=24`, `last_points_only=False`, `num_samples=200` and
   `metric=[mae, mcrps, *ci_err_per_band]` — one `get_ci_err` partial per band in
-  the fixed 50/80/90/95 diagnostic set, all over the same forecasts — then
+  the fixed diagnostic set, all over the same forecasts — then
   returns the tuple the active mode asks for (its own bands, weighted and
   summed). Keep the `float('inf')` NaN guards. Every metric the mode does *not*
   optimize is stored as a `user_attr`, so **every trial carries MAE, CRPS, and
-  coverage error at all four bands regardless of mode** — that, not the mode
+  coverage error at every diagnostic band regardless of mode** — that, not the mode
   table, is what makes the Phase 6 re-ranking valid.
 - Restore `get_best_trials` ranking on `selection_score(t.values, mode)` (no
   local `ci_scaler` argument — it reads the mode table).
@@ -381,7 +393,7 @@ comment, so no artifact is ambiguous about how it was chosen.
    `LinearRegressionModel` rather than by burning trials: the four band metrics
    score through Darts `backtest` (6 metrics/row), all three modes produce
    finite composites, and `backtest_report` -> `score_aggregate` yields per-band
-   `coverage_50/80/90/95` and a usable gate score. Both guards fired on purpose.
+   `coverage_80`/`coverage_90` and a usable gate score. Both guards fired on purpose.
    Still worth one `NUM_TRIALS=2` run on real data before the full sweep, to
    confirm the metric list survives a real TiDE and the study path end to end.
 3. Full study per target on the GPU box (~100 trials, ~1.5 h each) in the
@@ -389,7 +401,7 @@ comment, so no artifact is ambiguous about how it was chosen.
 4. Bake, retrain, let the gate decide. Record the composite **and** CRPS **and**
    coverage for champion and challenger.
 5. **Rank-stability check** (the cost flagged above): every trial carries MAE,
-   CRPS and coverage error at all four diagnostic bands, so re-rank the *same*
+   CRPS and coverage error at every diagnostic band, so re-rank the *same*
    study under any weighting — no re-running. Compare the top-5 sets under
    `(0.5, 0.5)`, `(0.25, 0.25)`, and the original single-band
    `MAE + 0.5 x ci_err_80`. (Valid only because Phase 2 records the fixed band
