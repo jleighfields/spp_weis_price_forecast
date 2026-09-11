@@ -12,7 +12,10 @@ they don't reimplement this logic.
 | `data_collection.py` | Legacy WEIS ETL (retired feeds, see `deprecated/weis/`); imports the shared helpers from `data_collection_utils.py`. Kept for its WEIS-specific processors and the weather-collection notebook. |
 | `data_collection_im.py` | Integrated Marketplace collectors — RTBM 5-min + daily LMP, MTLF, MTRF, `RF_RESERVE_ZONE`, DA LMP — writing to the `im/` R2 prefix. Handles the `BAA` column, DST duplicate-hour files, and the daily-rollup publication lag. |
 | `data_engineering.py` | `create_database(target=…)` loads the target's price table (real-time `im/lmp.parquet` or day-ahead `im/da_lmp.parquet`, aliased to a common schema) via DuckDB, filters to the West BAA (`BAA=='SWPW'`) and `MODEL_APP_NODES`, engineers features (renewable ratios, load-net-of-renewables, rolling diffs), and builds the Darts `TimeSeries` the models consume. |
-| `modeling.py` | Builds and fits the Darts models (TiDE / TSMixer / TFT) and loads a saved ensemble (`load_ensemble_from_dir`). |
+| `modeling.py` | Builds and fits the Darts models (TiDE / TSMixer / TFT), loads a saved ensemble (`load_ensemble_from_dir`), and scores prediction-interval calibration (`get_ci_err`). |
+| `targets.py` | The forecast-target set (`TARGETS` / `DEFAULT_TARGET`). Dependency-light (no sklearn/darts) so darts-free callers can import it; re-exported by `parameters.py`. |
+| `selection.py` | Single home for **how models rank** — the `OBJECTIVES` mode table, `selection_score`, and the per-band calibration helpers. The Optuna study, the top-N param bake, and the promote gate all score through it, so a model is promoted on the metric it was tuned on. Dependency-light for the same reason as `targets.py`. |
+| `evaluation.py` | Rolling-origin backtest harness (`backtest_report`: CRPS, per-band coverage, MAE/RMSE/bias, tail behavior) and the champion/challenger promote gate (`compare_candidate_to_champion`, `score_aggregate`). |
 | `parameters.py` | Hyperparameters and run config — `MODEL_NAME`, `TRAIN_START`, forecast horizons, the `*_PARAMS` dicts, encoders, and the forecast-target set (`TARGETS` / `DEFAULT_TARGET`; `'da'` is primary, `'rt'` parked). The single source of truth for model config. Imports sklearn/darts, so keep it out of the collection image (that's why node lists live in `node_list.py`). |
 | `darts_wrapper.py` | mlflow PyFunc wrapper for serving a Darts model/ensemble. |
 | `plotting.py` | Forecast visualizations for the Shiny app. |
@@ -22,6 +25,7 @@ they don't reimplement this logic.
 
 - Every parameter value has one home (see the root `CLAUDE.md` §"Single source
   of truth"). Model config → `parameters.py`; node lists / West scoping →
-  `node_list.py`; storage config → environment variables.
+  `node_list.py`; ranking formula → `selection.py`; storage config →
+  environment variables.
 - Google-style docstrings, `X | None` type hints, `#####`-bar section headers.
 - Fast unit tests live in `tests/unit/`; run `uv run pytest tests/unit -q`.

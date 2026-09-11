@@ -19,6 +19,16 @@ if _src_dir not in sys.path:
 # keep working (single source of truth: src/targets.py).
 from targets import DEFAULT_TARGET, TARGETS  # noqa: E402
 
+# Model-selection objectives live in the darts-free leaf module `selection` (so
+# the scripts/tune_parameters.py CLI can import them without darts); re-export
+# here for darts-side callers (single source of truth: src/selection.py).
+from selection import (  # noqa: E402, F401  (re-exported for callers)
+    DEFAULT_OBJECTIVE,
+    DIAGNOSTIC_BANDS,
+    OBJECTIVES,
+    TOP_N,
+)
+
 
 TRAIN_START = "365D"
 
@@ -33,8 +43,6 @@ MODEL_NAME = TARGETS[DEFAULT_TARGET]["model_name"]
 USE_TSMIXER = False
 USE_TIDE = True
 USE_TFT = False
-
-TOP_N = 5
 
 # Single home for the QuantileRegression quantile set the models are trained
 # on (the three build_fit_* functions in src/modeling.py read this). Wider

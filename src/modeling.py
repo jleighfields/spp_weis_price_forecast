@@ -17,13 +17,13 @@ Dependencies:
     - torchmetrics: Model evaluation metrics
 """
 
+import functools
 import os
 import pickle
 import sys
-import numpy as np
 import pandas as pd
 import torch
-from typing import List, Optional, Any, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 
 
@@ -61,7 +61,8 @@ _src_dir = os.path.dirname(os.path.abspath(__file__))
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-import parameters
+import parameters  # noqa: E402  (imported after the sys.path shim above)
+import selection  # noqa: E402
 
 
 import pprint
@@ -487,30 +488,56 @@ def build_fit_tft(
 def get_ci_err(
     actual_series: List[TimeSeries],
     pred_series: List[TimeSeries],
+    interval: Tuple[float, float] = (0.1, 0.9),
     n_jobs: int = 1,
     verbose: bool = False,
 ) -> List[float]:
     """
-    Calculate confidence interval coverage error for predictions.
+    Calculate prediction-interval coverage error for probabilistic forecasts.
 
-    Computes how far the 80% prediction interval coverage deviates from
-    the expected 80% for each series.
+    Computes how far a band's realized coverage deviates from its nominal
+    level, for each series. The band is an argument so one function serves
+    every band in ``selection.OBJECTIVES`` / ``selection.DIAGNOSTIC_BANDS``;
+    the nominal level is derived as ``q_high - q_low``.
+
+    Usable directly as a Darts ``backtest`` metric: Darts calls metrics once
+    with the flattened lists of actuals and forecasts, which is the calling
+    convention below. Bind the band with ``functools.partial`` to score
+    several bands off one backtest.
 
     Args:
         actual_series: List of actual target TimeSeries.
-        pred_series: List of predicted TimeSeries with quantiles.
+        pred_series: List of predicted TimeSeries with quantiles, aligned with
+            ``actual_series``.
+        interval: The ``(q_low, q_high)`` band to score.
         n_jobs: Number of parallel jobs (currently unused).
         verbose: Enable verbose output (currently unused).
 
     Returns:
-        List[float]: Coverage error percentage for each series, where 0%
-            means perfect 80% coverage and higher values indicate worse
+        List[float]: Coverage error in percentage points for each series, where
+            0 means perfectly calibrated and higher values indicate worse
             calibration.
+
+    Raises:
+        TypeError: If passed bare ``TimeSeries`` rather than sequences of them.
+            Iterating a TimeSeries yields timesteps, so the per-series loop
+            below would silently return one degenerate 0%-or-100% coverage per
+            hour instead of one calibration number per series — a wrong answer
+            with no error, so refuse it.
     """
+    for name, arg in (('actual_series', actual_series), ('pred_series', pred_series)):
+        if isinstance(arg, TimeSeries):
+            raise TypeError(
+                f'{name} must be a sequence of TimeSeries, not a bare TimeSeries; '
+                'iterating one yields timesteps and would silently produce '
+                'per-hour coverage instead of per-series calibration'
+            )
+
+    q_low, q_high = interval
+
     ci_cover_err = []
     for i, pred in enumerate(pred_series):
-        
-        series_qs = pred.quantile([0.1, 0.9]).to_dataframe()
+        series_qs = pred.quantile([q_low, q_high]).to_dataframe()
         val_y = actual_series[i].to_dataframe()
 
         eval_df = series_qs.merge(
@@ -520,17 +547,50 @@ def get_ci_err(
             right_index=True,
         )
 
-        # Column names in Darts 0.41+: LMP_q0.100, LMP_q0.900
-        _q_low = [c for c in eval_df.columns if 'q0.1' in c][0]
-        _q_high = [c for c in eval_df.columns if 'q0.9' in c][0]
+        # Darts 0.41+ names quantile columns `<component>_q<0.000>`, in the
+        # order requested; the merged frame is those two plus the single actual
+        # column, whichever the target component is named. Both assumptions hold
+        # only for a single-component target, so check rather than mis-slice.
+        if len(series_qs.columns) != 2:
+            raise ValueError(
+                f'expected 2 quantile columns for band {interval}, got '
+                f'{list(series_qs.columns)}; get_ci_err assumes a '
+                'single-component target series'
+            )
+        q_low_col, q_high_col = series_qs.columns
+        actual_col = val_y.columns[0]
         cover = (
-            (eval_df[_q_high] > eval_df['LMP']) &
-            (eval_df[_q_low] < eval_df['LMP'])
-        ).mean() # should be about 80%
+            (eval_df[q_high_col] > eval_df[actual_col]) &
+            (eval_df[q_low_col] < eval_df[actual_col])
+        ).mean()  # should be about the band's nominal level
 
-        ci_cover_err += [100 * np.abs(cover - 0.8)]
+        # selection.coverage_error is the one home for this formula — the
+        # promote gate scores the same quantity from its own coverage numbers,
+        # and the two must not drift.
+        ci_cover_err += [selection.coverage_error(cover, interval)]
 
     return ci_cover_err
+
+
+def ci_err_metric(interval: Tuple[float, float]) -> Callable[..., List[float]]:
+    """Build a Darts-compatible metric scoring coverage error on one band.
+
+    ``backtest(metric=[...])`` identifies metrics by their signature and name,
+    so each band needs its own named callable rather than one shared partial.
+    Pass several of these in one ``backtest`` call to score every band off the
+    same forecasts — the extra bands cost arithmetic, not forecasts.
+
+    Args:
+        interval: The ``(q_low, q_high)`` band to score.
+
+    Returns:
+        A callable with ``get_ci_err``'s signature and ``__name__`` set to that
+        band's label (e.g. ``ci_err_80``), with the band already bound.
+    """
+    bound = functools.partial(get_ci_err, interval=interval)
+    functools.update_wrapper(bound, get_ci_err)
+    bound.__name__ = selection.band_label(interval)
+    return bound
 
 
 # ── Model checkpoint name → Darts model class mapping ────────────────────

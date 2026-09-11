@@ -84,6 +84,7 @@ def _():
 def _():
     import data_engineering as de
     import parameters
+    import selection
     import utils
     from modeling import build_fit_tsmixerx, build_fit_tft, build_fit_tide
 
@@ -93,22 +94,31 @@ def _():
         build_fit_tsmixerx,
         de,
         parameters,
+        selection,
         utils,
     )
 
 
 @app.cell
-def _(log, os, parameters):
+def _(log, os, parameters, selection):
     # Forecast target (parameters.TARGETS): 'da' (day-ahead) is the default
     # primary model; set TARGET=rt to retrain the real-time model. Each target
     # trains from its own source table into its own models/<target>/ namespace.
     TARGET = os.environ.get("TARGET", parameters.DEFAULT_TARGET)
     MODEL_NAME = parameters.TARGETS[TARGET]["model_name"]
+
+    # Objective mode (src/selection.py) the promote gate decides on — the same
+    # mode the Optuna study and the param bake used, so a model is promoted on
+    # what it was tuned for. Validated here so a typo fails before training.
+    OBJECTIVE_MODE = selection.mode_name_from_env()
+    selection.resolve_mode(OBJECTIVE_MODE)
+
     log.info(f"TARGET: {TARGET}")
     log.info(f"MODEL_NAME: {MODEL_NAME}")
+    log.info(f"OBJECTIVE_MODE: {OBJECTIVE_MODE}")
     log.info(f"FORECAST_HORIZON: {parameters.FORECAST_HORIZON}")
     log.info(f"INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}")
-    return MODEL_NAME, TARGET
+    return MODEL_NAME, OBJECTIVE_MODE, TARGET
 
 
 @app.cell
@@ -452,6 +462,7 @@ def _(
     futr_cov,
     io,
     json,
+    OBJECTIVE_MODE,
     loaded_model,
     log,
     os,
@@ -475,15 +486,20 @@ def _(
         from src.evaluation import compare_candidate_to_champion
 
         _cand, _champ, _wins = compare_candidate_to_champion(
-            loaded_model, all_series, past_cov, futr_cov, TARGET
+            loaded_model, all_series, past_cov, futr_cov, TARGET,
+            mode_name=OBJECTIVE_MODE,
         )
         if _champ is None:
             log.info(f"No current {TARGET} champion — promoting first champion.")
         else:
             log.info(
-                f"Promote gate ({TARGET}): candidate CRPS {_cand['crps']:.3f} vs "
-                f"champion {_champ['crps']:.3f} -> "
+                f"Promote gate ({TARGET}, {OBJECTIVE_MODE}): candidate score "
+                f"{_cand['score']:.3f} vs champion {_champ['score']:.3f} -> "
                 f"{'PROMOTE' if _wins else 'KEEP champion'}"
+            )
+            log.info(
+                f"  candidate CRPS {_cand['crps']:.3f} MAE {_cand['mae']:.3f} | "
+                f"champion CRPS {_champ['crps']:.3f} MAE {_champ['mae']:.3f}"
             )
         if _wins:
             champion_json = utils.build_champion_config(
@@ -512,6 +528,7 @@ def _(
 @app.cell
 def _(
     AWS_S3_BUCKET,
+    OBJECTIVE_MODE,
     TARGET,
     all_series,
     artifact_path,
@@ -522,6 +539,7 @@ def _(
     log,
     past_cov,
     s3,
+    selection,
     utc_timestamp,
 ):
     # Score the freshly-trained ensemble on the West holdout so every retrain
@@ -532,15 +550,21 @@ def _(
     # on the same test set. Wrapped so a scoring error never aborts a retrain
     # that already staged/promoted.
     try:
-        from src.evaluation import backtest_report
+        from src.evaluation import backtest_report, score_aggregate
 
         _per_node, _agg, _eval_meta = backtest_report(
             loaded_model, all_series, past_cov, futr_cov
         )
+        _mode = selection.resolve_mode(OBJECTIVE_MODE)
+        _agg["score"] = score_aggregate(_agg, _mode)
         _metrics = {
             "target": TARGET,
             "train_timestamp": str(utc_timestamp),
-            "primary_metric": "crps",
+            # The objective mode this model was selected and gated under. A
+            # mode switch changes what `score` means, so record it: otherwise a
+            # switch reads as a sudden metric jump in the retrain history.
+            "objective_mode": OBJECTIVE_MODE,
+            "primary_metric": "score",
             "metrics": {k: float(v) for k, v in _agg.to_dict().items()},
             "eval": _eval_meta,
         }

@@ -1,21 +1,25 @@
 """Rolling-origin backtest harness for the West nodal price model.
 
-Shared evaluation used by every model-improvement experiment (baseline,
-conformal intervals, IM re-tune, architecture bake-off) so candidates are
-scored on the same volatile West holdout windows. Reports, per node and
-aggregated:
+Shared evaluation used by every model-improvement experiment (baseline, IM
+re-tune, architecture bake-off) so candidates are scored on the same volatile
+West holdout windows. Reports, per node and aggregated:
 
-- **CRPS** (probabilistic accuracy — the primary metric),
-- **CI coverage** and **interval width** at a nominal interval (default the
-  90% interval, 0.05–0.95),
+- **CRPS** (probabilistic accuracy),
+- **CI coverage** and **interval width** at a headline nominal interval
+  (default the 90% interval, 0.05–0.95),
+- **per-band coverage** at every band in ``selection.DIAGNOSTIC_BANDS``, which
+  is what the objective modes rank calibration on,
 - **MAE / RMSE / bias** of the median (point accuracy),
 - **tail behavior**: median error and coverage conditioned on large-magnitude
   hours (``|actual| > tail_threshold``) and on negative-price hours.
 
+Which of these decides a promotion is set by the active objective mode
+(``src/selection.py``) — the same mode the Optuna study and the top-N bake use,
+so a model is promoted on the metric it was tuned on.
+
 Any Darts ``GlobalForecastingModel`` that supports ``historical_forecasts``
 and probabilistic prediction works as the ``model`` argument — the served
-``NaiveEnsembleModel``, a ``ConformalQRModel`` wrapper, a re-tuned TiDE, or a
-foundation model.
+``NaiveEnsembleModel``, a re-tuned TiDE, or a foundation model.
 """
 
 import logging
@@ -35,6 +39,7 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 import parameters  # noqa: E402  (imported after the sys.path shim above)
+import selection  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +149,14 @@ def backtest_report(
             'bias': _reduce(merr(actuals, forecasts, q=0.5)),
             'n_windows': len(forecasts),
         }
+        # Coverage at every diagnostic band, not just the headline interval:
+        # the objective modes rank calibration on their own bands, and
+        # recording all of them lets a scored model be re-judged under another
+        # mode without re-running the backtest.
+        for band in selection.DIAGNOSTIC_BANDS:
+            row[selection.coverage_label(band)] = _reduce(
+                mic(actuals, forecasts, q_interval=band)
+            )
         # Point-level arrays for tail conditioning (Darts metrics can't
         # condition on the actual value).
         av = np.concatenate([a.values().ravel() for a in actuals])
@@ -173,6 +186,36 @@ def backtest_report(
     return per_node, aggregate, eval_meta
 
 
+def score_aggregate(aggregate: pd.Series, mode: dict) -> float:
+    """Collapse a backtest aggregate into the objective mode's rank score.
+
+    The single place a ``backtest_report`` aggregate becomes a number models
+    are ordered by — used by the promote gate and recorded alongside the
+    metrics, so the gate's decision and the persisted score cannot disagree.
+
+    Args:
+        aggregate: The aggregate Series from ``backtest_report``.
+        mode: An entry from ``selection.OBJECTIVES``.
+
+    Returns:
+        The rank score, lower is better. NaN if any term is NaN (a scoring
+        failure must not look like a good score).
+    """
+    values = []
+    for metric in mode['metrics']:
+        if metric == 'ci_err':
+            coverages = {
+                band: float(aggregate[selection.coverage_label(band)])
+                for band in mode['intervals']
+            }
+            values.append(selection.weighted_ci_err(coverages, mode))
+        else:
+            values.append(float(aggregate[metric]))
+    if any(np.isnan(v) for v in values):
+        return float('nan')
+    return selection.selection_score(tuple(values), mode)
+
+
 def compare_candidate_to_champion(
     candidate_model: ForecastingModel,
     series: list[TimeSeries],
@@ -181,16 +224,21 @@ def compare_candidate_to_champion(
     target: str,
     num_samples: int = 100,
     nodes: list[str] | None = None,
+    mode_name: str | None = None,
 ) -> tuple[pd.Series, pd.Series | None, bool]:
     """Decide whether a freshly-trained candidate should replace the champion.
 
     Backtests the candidate and the target's current champion on the *same*
     recent window over a fixed node subset with reduced samples — a fast
-    promote-gate (a relative CRPS ranking is robust to fewer nodes/samples, so
-    this is much cheaper than the full harness). Both models must be scored
-    together here because the rolling holdout slides as the series grows. The
-    node subset is held constant (``node_list.EVAL_NODES``) so gate scores are
-    comparable across retrains.
+    promote-gate (a relative ranking is robust to fewer nodes/samples, so this
+    is much cheaper than the full harness). Both models must be scored together
+    here because the rolling holdout slides as the series grows. The node subset
+    is held constant (``node_list.EVAL_NODES``) so gate scores are comparable
+    across retrains.
+
+    The winner is decided by the active objective mode's composite score — the
+    same formula the Optuna study optimized and the top-N bake ranked by, so a
+    model is promoted on what it was tuned for.
 
     Args:
         candidate_model: The just-trained ensemble under consideration.
@@ -200,11 +248,14 @@ def compare_candidate_to_champion(
         target: Forecast target (parameters.TARGETS) whose champion to load.
         num_samples: Probabilistic samples per forecast (default 100).
         nodes: Node names to score; defaults to ``node_list.EVAL_NODES``.
+        mode_name: Objective mode to decide on; defaults to the ``OBJECTIVE_MODE``
+            env var, else ``selection.DEFAULT_OBJECTIVE``.
 
     Returns:
-        ``(candidate_aggregate, champion_aggregate, candidate_wins)``. The
-        champion aggregate is ``None`` and ``candidate_wins`` is ``True`` when
-        the target has no champion yet (nothing to beat).
+        ``(candidate_aggregate, champion_aggregate, candidate_wins)``. Both
+        aggregates carry a ``score`` entry — the composite the decision used.
+        The champion aggregate is ``None`` and ``candidate_wins`` is ``True``
+        when the target has no champion yet (nothing to beat).
 
     Raises:
         botocore.exceptions.ClientError: If loading the current champion fails
@@ -220,6 +271,9 @@ def compare_candidate_to_champion(
     import utils
     from botocore.exceptions import ClientError
     from modeling import load_ensemble_from_dir
+
+    mode_name = selection.mode_name_from_env() if mode_name is None else mode_name
+    mode = selection.resolve_mode(mode_name)
 
     gate_nodes = node_list.EVAL_NODES if nodes is None else nodes
     # Select the fixed gate nodes by their static-covariate id (order-independent),
@@ -237,6 +291,7 @@ def compare_candidate_to_champion(
     p = [past_covariates[i] for i in idx]
     f = [future_covariates[i] for i in idx]
     _pn, cand_agg, _m = backtest_report(candidate_model, s, p, f, num_samples=num_samples)
+    cand_agg['score'] = score_aggregate(cand_agg, mode)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
@@ -249,13 +304,18 @@ def compare_candidate_to_champion(
         champ_model, _ts = load_ensemble_from_dir(tmpdir)
 
     _pn, champ_agg, _m = backtest_report(champ_model, s, p, f, num_samples=num_samples)
-    cand_crps, champ_crps = float(cand_agg['crps']), float(champ_agg['crps'])
-    # A NaN CRPS makes the < comparison False (keeps the champion). Surface it so
-    # a retrain that didn't promote for a scoring failure isn't a silent mystery.
-    if np.isnan(cand_crps) or np.isnan(champ_crps):
-        log.warning('gate: NaN CRPS (candidate=%s, champion=%s); keeping champion',
-                    cand_crps, champ_crps)
-    return cand_agg, champ_agg, cand_crps < champ_crps
+    champ_agg['score'] = score_aggregate(champ_agg, mode)
+
+    cand_score, champ_score = float(cand_agg['score']), float(champ_agg['score'])
+    # A NaN score makes the < comparison False (keeps the champion). Surface it
+    # so a retrain that didn't promote for a scoring failure isn't a silent
+    # mystery.
+    if np.isnan(cand_score) or np.isnan(champ_score):
+        log.warning('gate: NaN %s score (candidate=%s, champion=%s); keeping champion',
+                    mode_name, cand_score, champ_score)
+    log.info('gate (%s): candidate %.4f vs champion %.4f', mode_name,
+             cand_score, champ_score)
+    return cand_agg, champ_agg, cand_score < champ_score
 
 
 def _tail_metrics(
@@ -292,7 +352,13 @@ def _aggregate(per_node: pd.DataFrame) -> pd.Series:
     """
     agg = {}
     win = per_node['n_windows'].to_numpy()
-    for m in ['crps', 'coverage', 'width', 'mae', 'rmse', 'bias']:
+    # Per-band coverage columns are pooled the same way as the headline one.
+    # Taken from the frame rather than from selection.DIAGNOSTIC_BANDS so this
+    # stays a pure pooling function over whatever columns it was handed; a band
+    # missing from backtest_report then fails loudly in score_aggregate, where
+    # it means something, rather than silently here.
+    band_cols = [c for c in per_node.columns if c.startswith('coverage_')]
+    for m in ['crps', 'coverage', 'width', 'mae', 'rmse', 'bias', *band_cols]:
         agg[m] = _weighted(per_node[m].to_numpy(), win)
     n_tail = per_node['n_tail'].to_numpy()
     n_neg = per_node['n_neg'].to_numpy()
@@ -334,8 +400,19 @@ def _log_summary(
     tail_threshold: float,
 ) -> None:
     """Log a readable per-node table and the aggregate row."""
-    pct = int(round((interval[1] - interval[0]) * 100))
+    pct = selection.band_pct(interval)
     log.info('backtest per node:\n%s', per_node.round(2).to_string())
+    # The per-band coverages are what the objective modes rank calibration on,
+    # so surface them next to the headline row: a retrain log should show the
+    # numbers the promote gate actually decided with.
+    log.info(
+        'AGGREGATE per-band coverage  %s',
+        '  '.join(
+            f'{selection.band_pct(b)}%={aggregate[selection.coverage_label(b)]:.3f}'
+            for b in selection.DIAGNOSTIC_BANDS
+            if selection.coverage_label(b) in aggregate
+        ),
+    )
     log.info(
         'AGGREGATE  crps=%.2f  cov%d=%.2f  width=%.1f  mae=%.2f  rmse=%.2f  '
         'bias=%.2f  tail_mae(|x|>%.0f)=%.2f  tail_cov=%.2f  neg_mae=%.2f  '

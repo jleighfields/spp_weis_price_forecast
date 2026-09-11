@@ -168,7 +168,9 @@ forecast_horizon, num_samples, interval, tail_threshold`). The retrain notebook'
 scoring cell captures the return and writes **`metrics.json`** into
 `models/<target>/retrains/<ts>/`, alongside `training_config.json` (kept
 separate: config = provenance/inputs, metrics = evaluation results). Structure:
-`{target, train_timestamp, primary_metric: 'crps', metrics: {...}, eval: {...}}`.
+`{target, train_timestamp, objective_mode, primary_metric: 'score', metrics:
+{...}, eval: {...}}` — `score` is the objective mode's composite, and the
+`metrics` block still carries CRPS, MAE and per-band coverage.
 The existing DA champion was backfilled with a re-scored `metrics.json`.
 
 Still optional: add `metrics.json` to the `get_loaded_models` download filter if

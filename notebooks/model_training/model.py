@@ -1,14 +1,17 @@
 # Optuna hyperparameter tuning for SPP West (RTO West / Integrated
 # Marketplace) nodal price forecast models.
 #
-# Supports TiDE, TSMixer, and TFT model types. Runs single-objective
-# optimization on CRPS (a proper score that captures point accuracy and
-# interval calibration/sharpness at once), matching the primary metric of the
-# evaluation harness in src/evaluation.py; MAE is logged per trial as a
-# diagnostic user_attr.
+# Supports TiDE, TSMixer, and TFT model types. The objective is chosen by the
+# OBJECTIVE_MODE env var against the table in src/selection.py (default
+# 'mae_ci': a two-objective study on MAE and weighted prediction-interval
+# coverage error). Whichever metrics the active mode does not optimize are
+# recorded per trial as user_attrs, so every trial carries MAE, CRPS and
+# coverage error at all diagnostic bands and can be re-ranked under another
+# mode without re-running the study.
 #
 # Usage:
 #   Interactive: marimo edit notebooks/model_training/model.py
+#   Another objective: OBJECTIVE_MODE=crps marimo edit notebooks/model_training/model.py
 
 import marimo
 
@@ -50,14 +53,12 @@ def _():
     CLIP_OUTLIERS = True
 
     REMOVE_PRIOR_MODELS = True
-    TEST_BUILD_BACKTEST = False
     return (
         CLIP_OUTLIERS,
         MODEL_TYPE,
         NUM_TRIALS,
         REMOVE_PRIOR_MODELS,
         RUN_EXP,
-        TEST_BUILD_BACKTEST,
     )
 
 
@@ -116,6 +117,7 @@ def _():
         plot_optimization_history,
         plot_contour,
         plot_param_importances,
+        plot_pareto_front,
     )
 
     return (
@@ -123,6 +125,7 @@ def _():
         plot_contour,
         plot_optimization_history,
         plot_param_importances,
+        plot_pareto_front,
     )
 
 
@@ -131,8 +134,9 @@ def _():
     import src.data_engineering as de
     from src import parameters
     from src import plotting
+    from src import selection
     from src.modeling import (
-        get_ci_err,
+        ci_err_metric,
         build_fit_tsmixerx,
         build_fit_tide,
         build_fit_tft,
@@ -143,24 +147,34 @@ def _():
         build_fit_tft,
         build_fit_tide,
         build_fit_tsmixerx,
+        ci_err_metric,
         de,
-        get_ci_err,
         log_pretty,
         parameters,
         plotting,
+        selection,
     )
 
 
 @app.cell
-def _(log, os, parameters):
+def _(log, os, parameters, selection):
     # Forecast target to tune (parameters.TARGETS); DA is the default. Set the
     # TARGET env var to tune a different target (e.g. TARGET=rt).
     TARGET = os.environ.get("TARGET", parameters.DEFAULT_TARGET)
     MODEL_NAME = parameters.TARGETS[TARGET]["model_name"]
+
+    # How trials are ranked (selection.OBJECTIVES). resolve_mode rejects an
+    # unknown name rather than falling back, so a typo'd OBJECTIVE_MODE cannot
+    # quietly tune against an objective nobody chose.
+    OBJECTIVE_MODE = selection.mode_name_from_env()
+    MODE = selection.resolve_mode(OBJECTIVE_MODE)
+
     log.info(f"TARGET: {TARGET}  MODEL_NAME: {MODEL_NAME}")
+    log.info(f"OBJECTIVE_MODE: {OBJECTIVE_MODE}  metrics: {MODE['metrics']}")
+    log.info(f"  bands: {MODE['intervals']}  weights: {MODE['scalers']}")
     log.info(f"FORECAST_HORIZON: {parameters.FORECAST_HORIZON}")
     log.info(f"INPUT_CHUNK_LENGTH: {parameters.INPUT_CHUNK_LENGTH}")
-    return MODEL_NAME, TARGET
+    return MODE, MODEL_NAME, OBJECTIVE_MODE, TARGET
 
 
 @app.cell
@@ -328,77 +342,38 @@ def _(mo):
 
 
 @app.cell
-def _(
-    TEST_BUILD_BACKTEST,
-    build_fit_tide,
-    futr_cov,
-    get_ci_err,
-    log,
-    mae,
-    np,
-    parameters,
-    past_cov,
-    test_series,
-    train_series,
-):
-    if TEST_BUILD_BACKTEST:
-        _model = build_fit_tide(
-            series=train_series,
-            val_series=test_series,
-            future_covariates=futr_cov,
-            past_covariates=past_cov,
-            n_epochs=1,
-        )
-        log.info(f"model.MODEL_TYPE: {_model.MODEL_TYPE}")
-        _err = _model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae],
-            verbose=False,
-        )
-        log.info(f"err_metric: {np.mean(_err)}")
-        _preds = _model.predict(
-            series=train_series,
-            n=parameters.FORECAST_HORIZON,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            num_samples=200,
-        )
-        _errs = np.mean(mae(test_series, _preds, n_jobs=-1, verbose=True))
-        log.info(f"errs: {_errs}")
-        _ci_err = get_ci_err(test_series, _preds)
-        log.info(f"test_ci_err mean: {np.mean(_ci_err)}")
-        _val = _model.backtest(
-            series=test_series,
-            past_covariates=past_cov,
-            future_covariates=futr_cov,
-            retrain=False,
-            forecast_horizon=parameters.FORECAST_HORIZON,
-            stride=25,
-            metric=[mae, get_ci_err],
-            verbose=False,
-            num_samples=200,
-        )
-        log.info(f"val_backtest: {_val}")
-    return
+def _(MODE, ci_err_metric, mae, mcrps, np, parameters, selection):
+    def score_trial(model, trial, test_series, past_cov, futr_cov):
+        """Backtest one trial and return the active mode's objective values.
 
+        One backtest produces every metric: MAE, CRPS, and coverage error at
+        each band in ``selection.DIAGNOSTIC_BANDS``. The mode picks which of
+        those become Optuna objectives; the rest are stored as ``user_attrs``,
+        so a study run under one mode can be re-ranked under another without
+        re-running it. The extra bands cost arithmetic, not forecasts — Darts
+        scores every metric against the same flattened forecasts.
 
-@app.cell
-def _(mae, mcrps, np, parameters):
-    def score_trial_crps(model, trial, test_series, past_cov, futr_cov):
-        """Backtest one trial's model on the West holdout and return CRPS.
+        ``test_series`` is a list of nodes, so ``backtest`` returns one row of
+        metrics per node (each reduced over that node's windows); average
+        across nodes. ``num_samples`` makes the forecast stochastic so the
+        probabilistic metrics are meaningful (CRPS degenerates to MAE on a
+        point forecast, and every band's coverage would be 0 or 1).
 
-        The single study objective, shared by all model types. ``test_series``
-        is a list of nodes, so ``backtest`` returns one ``[crps, mae]`` row per
-        node (each reduced over that node's windows); average across nodes. MAE
-        is stored as a diagnostic ``user_attr``. ``num_samples`` makes the
-        forecast stochastic so CRPS is meaningful (it degenerates to MAE on a
-        point forecast).
+        Args:
+            model: The fitted candidate model for this trial.
+            trial: The Optuna trial, used to record the non-optimized metrics
+                as ``user_attrs``.
+            test_series: Per-node holdout target series to backtest on.
+            past_cov: Per-node past covariates, aligned with ``test_series``.
+            futr_cov: Per-node future covariates, aligned with ``test_series``.
+
+        Returns:
+            The mode's objective values in ``MODE['metrics']`` order — a bare
+            float for a single-objective mode, a tuple otherwise. A non-finite
+            value becomes ``inf`` so the trial loses rather than poisoning the
+            study.
         """
+        band_metrics = [ci_err_metric(b) for b in selection.DIAGNOSTIC_BANDS]
         val_backtest = model.backtest(
             series=test_series,
             past_covariates=past_cov,
@@ -406,16 +381,39 @@ def _(mae, mcrps, np, parameters):
             retrain=False,
             forecast_horizon=parameters.FORECAST_HORIZON,
             stride=24,  # daily origins over the hourly series
-            metric=[mcrps, mae],
+            metric=[mae, mcrps, *band_metrics],
             verbose=False,
             num_samples=200,
             last_points_only=False,
         )
-        crps = np.mean([e[0] for e in val_backtest])
-        trial.set_user_attr("mae", float(np.mean([e[1] for e in val_backtest])))
-        return float(crps) if np.isfinite(crps) else float("inf")
+        # Metric columns come back in the order they were passed above.
+        names = ["mae", "crps"] + [
+            selection.band_label(b) for b in selection.DIAGNOSTIC_BANDS
+        ]
+        scored = {
+            name: float(np.mean([row[i] for row in val_backtest]))
+            for i, name in enumerate(names)
+        }
+        # get_ci_err already returns percentage points, so weight them with
+        # selection.weight_ci_errs — the same step the promote gate uses, so
+        # the study cannot optimize a differently-weighted number than the gate
+        # decides on.
+        scored["ci_err"] = selection.weight_ci_errs(
+            {b: scored[selection.band_label(b)] for b in MODE["intervals"]}, MODE
+        )
 
-    return (score_trial_crps,)
+        # Whatever the mode does not optimize is recorded as a diagnostic.
+        for name, value in scored.items():
+            if name not in MODE["metrics"]:
+                trial.set_user_attr(name, value)
+
+        values = [
+            scored[name] if np.isfinite(scored[name]) else float("inf")
+            for name in MODE["metrics"]
+        ]
+        return values[0] if len(values) == 1 else tuple(values)
+
+    return (score_trial,)
 
 
 @app.cell
@@ -425,7 +423,7 @@ def _(
     build_fit_tsmixerx,
     futr_cov,
     past_cov,
-    score_trial_crps,
+    score_trial,
     test_series,
     train_series,
 ):
@@ -464,7 +462,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
+        return score_trial(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tsmixer,)
 
@@ -486,7 +484,7 @@ def _(
     n_futr,
     n_past,
     past_cov,
-    score_trial_crps,
+    score_trial,
     test_series,
     train_series,
 ):
@@ -544,7 +542,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
+        return score_trial(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tide,)
 
@@ -556,7 +554,7 @@ def _(
     build_fit_tft,
     futr_cov,
     past_cov,
-    score_trial_crps,
+    score_trial,
     test_series,
     train_series,
 ):
@@ -596,7 +594,7 @@ def _(
         trial.set_user_attr("model_path", model_path)
         model.save(model_path)
 
-        return score_trial_crps(model, trial, test_series, past_cov, futr_cov)
+        return score_trial(model, trial, test_series, past_cov, futr_cov)
 
     return (objective_tft,)
 
@@ -608,16 +606,35 @@ def _(MODEL_TYPE, os):
 
 
 @app.cell
-def _(MODEL_TYPE, log, log_pretty, target_names):
+def _(MODE, MODEL_TYPE, log, log_pretty, selection, target_names):
     def print_callback(study, trial):
-        best = study.best_trial
         print("\n" + "*" * 30, flush=True)
-        log.info(f"\nTrial: {trial.number} Current {target_names[0]}: {trial.value}")
+        log.info(f"\nTrial: {trial.number} Current {target_names}: {trial.values}")
         log.info(f"Current params: \n{log_pretty(trial.params)}")
-        log.info(
-            f"Best {target_names[0]}: Num: {best.number}, {best.value}, "
-            f"Best params: \n{log_pretty(best.params)}"
-        )
+
+        if len(MODE["metrics"]) == 1:
+            # Single-objective: study.best_trial is well defined.
+            _best = study.best_trial
+            log.info(
+                f"Best {target_names[0]}: Num: {_best.number}, {_best.values}, "
+                f"Best params: \n{log_pretty(_best.params)}"
+            )
+        else:
+            # Multi-objective: there is no single best trial, so report the
+            # best of each objective plus the best composite — the composite
+            # is what actually picks the ensemble, the other two show which
+            # term is driving it.
+            _front = study.best_trials
+            for _i, _name in enumerate(target_names):
+                _b = min(_front, key=lambda t, i=_i: t.values[i])
+                log.info(f"Best {_name}: Num: {_b.number}, {_b.values}")
+            _b = min(_front, key=lambda t: selection.selection_score(t.values, MODE))
+            log.info(
+                f"Best composite: Num: {_b.number}, {_b.values}, "
+                f"score {selection.selection_score(_b.values, MODE):.4f}, "
+                f"Best params: \n{log_pretty(_b.params)}"
+            )
+
         study.trials_dataframe().to_csv(
             f"study_csv/{MODEL_TYPE}/{trial.number:03}.csv"
         )
@@ -626,8 +643,8 @@ def _(MODEL_TYPE, log, log_pretty, target_names):
 
 
 @app.cell
-def _():
-    target_names = ["CRPS"]
+def _(MODE):
+    target_names = [m.upper() for m in MODE["metrics"]]
     return (target_names,)
 
 
@@ -674,19 +691,38 @@ def _(MODEL_TYPE, objective_tft, objective_tide, objective_tsmixer):
 
 
 @app.cell
-def _(MODEL_NAME, MODEL_TYPE):
-    study_name = f"{MODEL_NAME}_{MODEL_TYPE}"
+def _(MODEL_NAME, MODEL_TYPE, OBJECTIVE_MODE, selection):
+    # One home for this format (selection.study_name): the bake CLI builds the
+    # same name, and if the two drift it silently reads a different study.
+    study_name = selection.study_name(MODEL_NAME, MODEL_TYPE, OBJECTIVE_MODE)
     return (study_name,)
 
 
 @app.cell
-def _(optuna, study_name):
+def _(MODE, log, optuna, study_name):
     study = optuna.create_study(
-        direction="minimize",
+        directions=["minimize"] * len(MODE["metrics"]),
         storage="sqlite:///spp_trials.db",
         study_name=study_name,
         load_if_exists=True,
     )
+
+    # create_study(load_if_exists=True) SILENTLY ignores `directions` when the
+    # stored study disagrees — it returns the study with its original objective
+    # count. Every trial then fails with "The number of the values N did not
+    # match the number of the objectives M", and study.optimize does not
+    # propagate that: it logs a warning per trial and marks them FAIL. The
+    # sweep would run for hours and exit cleanly with nothing usable. The
+    # mode-suffixed study name should make this unreachable; the guard stays
+    # because the failure it catches is silent.
+    if len(study.directions) != len(MODE["metrics"]):
+        raise ValueError(
+            f"study {study_name!r} is stored with {len(study.directions)} "
+            f"objective(s) but mode expects {len(MODE['metrics'])} "
+            f"{MODE['metrics']}. Set REMOVE_PRIOR_MODELS=True to start it "
+            "fresh, or pick a different OBJECTIVE_MODE."
+        )
+    log.info(f"study {study_name!r}: {len(study.trials)} existing trial(s)")
     return (study,)
 
 
@@ -700,28 +736,80 @@ def _(NUM_TRIALS, RUN_EXP, objective_func, print_callback, study):
 
 
 @app.cell
-def _(plot_optimization_history, study):
-    plot_optimization_history(study).show()
+def _(MODE, study, target_names):
+    def show_per_objective(plot_fn, **kwargs):
+        """Render an Optuna plot once per objective.
+
+        Optuna's visualizations take a single scalar target, so under a
+        multi-objective study each objective needs its own figure with an
+        explicit ``target``; a single-objective study needs none. The default
+        ``idx`` in the lambda binds the loop variable at definition time —
+        without it every figure would plot the last objective.
+        """
+        if len(MODE["metrics"]) == 1:
+            plot_fn(study, **kwargs).show()
+            return
+        for i, name in enumerate(target_names):
+            plot_fn(
+                study,
+                target=lambda t, idx=i: t.values[idx],
+                target_name=name,
+                **kwargs,
+            ).show()
+
+    return (show_per_objective,)
+
+
+@app.cell
+def _(plot_optimization_history, show_per_objective):
+    show_per_objective(plot_optimization_history)
     return
 
 
 @app.cell
-def _(plot_contour, study):
-    plot_contour(study, params=["lr", "n_epochs"]).show()
+def _(plot_contour, show_per_objective):
+    show_per_objective(plot_contour, params=["lr", "n_epochs"])
     return
 
 
 @app.cell
-def _(plot_param_importances, study):
-    plot_param_importances(study)
+def _(plot_param_importances, show_per_objective):
+    show_per_objective(plot_param_importances)
     return
 
 
 @app.cell
-def _(log, log_pretty, study):
-    _best = study.best_trial
+def _(MODE, plot_pareto_front, study, target_names):
+    # Pareto front — only meaningful for a multi-objective study. Shows the
+    # accuracy/calibration tradeoff the composite weights collapse.
+    if len(MODE["metrics"]) > 1:
+        plot_pareto_front(study, target_names=target_names).show()
+    return
+
+
+@app.cell
+def _(MODE, plot_pareto_front, study, target_names):
+    if len(MODE["metrics"]) > 1:
+        plot_pareto_front(
+            study, target_names=target_names, include_dominated_trials=False
+        ).show()
+    return
+
+
+@app.cell
+def _(MODE, log, log_pretty, selection, study):
+    # study.best_trial raises under multi-objective, so rank the Pareto front
+    # by the same composite the ensemble is built from.
+    if len(MODE["metrics"]) == 1:
+        _best = study.best_trial
+    else:
+        _best = min(
+            study.best_trials,
+            key=lambda t: selection.selection_score(t.values, MODE),
+        )
     log.info(f"Best number: {_best.number}")
-    log.info(f"Best value: {_best.value}")
+    log.info(f"Best values: {_best.values}")
+    log.info(f"Best score: {selection.selection_score(_best.values, MODE):.4f}")
     log.info(f"Best params: \n{log_pretty(_best.params)}")
     return
 
@@ -733,18 +821,41 @@ def _(study):
 
 
 @app.cell
-def _(np, optuna, pd):
+def _(MODE, np, optuna, pd, selection):
     def get_best_trials(
         study_name: str,
+        n_results: int,
         storage: str = "sqlite:///spp_trials.db",
-        n_results: int = 5,
     ) -> pd.DataFrame:
+        """Top-N trials by the active mode's composite score, best first.
+
+        Ranks on ``selection.selection_score`` rather than a raw objective, so
+        the ensemble members are chosen by the same formula the promote gate
+        uses. Note ``trial.value`` raises under a multi-objective study — read
+        ``trial.values`` only.
+
+        Args:
+            study_name: Optuna study to load (includes the objective mode).
+            storage: Optuna storage URL holding the study.
+            n_results: How many trials to return.
+
+        Returns:
+            One row per distinct param set, with ``number``, ``values`` (the
+            raw objectives), ``score`` (the composite, NaN for a trial that
+            did not complete), ``params``, and ``model_path``, sorted best
+            score first and truncated to ``n_results``.
+        """
         _study = optuna.load_study(study_name=study_name, storage=storage)
         trials = pd.DataFrame(
             [
                 {
                     "number": s.number,
-                    "value": s.value if s.value is not None else np.nan,
+                    "values": s.values,
+                    "score": (
+                        selection.selection_score(s.values, MODE)
+                        if s.values is not None
+                        else np.nan
+                    ),
                     "params": s.params,
                     "model_path": s.user_attrs.get("model_path"),
                 }
@@ -752,14 +863,14 @@ def _(np, optuna, pd):
             ]
         )
         trials = trials[~trials.params.duplicated()]
-        return trials.sort_values("value").head(n_results)
+        return trials.sort_values("score").head(n_results)
 
     return (get_best_trials,)
 
 
 @app.cell
-def _(get_best_trials, study_name):
-    best_trials = get_best_trials(study_name, n_results=5)
+def _(get_best_trials, parameters, study_name):
+    best_trials = get_best_trials(study_name, parameters.TOP_N)
     best_trials
     return (best_trials,)
 
