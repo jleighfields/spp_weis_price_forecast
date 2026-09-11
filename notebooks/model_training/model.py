@@ -1,17 +1,8 @@
 # Optuna hyperparameter tuning for SPP West (RTO West / Integrated
 # Marketplace) nodal price forecast models.
-#
-# Supports TiDE, TSMixer, and TFT model types. The objective is chosen by the
-# OBJECTIVE_MODE env var against the table in src/selection.py (default
-# 'mae_ci': a two-objective study on MAE and weighted prediction-interval
-# coverage error). Whichever metrics the active mode does not optimize are
-# recorded per trial as user_attrs, so every trial carries MAE, CRPS and
-# coverage error at all diagnostic bands and can be re-ranked under another
-# mode without re-running the study.
-#
-# Usage:
-#   Interactive: marimo edit notebooks/model_training/model.py
-#   Another objective: OBJECTIVE_MODE=crps marimo edit notebooks/model_training/model.py
+# (Detail below the app definition: marimo's file browser only scans the
+# first 512 bytes for `import marimo` + `marimo.App`, so a long header
+# here would hide this notebook from the editor's workspace list.)
 
 import marimo
 
@@ -55,13 +46,7 @@ def _(os):
     CLIP_OUTLIERS = True
 
     REMOVE_PRIOR_MODELS = True
-    return (
-        CLIP_OUTLIERS,
-        MODEL_TYPE,
-        NUM_TRIALS,
-        REMOVE_PRIOR_MODELS,
-        RUN_EXP,
-    )
+    return CLIP_OUTLIERS, MODEL_TYPE, NUM_TRIALS, REMOVE_PRIOR_MODELS, RUN_EXP
 
 
 @app.cell
@@ -96,7 +81,6 @@ def _():
     for _p in [str(_root), str(_root / "src")]:
         if _p not in _sys.path:
             _sys.path.insert(0, _p)
-
     return (
         NaiveEnsembleModel,
         TFTModel,
@@ -187,7 +171,9 @@ def _(torch):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Data prep""")
+    mo.md(r"""
+    ## Data prep
+    """)
     return
 
 
@@ -278,7 +264,9 @@ def _(all_df_pd):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Prep model training data""")
+    mo.md(r"""
+    ## Prep model training data
+    """)
     return
 
 
@@ -287,7 +275,7 @@ def _(CLIP_OUTLIERS, con, de):
     lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(
         con, clip_outliers=CLIP_OUTLIERS
     )
-    return lmp_all, test_all, train_all, train_test_all
+    return lmp_all, test_all, train_all
 
 
 @app.cell
@@ -333,13 +321,11 @@ def _(con):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Set up hyperparameter tuning study
 
     https://unit8co.github.io/darts/examples/17-hyperparameter-optimization.html?highlight=optuna
-    """
-    )
+    """)
     return
 
 
@@ -663,7 +649,9 @@ def _(MODE):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Start Experiment""")
+    mo.md(r"""
+    ## Start Experiment
+    """)
     return
 
 
@@ -905,7 +893,9 @@ def _(best_trials):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Create ensemble from best models""")
+    mo.md(r"""
+    ## Create ensemble from best models
+    """)
     return
 
 
@@ -944,7 +934,9 @@ def _(NaiveEnsembleModel, forecasting_models):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(r"""## Plot test predictions""")
+    mo.md(r"""
+    ## Plot test predictions
+    """)
     return
 
 

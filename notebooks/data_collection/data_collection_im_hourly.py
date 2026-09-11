@@ -1,5 +1,13 @@
 # Hourly data collection for SPP RTO West / Integrated Marketplace (IM).
-#
+# (Detail below the app definition: marimo's file browser only scans the
+# first 512 bytes for `import marimo` + `marimo.App`, so a long header
+# here would hide this notebook from the editor's workspace list.)
+
+import marimo
+
+__generated_with = "0.20.2"
+app = marimo.App()
+
 # Collects MTLF, MTRF, RF_RESERVE_ZONE, 5-min LMP, and Day-Ahead LMP into
 # im/. DA (the primary forecast target) rides the hourly job so it stays as
 # up to date as the real-time feed.
@@ -10,10 +18,6 @@
 #   Script:      python notebooks/data_collection/data_collection_im_hourly.py
 #   Modal:       modal run modal_jobs/data_collection_im.py::collect_im_hourly
 
-import marimo
-
-__generated_with = "0.20.2"
-app = marimo.App()
 
 
 @app.cell

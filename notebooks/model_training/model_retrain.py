@@ -1,6 +1,14 @@
 # Model retraining notebook for SPP West (RTO West / Integrated Marketplace)
 # nodal price forecasting.
-#
+# (Detail below the app definition: marimo's file browser only scans the
+# first 512 bytes for `import marimo` + `marimo.App`, so a long header
+# here would hide this notebook from the editor's workspace list.)
+
+import marimo
+
+__generated_with = "0.20.2"
+app = marimo.App(width="medium")
+
 # Workflow:
 #   1. Connect to S3-backed database and prepare LMP + covariate data
 #   2. Train TSMixer, TiDE, and TFT models using top-N hyperparameter sets
@@ -16,10 +24,6 @@
 #   Script:      python notebooks/model_training/model_retrain.py
 #   Modal:       modal run modal_jobs/model_retrain.py::model_retrain_weekly
 
-import marimo
-
-__generated_with = "0.20.2"
-app = marimo.App(width="medium")
 
 
 @app.cell

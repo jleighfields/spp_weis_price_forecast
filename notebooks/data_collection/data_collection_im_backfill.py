@@ -1,5 +1,13 @@
 # Historical backfill for SPP RTO West / Integrated Marketplace (IM).
-#
+# (Detail below the app definition: marimo's file browser only scans the
+# first 512 bytes for `import marimo` + `marimo.App`, so a long header
+# here would hide this notebook from the editor's workspace list.)
+
+import marimo
+
+__generated_with = "0.20.2"
+app = marimo.App()
+
 # One-time backfill of MTLF, MTRF, RF_RESERVE_ZONE, and LMP (via the daily
 # rollup) from BACKFILL_START to now into im/. Covers both Phase 2
 # history segments in one pass — the collectors filter LMP to STORED_NODES and
@@ -13,10 +21,6 @@
 #   Interactive: marimo edit notebooks/data_collection/data_collection_im_backfill.py
 #   Script:      python notebooks/data_collection/data_collection_im_backfill.py
 
-import marimo
-
-__generated_with = "0.20.2"
-app = marimo.App()
 
 
 @app.cell
