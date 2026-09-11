@@ -18,6 +18,12 @@ around it and makes the promote decision.
 `selection.OBJECTIVES` — how trials are ranked. Everything runs on the local GPU
 box.
 
+All three reach the study as env vars — `TARGET`, `NUM_TRIALS`, `OBJECTIVE_MODE`
+(plus `MODEL_TYPE`, default `tide`) — so nothing tracked needs editing to change
+a run. Before a full sweep, smoke the objective with `NUM_TRIALS=2`: it confirms
+the metric list survives a real model and the study path works end to end, for
+~2 minutes instead of ~1.5 hours.
+
 The objective mode is part of the study name, so switching modes starts a
 separate study rather than mixing incomparable trials. Modes:
 

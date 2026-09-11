@@ -38,13 +38,15 @@ def _():
 
 
 @app.cell
-def _():
+def _(os):
     # MODEL_TYPE = 'ts_mixer'
-    MODEL_TYPE = "tide"
+    MODEL_TYPE = os.environ.get("MODEL_TYPE", "tide")
     # MODEL_TYPE = 'tft'
 
     RUN_EXP = True
-    NUM_TRIALS = 100
+    # Env-overridable so a smoke run (NUM_TRIALS=2) needs no edit to tracked
+    # code — same pattern as TARGET / OBJECTIVE_MODE.
+    NUM_TRIALS = int(os.environ.get("NUM_TRIALS", 100))
 
     # Clip LMP to the 0.25% / 99.75% quantiles before training/scoring.
     # A deliberate, tested win on WEIS; re-validate on the spikier IM
