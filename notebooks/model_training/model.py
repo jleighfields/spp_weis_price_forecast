@@ -1,8 +1,8 @@
 # Optuna hyperparameter tuning for SPP West (RTO West / Integrated
 # Marketplace) nodal price forecast models.
-# (Detail below the app definition: marimo's file browser only scans the
-# first 512 bytes for `import marimo` + `marimo.App`, so a long header
-# here would hide this notebook from the editor's workspace list.)
+# (Detail lives below the app definition on purpose: marimo's file browser
+# only scans the first 512 bytes of a notebook for its app declaration, so a
+# long header here would hide this file from the editor's workspace list.)
 
 import marimo
 
