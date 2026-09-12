@@ -206,7 +206,9 @@ def prep_lmp(
             the im/ table holds both BAAs.
         nodes: Settlement locations to keep. Defaults to the modeled/app node
             list (node_list.MODEL_APP_NODES).
-        clip_outliers: If True, clip LMP values to 0.25% and 99.75% quantiles.
+        clip_outliers: If True, clip LMP to the parameters.CLIP_QUANTILES
+            bounds. Training paths pass parameters.CLIP_OUTLIERS; display paths
+            leave it False so plotted actuals show real prices.
 
     Returns:
         pl.DataFrame: Processed LMP data with columns including 'unique_id',
@@ -235,8 +237,13 @@ def prep_lmp(
     lmp = lmp.filter(pl.col("timestamp_mst_HE") >= start_time)
 
     if clip_outliers:
-        clipped_lwr = lmp.select(pl.col("LMP").quantile(0.0025)).item()
-        clipped_upr = lmp.select(pl.col("LMP").quantile(0.9975)).item()
+        # Bounds come from parameters.CLIP_QUANTILES (single home) rather than
+        # literals here. NOTE: these are whole-dataset quantiles across every
+        # node, not per-node, so one ceiling applies to cheap and expensive
+        # nodes alike.
+        _q_lwr, _q_upr = parameters.CLIP_QUANTILES
+        clipped_lwr = lmp.select(pl.col("LMP").quantile(_q_lwr)).item()
+        clipped_upr = lmp.select(pl.col("LMP").quantile(_q_upr)).item()
         lmp = lmp.with_columns(
             pl.when(pl.col("LMP") > clipped_upr).then(clipped_upr)
             .when(pl.col("LMP") < clipped_lwr).then(clipped_lwr)

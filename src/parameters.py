@@ -40,6 +40,20 @@ PRECISION = "float32"
 # dimension.
 MODEL_NAME = TARGETS[DEFAULT_TARGET]["model_name"]
 
+# Outlier clipping for TRAINING data — the single home for both the switch and
+# the bounds. The hyperparameter study and the retrain must agree: params chosen
+# against a tail-suppressed distribution and then trained on the raw one are
+# params selected for a dataset that was never served. Both read these.
+#
+# Deliberately NOT the default of `data_engineering.prep_lmp`: the app calls it
+# for the actuals it PLOTS, and clipping those would hide real spikes from
+# users. Training opts in explicitly; display paths stay raw.
+#
+# Tuned on WEIS; re-validate on the spikier IM distribution (run the study once
+# True and once False and compare MAE/CRPS and coverage/tail error).
+CLIP_OUTLIERS = True
+CLIP_QUANTILES = (0.0025, 0.9975)
+
 USE_TSMIXER = False
 USE_TIDE = True
 USE_TFT = False
