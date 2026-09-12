@@ -156,11 +156,11 @@ class TestScoreAggregate:
         return pd.Series(base)
 
     def test_perfect_calibration_scores_the_accuracy_term_alone(self):
-        mode = selection.resolve_mode('mae_ci')
+        mode = selection.resolve_mode('mae_ci_da')
         assert evaluation.score_aggregate(self._agg(), mode) == pytest.approx(6.0)
 
     def test_miscalibration_adds_weighted_penalty(self):
-        mode = selection.resolve_mode('mae_ci')
+        mode = selection.resolve_mode('mae_ci_da')
         # 5 points off at 80%, 3 off at 90%, both weighted 0.25 -> +2.0
         agg = self._agg(coverage_80=0.75, coverage_90=0.87)
         assert evaluation.score_aggregate(agg, mode) == pytest.approx(8.0)
@@ -176,20 +176,20 @@ class TestScoreAggregate:
             agg, selection.resolve_mode('crps_ci')
         ) == pytest.approx(4.0)
         assert evaluation.score_aggregate(
-            agg, selection.resolve_mode('mae_ci')
+            agg, selection.resolve_mode('mae_ci_da')
         ) == pytest.approx(6.0)
 
     def test_nan_term_yields_nan_not_a_winning_score(self):
         # A scoring failure must never look like a great score, or the gate
         # would promote a model it could not evaluate.
-        mode = selection.resolve_mode('mae_ci')
+        mode = selection.resolve_mode('mae_ci_da')
         assert np.isnan(evaluation.score_aggregate(self._agg(mae=np.nan), mode))
         assert np.isnan(
             evaluation.score_aggregate(self._agg(coverage_80=np.nan), mode)
         )
 
     def test_missing_ranked_band_raises(self):
-        mode = selection.resolve_mode('mae_ci')
+        mode = selection.resolve_mode('mae_ci_da')
         agg = self._agg().drop('coverage_90')
         with pytest.raises(KeyError):
             evaluation.score_aggregate(agg, mode)

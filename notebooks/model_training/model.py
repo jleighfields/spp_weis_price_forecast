@@ -694,7 +694,7 @@ def _(MODEL_NAME, MODEL_TYPE, OBJECTIVE_MODE, selection):
 
 
 @app.cell
-def _(MODE, REMOVE_PRIOR_MODELS, log, optuna, study_name):
+def _(MODE, OBJECTIVE_MODE, REMOVE_PRIOR_MODELS, log, optuna, study_name):
     # Reset lives here, not in the scratch-dir cell, so it cannot be reordered
     # to run AFTER create_study and silently delete the study just created —
     # marimo is a DAG, and these two cells would otherwise have no dependency
@@ -732,6 +732,12 @@ def _(MODE, REMOVE_PRIOR_MODELS, log, optuna, study_name):
             f"{MODE['metrics']}. Set REMOVE_PRIOR_MODELS=True to start it "
             "fresh, or pick a different OBJECTIVE_MODE."
         )
+    # Record the mode on the study itself. A trial's objective values are only
+    # interpretable against the mode that produced them, so anything re-ranking
+    # this study later (the bake CLI) has to know which one that was — without
+    # it, re-ranking silently reuses the sweep's weights.
+    study.set_user_attr("objective_mode", OBJECTIVE_MODE)
+
     log.info(f"study {study_name!r}: {len(study.trials)} existing trial(s)")
     return (study,)
 

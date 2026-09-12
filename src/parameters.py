@@ -180,85 +180,23 @@ TSMIXER_PARAMS = [
 # managed by scripts/tune_parameters.py, which replaces a block with the
 # top-TOP_N trials from that target's Optuna study. Edit via the script.
 # >>> TIDE_PARAMS_RT >>>
-# Real-time (RT) tide params from the IM-only CRPS Optuna study (2026-07-06,
-# study 'spp_west_tide', 100 trials): the top 5 trials by CRPS on the West
-# holdout (14.05-14.13), one per TOP_N ensemble member.
+# TIDE_PARAMS_RT — top 5 trials by 'mae_ci_rt' score from study 'spp_west_tide_mae_ci_rt' (score 51.138-52.314; metrics mae+ci_err). Managed by scripts/tune_parameters.py.
 TIDE_PARAMS_RT = [
-    {
-        "num_encoder_decoder_layers": 4,  # trial #85  CRPS 14.054
-        "decoder_output_dim": 20,
-        "hidden_size": 20,
-        "temporal_width_past": 5,
-        "temporal_width_future": 6,
-        "temporal_decoder_hidden": 21,
-        "temporal_hidden_size_past": 29,
-        "temporal_hidden_size_future": 19,
-        "lr": 0.0003269562607836474,
-        "n_epochs": 17,
-        "dropout": 0.45000000000000007,
-        "encoder_key": "rel_mon",
-    },
-    {
-        "num_encoder_decoder_layers": 4,  # trial #99  CRPS 14.071
-        "decoder_output_dim": 18,
-        "hidden_size": 53,
-        "temporal_width_past": 5,
-        "temporal_width_future": 8,
-        "temporal_decoder_hidden": 23,
-        "temporal_hidden_size_past": 25,
-        "temporal_hidden_size_future": 25,
-        "lr": 0.00031352894876833086,
-        "n_epochs": 20,
-        "dropout": 0.4,
-        "encoder_key": "rel_mon_day",
-    },
-    {
-        "num_encoder_decoder_layers": 6,  # trial #6  CRPS 14.079
-        "decoder_output_dim": 17,
-        "hidden_size": 20,
-        "temporal_width_past": 1,
-        "temporal_width_future": 7,
-        "temporal_decoder_hidden": 21,
-        "temporal_hidden_size_past": 22,
-        "temporal_hidden_size_future": 25,
-        "lr": 0.0006605081917306321,
-        "n_epochs": 16,
-        "dropout": 0.45000000000000007,
-        "encoder_key": "rel",
-    },
-    {
-        "num_encoder_decoder_layers": 5,  # trial #74  CRPS 14.106
-        "decoder_output_dim": 19,
-        "hidden_size": 9,
-        "temporal_width_past": 6,
-        "temporal_width_future": 7,
-        "temporal_decoder_hidden": 27,
-        "temporal_hidden_size_past": 30,
-        "temporal_hidden_size_future": 22,
-        "lr": 0.00026451904225915446,
-        "n_epochs": 19,
-        "dropout": 0.35,
-        "encoder_key": "rel_mon",
-    },
-    {
-        "num_encoder_decoder_layers": 6,  # trial #20  CRPS 14.129
-        "decoder_output_dim": 18,
-        "hidden_size": 25,
-        "temporal_width_past": 3,
-        "temporal_width_future": 1,
-        "temporal_decoder_hidden": 21,
-        "temporal_hidden_size_past": 16,
-        "temporal_hidden_size_future": 19,
-        "lr": 0.00019831794710668533,
-        "n_epochs": 17,
-        "dropout": 0.35,
-        "encoder_key": "rel",
-    },
+    # trial #19  MAE 47.5381  CI_ERR 3.6000  score 51.1381
+    {'num_encoder_decoder_layers': 4, 'decoder_output_dim': 21, 'hidden_size': 14, 'temporal_width_past': 5, 'temporal_width_future': 10, 'temporal_decoder_hidden': 53, 'temporal_hidden_size_past': 17, 'temporal_hidden_size_future': 11, 'lr': 0.00022526445927397446, 'n_epochs': 26, 'dropout': 0.5, 'encoder_key': 'rel_mon_day'},
+    # trial #88  MAE 47.5381  CI_ERR 3.6000  score 51.1381
+    {'num_encoder_decoder_layers': 4, 'decoder_output_dim': 21, 'hidden_size': 14, 'temporal_width_past': 5, 'temporal_width_future': 10, 'temporal_decoder_hidden': 53, 'temporal_hidden_size_past': 17, 'temporal_hidden_size_future': 11, 'lr': 0.00022526445927397446, 'n_epochs': 26, 'dropout': 0.5, 'encoder_key': 'rel_mon_day'},
+    # trial #12  MAE 48.6953  CI_ERR 2.6667  score 51.3620
+    {'num_encoder_decoder_layers': 4, 'decoder_output_dim': 8, 'hidden_size': 25, 'temporal_width_past': 5, 'temporal_width_future': 0, 'temporal_decoder_hidden': 41, 'temporal_hidden_size_past': 24, 'temporal_hidden_size_future': 18, 'lr': 0.0005479266995583818, 'n_epochs': 23, 'dropout': 0.35, 'encoder_key': 'rel'},
+    # trial #32  MAE 49.0050  CI_ERR 2.7167  score 51.7216
+    {'num_encoder_decoder_layers': 3, 'decoder_output_dim': 32, 'hidden_size': 14, 'temporal_width_past': 0, 'temporal_width_future': 3, 'temporal_decoder_hidden': 22, 'temporal_hidden_size_past': 23, 'temporal_hidden_size_future': 32, 'lr': 0.00023863763526189405, 'n_epochs': 25, 'dropout': 0.1, 'encoder_key': 'rel'},
+    # trial #82  MAE 51.0303  CI_ERR 1.2833  score 52.3136
+    {'num_encoder_decoder_layers': 8, 'decoder_output_dim': 31, 'hidden_size': 63, 'temporal_width_past': 4, 'temporal_width_future': 1, 'temporal_decoder_hidden': 48, 'temporal_hidden_size_past': 21, 'temporal_hidden_size_future': 28, 'lr': 2.4867027385576873e-05, 'n_epochs': 15, 'dropout': 0.25, 'encoder_key': 'rel_mon'},
 ]
 # <<< TIDE_PARAMS_RT <<<
 
 # >>> TIDE_PARAMS_DA >>>
-# TIDE_PARAMS_DA — top 5 trials by 'mae_ci' score from study 'spp_west_da_tide_mae_ci' (score 8.015-10.320; metrics mae+ci_err). Managed by scripts/tune_parameters.py.
+# TIDE_PARAMS_DA — top 5 trials by 'mae_ci_da' score from study 'spp_west_da_tide_mae_ci_da' (score 8.015-10.320; metrics mae+ci_err). Managed by scripts/tune_parameters.py.
 TIDE_PARAMS_DA = [
     # trial #63  MAE 7.6503  CI_ERR 0.3646  score 8.0149
     {'num_encoder_decoder_layers': 7, 'decoder_output_dim': 27, 'hidden_size': 54, 'temporal_width_past': 5, 'temporal_width_future': 2, 'temporal_decoder_hidden': 30, 'temporal_hidden_size_past': 25, 'temporal_hidden_size_future': 19, 'lr': 0.00011561955456882098, 'n_epochs': 22, 'dropout': 0.35, 'encoder_key': 'rel'},

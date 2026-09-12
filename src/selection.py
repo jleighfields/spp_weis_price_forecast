@@ -29,9 +29,14 @@ are not equally trustworthy: coverage at the 95% band rests on far fewer
 exceedances than coverage at the 50% band, so a weight can say so.
 
 The weights are a *total*: the formula these modes restore was
-``MAE + 0.5 * ci_err`` on a single band, so two bands at 0.25 each keep the same
-total calibration pressure on the ranking while estimating it from more of the
-predictive distribution.
+``MAE + 0.5 * ci_err`` on a single band, so the day-ahead mode's two bands at
+0.25 each keep the same total calibration pressure on the ranking while
+estimating it from more of the predictive distribution.
+
+Modes are per target because the weight is an exchange rate against that
+target's own error scale — see ``mae_ci_rt`` below. The mode is part of the
+Optuna study name, so switching targets or weights never mixes trials that were
+ranked by different formulas.
 """
 
 import os
@@ -48,11 +53,24 @@ DIAGNOSTIC_BANDS = (
 )
 
 OBJECTIVES = {
-    # the restore, widened: MAE + per-band calibration on the 80% and 90% bands
-    'mae_ci': {
+    # Day-ahead: the restored formula, widened across two bands. The weights
+    # sum to the 0.5 the original single-band `MAE + 0.5 * ci_err` carried.
+    'mae_ci_da': {
         'metrics': ('mae', 'ci_err'),
         'intervals': ((0.1, 0.9), (0.05, 0.95)),
         'scalers': (0.25, 0.25),
+    },
+    # Real-time: same shape, heavier calibration weight. The weight is an
+    # exchange rate — one percentage point of coverage error costs that many
+    # $/MWh of MAE — so a fixed weight buys less influence as the target's
+    # error scale grows. RT's MAE runs ~6x DA's (≈50 vs ≈8), so 0.25 there
+    # would make calibration a near-tiebreaker. These are per-target rather
+    # than one shared number for exactly that reason; never assume a weight
+    # transfers between targets without checking their error scales.
+    'mae_ci_rt': {
+        'metrics': ('mae', 'ci_err'),
+        'intervals': ((0.1, 0.9), (0.05, 0.95)),
+        'scalers': (0.4, 0.4),
     },
     # CRPS as the accuracy term, same calibration treatment. MAE and CRPS are
     # the same order of magnitude on both targets, so the weights carry over
@@ -73,7 +91,7 @@ OBJECTIVES = {
     },
 }
 
-DEFAULT_OBJECTIVE = 'mae_ci'
+DEFAULT_OBJECTIVE = 'mae_ci_da'
 
 # Env var name; read at the three call sites via mode_name_from_env().
 OBJECTIVE_ENV_VAR = 'OBJECTIVE_MODE'
@@ -98,10 +116,10 @@ def study_name(model_name: str, model_type: str, mode_name: str) -> str:
         model_name: The target's model name, e.g.
             ``parameters.TARGETS[target]['model_name']``.
         model_type: Architecture key, e.g. ``'tide'``.
-        mode_name: Objective mode key, e.g. ``'mae_ci'``.
+        mode_name: Objective mode key, e.g. ``'mae_ci_da'``.
 
     Returns:
-        The study name, e.g. ``spp_west_da_tide_mae_ci``. The mode is part of it
+        The study name, e.g. ``spp_west_da_tide_mae_ci_da``. The mode is part of it
         because trials scored under different objectives are not comparable —
         and because Optuna silently ignores a changed ``directions`` on an
         existing study rather than refusing it.
@@ -126,7 +144,7 @@ def resolve_mode(name: str) -> dict:
     """Look up an objective mode by name, failing loudly on an unknown one.
 
     Args:
-        name: An objective-mode key, e.g. ``'mae_ci'``.
+        name: An objective-mode key, e.g. ``'mae_ci_da'``.
 
     Returns:
         The mode's config dict from ``OBJECTIVES``.
@@ -242,6 +260,66 @@ def weighted_ci_err(coverages: dict[tuple[float, float], float], mode: dict) -> 
         for interval in mode['intervals']
     }
     return weight_ci_errs(errors, mode)
+
+
+def trial_metrics(
+    values: tuple[float, ...] | list[float],
+    user_attrs: dict,
+    swept_mode: dict,
+) -> dict[str, float]:
+    """Every metric a trial recorded, by name, whatever its role in the sweep.
+
+    A trial splits its metrics across two places: the ones its mode optimized
+    are Optuna objective ``values``, the rest are ``user_attrs``. Re-ranking
+    needs them in one namespace, so recombine.
+
+    Args:
+        values: The trial's objective values, in ``swept_mode['metrics']`` order.
+        user_attrs: The trial's Optuna user attributes (non-numeric entries,
+            e.g. ``model_path``, are dropped).
+        swept_mode: The mode the study was *run* under — which is what says
+            how to name ``values``.
+
+    Returns:
+        Metric name -> value, e.g. ``{'mae': .., 'crps': .., 'ci_err_80': ..}``.
+    """
+    metrics = {
+        k: float(v) for k, v in user_attrs.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
+    metrics.update(zip(swept_mode['metrics'], (float(v) for v in values), strict=True))
+    return metrics
+
+
+def score_metrics(metrics: dict[str, float], mode: dict) -> float:
+    """Score a recorded trial under any mode, recomputing the calibration term.
+
+    The correct way to re-rank a finished study. ``selection_score`` sums a
+    mode's own objective values and so assumes ``values[1]`` was *already*
+    weighted by that mode — true during a sweep, false the moment you re-rank
+    under different weights. This recomputes ``ci_err`` from the per-band
+    errors every trial records, so the requested weights are actually applied.
+
+    Args:
+        metrics: A trial's metrics by name, from ``trial_metrics``.
+        mode: The ``OBJECTIVES`` entry to rank under.
+
+    Returns:
+        The rank score under ``mode``, lower is better.
+
+    Raises:
+        KeyError: If the trial lacks a metric the mode needs — a per-band error
+            for one of its bands, or its accuracy metric. Better to fail than
+            to rank by whatever happens to be present.
+    """
+    values = []
+    for name in mode['metrics']:
+        if name == 'ci_err':
+            errors = {b: metrics[band_label(b)] for b in mode['intervals']}
+            values.append(weight_ci_errs(errors, mode))
+        else:
+            values.append(metrics[name])
+    return selection_score(tuple(values), mode)
 
 
 def selection_score(values: tuple[float, ...] | list[float], mode: dict) -> float:

@@ -14,7 +14,7 @@ edit is done by `scripts/tune_parameters.py`; this skill orchestrates the flow
 around it and makes the promote decision.
 
 **Target** = the argument (`da` if omitted). **Trials** = `--trials N` (default
-100). **Objective** = `--objective MODE` (default `mae_ci`), a key of
+100). **Objective** = `--objective MODE` (default `mae_ci_da`), a key of
 `selection.OBJECTIVES` — how trials are ranked. Everything runs on the local GPU
 box.
 
@@ -29,9 +29,16 @@ separate study rather than mixing incomparable trials. Modes:
 
 | Mode | Ranks on |
 |------|----------|
-| `mae_ci` (default) | MAE + 0.25x coverage error at the 80% and 90% bands |
-| `crps_ci` | CRPS + the same calibration term |
+| `mae_ci_da` (default) | MAE + 0.25x coverage error at each of the 80% and 90% bands |
+| `mae_ci_rt` | Same, weighted 0.4 per band |
+| `crps_ci` | CRPS + the 0.25 calibration term |
 | `crps` | CRPS alone (single-objective) — kept runnable as a baseline |
+
+**Match the mode to the target** (`mae_ci_da` for `da`, `mae_ci_rt` for `rt`).
+The weight is an exchange rate against that target's own error scale — RT's MAE
+runs ~6x DA's, so a weight that makes calibration decisive on DA makes it a
+near-tiebreaker on RT. A mismatched pair still runs; it just ranks by a formula
+tuned for the other target.
 
 ## Steps
 

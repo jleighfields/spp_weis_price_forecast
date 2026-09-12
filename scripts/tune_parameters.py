@@ -37,26 +37,31 @@ from targets import DEFAULT_TARGET, TARGETS  # noqa: E402
 PARAMS_FILE = os.path.join(os.path.dirname(__file__), "..", "src", "parameters.py")
 
 
-def trial_summary(trial: optuna.trial.FrozenTrial, mode: dict) -> str:
-    """One-line ``metric=value`` summary of a trial under its objective mode.
+def trial_summary(metrics: dict, mode: dict) -> str:
+    """One-line ``METRIC value`` summary of a trial under the ranking mode.
 
-    Says what the trial actually scored on each objective plus its composite,
-    so a baked block records how its params were chosen rather than just that
-    they won.
+    Reads the recombined metric dict rather than the raw objective values, so
+    the numbers shown are the ones the *requested* mode scores on — not
+    whatever weighting the sweep happened to run under.
 
     Args:
-        trial: A completed trial whose ``values`` match ``mode['metrics']``.
-        mode: That mode's config from ``selection.OBJECTIVES``.
+        metrics: A trial's metrics by name, from ``selection.trial_metrics``.
+        mode: The ``OBJECTIVES`` entry being ranked under.
 
     Returns:
         A space-separated line, e.g. ``"MAE 6.0912  CI_ERR 1.5000  score
         7.5912"``.
     """
-    parts = [
-        f"{name.upper()} {value:.4f}"
-        for name, value in zip(mode["metrics"], trial.values, strict=True)
-    ]
-    parts.append(f"score {selection.selection_score(trial.values, mode):.4f}")
+    parts = []
+    for name in mode["metrics"]:
+        if name == "ci_err":
+            errors = {
+                b: metrics[selection.band_label(b)] for b in mode["intervals"]
+            }
+            parts.append(f"CI_ERR {selection.weight_ci_errs(errors, mode):.4f}")
+        else:
+            parts.append(f"{name.upper()} {metrics[name]:.4f}")
+    parts.append(f"score {selection.score_metrics(metrics, mode):.4f}")
     return "  ".join(parts)
 
 
@@ -66,6 +71,7 @@ def build_block(
     study_name: str,
     mode_name: str,
     mode: dict,
+    metrics: dict[int, dict],
 ) -> str:
     """Render the ``TIDE_PARAMS_<TARGET>`` assignment source from the top trials.
 
@@ -76,13 +82,16 @@ def build_block(
         study_name: Optuna study name, recorded in the block's header comment.
         mode_name: The objective mode the trials were ranked under.
         mode: That mode's config from ``selection.OBJECTIVES``.
+        metrics: Per-trial metric dicts keyed by trial number, from
+            ``selection.trial_metrics`` — scored under ``mode`` here, which may
+            differ from the mode the study was swept under.
 
     Returns:
         The Python source for the assignment — a header comment plus the list
         of param dicts (each preceded by a ``# trial #N ...`` comment naming the
         metrics and composite score it was picked on).
     """
-    scores = [selection.selection_score(t.values, mode) for t in trials]
+    scores = [selection.score_metrics(metrics[t.number], mode) for t in trials]
     lines = [
         f"# {var} — top {len(trials)} trials by '{mode_name}' score from study "
         f"'{study_name}' (score {scores[0]:.3f}-{scores[-1]:.3f}; "
@@ -91,7 +100,7 @@ def build_block(
         f"{var} = [",
     ]
     for t in trials:
-        lines.append(f"    # trial #{t.number}  {trial_summary(t, mode)}")
+        lines.append(f"    # trial #{t.number}  {trial_summary(metrics[t.number], mode)}")
         lines.append(f"    {t.params!r},")
     lines.append("]")
     return "\n".join(lines)
@@ -146,19 +155,44 @@ def main() -> int:
         return 1
     if len(complete) < args.top_n:
         print(f"WARNING: only {len(complete)} complete trials (< top-n {args.top_n})")
+
+    # A trial's objective values only mean something against the mode that
+    # produced them: values[1] is a ci_err already weighted by the SWEEP's
+    # scalers. Ranking those sums under a different mode would silently apply
+    # the sweep's weights while reporting the requested mode's name, so
+    # recombine each trial's metrics and recompute the calibration term.
+    swept_name = study.user_attrs.get("objective_mode")
+    if swept_name is None:
+        print(
+            f"ERROR: study {study_name!r} does not record the objective mode it "
+            f"was run under, so its trials cannot be re-ranked safely. Set it "
+            f"with: optuna.load_study(...).set_user_attr('objective_mode', <mode>)"
+        )
+        return 1
+    swept_mode = selection.resolve_mode(swept_name)
+    if swept_name != args.objective:
+        print(
+            f"NOTE: study was swept under {swept_name!r}; re-ranking under "
+            f"{args.objective!r} (calibration term recomputed from per-band errors)."
+        )
+
+    metrics = {
+        t.number: selection.trial_metrics(t.values, t.user_attrs, swept_mode)
+        for t in complete
+    }
     top = sorted(
-        complete, key=lambda t: selection.selection_score(t.values, mode)
+        complete, key=lambda t: selection.score_metrics(metrics[t.number], mode)
     )[: args.top_n]
 
     var = f"TIDE_PARAMS_{args.target.upper()}"
-    block = build_block(var, top, study_name, args.objective, mode)
+    block = build_block(var, top, study_name, args.objective, mode, metrics)
 
     print(
         f"study {study_name!r}: {len(complete)} complete trials; "
         f"top {len(top)} by {args.objective!r} score:"
     )
     for t in top:
-        print(f"  trial #{t.number}  {trial_summary(t, mode)}")
+        print(f"  trial #{t.number}  {trial_summary(metrics[t.number], mode)}")
     print("\n--- new block ---\n" + block + "\n")
 
     with open(PARAMS_FILE) as f:
