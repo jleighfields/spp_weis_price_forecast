@@ -9,12 +9,11 @@ Tests cover:
 """
 
 import os
-import pickle
 import sys
 
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock, mock_open, create_autospec
+from unittest.mock import patch, MagicMock, mock_open
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
@@ -210,3 +209,69 @@ class TestLoadEnsembleFromDir:
         # tide_ should NOT have been called for a tft file
         mock_tide.load.assert_not_called()
         mock_tft.load.assert_called_once()
+
+
+class TestCoverageMetric:
+    """Per-band coverage metric used to score every band off one backtest."""
+
+    @staticmethod
+    def _series(n=100, n_samples=1001):
+        """Actuals at 0.0, predictions spread uniformly on [-1, 1].
+
+        Every band straddles 0, so realized coverage is 1.0 and the deviation
+        from nominal is exactly computable rather than sampled.
+        """
+        import numpy as np
+        from darts import TimeSeries
+
+        idx = pd.date_range('2026-01-01', periods=n, freq='h')
+        actual = TimeSeries.from_times_and_values(
+            idx, np.zeros((n, 1)), columns=['LMP']
+        )
+        samples = np.linspace(-1.0, 1.0, n_samples)
+        pred = TimeSeries.from_times_and_values(
+            idx, np.tile(samples, (n, 1, 1)), columns=['LMP']
+        )
+        return actual, pred
+
+    def test_reports_raw_coverage_not_error(self):
+        # Raw coverage is what makes the direction of miscalibration visible;
+        # the error is derived from it and is unsigned.
+        import numpy as np
+
+        actual, pred = self._series()
+        cov = float(np.mean(modeling.coverage_metric((0.1, 0.9))(actual, pred)))
+        assert cov == pytest.approx(1.0, abs=0.01)
+
+    def test_agrees_with_the_harness_coverage(self):
+        # The study and the promote gate must measure calibration the same way;
+        # both go through darts' mic.
+        import numpy as np
+        from darts.metrics import mic
+
+        actual, pred = self._series()
+        band = (0.05, 0.95)
+        assert float(np.mean(modeling.coverage_metric(band)(actual, pred))) == (
+            pytest.approx(float(np.mean(mic(actual, pred, q_interval=band))))
+        )
+
+    def test_each_band_gets_a_distinct_name(self):
+        # Darts identifies metrics by name, so two bands sharing one would
+        # collide in the backtest's metric columns.
+        import selection
+
+        names = [
+            modeling.coverage_metric(b).__name__
+            for b in selection.DIAGNOSTIC_BANDS
+        ]
+        assert names == [
+            selection.coverage_label(b) for b in selection.DIAGNOSTIC_BANDS
+        ]
+        assert len(set(names)) == len(names)
+
+    def test_keeps_the_wrapped_signature(self):
+        # backtest passes metric_kwargs only for params in the signature.
+        import inspect
+
+        params = inspect.signature(modeling.coverage_metric((0.1, 0.9))).parameters
+        assert 'actual_series' in params and 'pred_series' in params

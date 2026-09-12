@@ -1,5 +1,13 @@
 # Daily data collection for SPP RTO West / Integrated Marketplace (IM).
-#
+# (Detail lives below the app definition on purpose: marimo's file browser
+# only scans the first 512 bytes of a notebook for its app declaration, so a
+# long header here would hide this file from the editor's workspace list.)
+
+import marimo
+
+__generated_with = "0.20.2"
+app = marimo.App()
+
 # Runs the daily-LMP repair sweep: fills the 5-min LMP history from the
 # lag-published daily rollups (~D+5), which the hourly job's live 5-min
 # feed can't reach. Also re-collects Day-Ahead LMP over a wider window as a
@@ -12,10 +20,6 @@
 #   Script:      python notebooks/data_collection/data_collection_im_daily.py
 #   Modal:       modal run modal_jobs/data_collection_im.py::collect_im_daily
 
-import marimo
-
-__generated_with = "0.20.2"
-app = marimo.App()
 
 
 @app.cell

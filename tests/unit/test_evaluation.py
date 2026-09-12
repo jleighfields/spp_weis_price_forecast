@@ -10,10 +10,12 @@ import sys
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 import evaluation
+import selection
 
 
 class TestMaskedMean:
@@ -79,6 +81,8 @@ class TestAggregate:
             'tail_coverage': [0.5, 0.9],
             'neg_mae': [4.0, 8.0],
             'neg_coverage': [1.0, 1.0],
+            'coverage_80': [0.7, 0.9],
+            'coverage_90': [0.85, 0.95],
             'n_windows': [1, 3],
             'n_tail': [2, 4],
             'n_neg': [10, 20],
@@ -88,6 +92,9 @@ class TestAggregate:
         # crps weighted by n_windows: (10*1 + 20*3) / 4 = 17.5
         assert agg['crps'] == 17.5
         assert agg['coverage'] == (0.8 * 1 + 1.0 * 3) / 4
+        # per-band coverage is pooled the same way as the headline column
+        assert agg['coverage_80'] == (0.7 * 1 + 0.9 * 3) / 4
+        assert agg['coverage_90'] == (0.85 * 1 + 0.95 * 3) / 4
         # tail_mae weighted by n_tail, NOT n_windows: (50*2 + 150*4) / 6
         assert agg['tail_mae'] == (50.0 * 2 + 150.0 * 4) / 6
         # neg_mae weighted by n_neg: (4*10 + 8*20) / 30
@@ -130,3 +137,59 @@ class TestWeighted:
     def test_all_invalid_is_nan(self):
         assert math.isnan(evaluation._weighted(np.array([float('nan')]), np.array([1.0])))
         assert math.isnan(evaluation._weighted(np.array([5.0]), np.array([0.0])))
+
+
+class TestScoreAggregate:
+    """Turning a backtest aggregate into the rank score the promote gate uses."""
+
+    @staticmethod
+    def _agg(**overrides):
+        base = {
+            'crps': 4.0,
+            'mae': 6.0,
+            'coverage_50': 0.5,
+            'coverage_80': 0.8,
+            'coverage_90': 0.9,
+            'coverage_95': 0.95,
+        }
+        base.update(overrides)
+        return pd.Series(base)
+
+    def test_perfect_calibration_scores_the_accuracy_term_alone(self):
+        mode = selection.resolve_mode('mae_ci_da')
+        assert evaluation.score_aggregate(self._agg(), mode) == pytest.approx(6.0)
+
+    def test_miscalibration_adds_weighted_penalty(self):
+        mode = selection.resolve_mode('mae_ci_da')
+        # 5 points off at 80%, 3 off at 90%, both weighted 0.25 -> +2.0
+        agg = self._agg(coverage_80=0.75, coverage_90=0.87)
+        assert evaluation.score_aggregate(agg, mode) == pytest.approx(8.0)
+
+    def test_single_metric_mode_ignores_coverage(self):
+        mode = selection.resolve_mode('crps')
+        agg = self._agg(coverage_80=0.2, coverage_90=0.2)
+        assert evaluation.score_aggregate(agg, mode) == pytest.approx(4.0)
+
+    def test_crps_mode_uses_crps_not_mae(self):
+        agg = self._agg()
+        assert evaluation.score_aggregate(
+            agg, selection.resolve_mode('crps_ci')
+        ) == pytest.approx(4.0)
+        assert evaluation.score_aggregate(
+            agg, selection.resolve_mode('mae_ci_da')
+        ) == pytest.approx(6.0)
+
+    def test_nan_term_yields_nan_not_a_winning_score(self):
+        # A scoring failure must never look like a great score, or the gate
+        # would promote a model it could not evaluate.
+        mode = selection.resolve_mode('mae_ci_da')
+        assert np.isnan(evaluation.score_aggregate(self._agg(mae=np.nan), mode))
+        assert np.isnan(
+            evaluation.score_aggregate(self._agg(coverage_80=np.nan), mode)
+        )
+
+    def test_missing_ranked_band_raises(self):
+        mode = selection.resolve_mode('mae_ci_da')
+        agg = self._agg().drop('coverage_90')
+        with pytest.raises(KeyError):
+            evaluation.score_aggregate(agg, mode)

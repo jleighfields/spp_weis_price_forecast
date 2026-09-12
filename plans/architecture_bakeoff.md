@@ -17,7 +17,9 @@ Not started. Prerequisites are all in place from the prior work:
 - **Harness:** `src/evaluation.py::backtest_report` — rolling-origin West
   holdout reporting CRPS, coverage/width, MAE/RMSE/bias, and tail behavior.
   Every candidate below is scored on it, the same way, for a fair comparison.
-- **Metric:** CRPS is primary (proper score), read alongside coverage.
+- **Metric:** the active objective mode's composite score (`src/selection.py`)
+  — by default MAE plus weighted interval-coverage error — read alongside CRPS
+  and per-band coverage.
 
 ## Baseline to beat (the current champion)
 
@@ -40,8 +42,8 @@ to exploit exogenous covariates (MTLF, wind/solar, load-net-RE), which drive
 the duck-curve volatility. PatchTST second for the long 120-hour horizon.
 **Hypothesis:** attention over exogenous drivers captures the negative-midday /
 evening-ramp structure better than TiDE. **Effort:** medium-high (new model
-integration + its own tuning). Reuse the single-objective CRPS Optuna study
-pattern (`notebooks/model_training/model.py`) for tuning, scored on the harness.
+integration + its own tuning). Reuse the mode-driven Optuna study pattern
+(`notebooks/model_training/model.py`) for tuning, scored on the harness.
 
 ### 2. Foundation models — zero-shot then fine-tuned
 Given only ~3 months of IM data, a pretrained model's priors may beat a
@@ -62,13 +64,13 @@ drive the volatility, since that is TiDE's main advantage here.
 2. **TimeXer** — the most likely architecture win given our strong exogenous
    covariates.
 3. **PatchTST** and **foundation-model fine-tuning** if 1–2 are promising.
-4. Promote only a candidate that beats CRPS on the harness without regressing
-   coverage, via the `model_retrain.py` → `r2_promote_champion.py` flow.
+4. Promote only a candidate that beats the champion's composite score on the
+   harness, via the `model_retrain.py` → `r2_promote_champion.py` flow.
 
 ## Notes / risks
 
 - Keep the champion swap decoupled: score everything on the harness first;
-  only touch `champion.json` for a clear, verified CRPS win.
+  only touch `champion.json` for a clear, verified win on the objective score.
 - New model classes must load through the serving path
   (`load_ensemble_from_dir` matches checkpoints by filename substring
   `tide_`/`tsmixer`/`tft`) — a new architecture needs its class added to

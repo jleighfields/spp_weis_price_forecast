@@ -18,7 +18,7 @@ Custom skills automate the review workflows:
 | `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep READMEs for stale prose (edits in place) |
 | `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files), secret logging, and unsafe defaults (report-only) |
 | `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
-| `/tune-parameters [da\|rt]` | Run a hyperparameter sweep for a forecast target end-to-end: Optuna study → bake top-N params into `parameters.py` (via `scripts/tune_parameters.py`) → retrain → score vs the current champion → promote only if better. **Trains models + can promote** (not report-only). |
+| `/tune-parameters [da\|rt] [--objective MODE]` | Run a hyperparameter sweep for a forecast target end-to-end: Optuna study → bake top-N params into `parameters.py` (via `scripts/tune_parameters.py`) → retrain → score vs the current champion → promote only if better. `--objective` picks the ranking formula from `src/selection.py` (default `mae_ci`). **Trains models + can promote** (not report-only). |
 
 Skills are defined in `.claude/skills/` and committed to the repo.
 
@@ -87,6 +87,23 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   horizons, `TIDE_PARAMS` and other hyperparameter dicts) →
   `src/parameters.py`. Notebooks, Modal jobs, and the app import from
   it; they never redeclare the values.
+- Model-selection **objective** → `src/selection.py` (`OBJECTIVES`,
+  `DEFAULT_OBJECTIVE`, `selection_score`), re-exported via `parameters`. One
+  table decides how models rank at all three ranking points — the Optuna study
+  objective, the top-N bake, and the champion/challenger gate — so a model is
+  promoted on the metric it was tuned on. Picked by the `OBJECTIVE_MODE` env
+  var and baked into the Optuna study name; never resume a study under a
+  different mode (Optuna silently ignores a changed `directions`). Don't
+  hand-write a score formula at a call site — call `selection_score` /
+  `evaluation.score_aggregate`.
+- Training-data **outlier clipping** → `TARGETS[<target>]['clip_quantiles']`
+  (a `(lower, upper)` pair, or `None` for raw prices). Per target because RT
+  and DA distributions are nothing alike. The Optuna study and the retrain both
+  pass it, so params are never tuned on one distribution and trained on
+  another. One field rather than a switch plus bounds — two knobs that must
+  agree are two knobs that can disagree. Deliberately not the default of
+  `data_engineering.prep_lmp` (it defaults to `None`): the app calls that for
+  the actuals it plots, and clipping those would hide real spikes from users.
 - Forecast **target** dimension → `parameters.TARGETS` (`'da'` day-ahead,
   the `DEFAULT_TARGET`/primary; `'rt'` real-time, parked) + `DEFAULT_TARGET`.
   Each target trains from its own source parquet (`create_database(target=…)`

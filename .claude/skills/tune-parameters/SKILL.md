@@ -3,7 +3,7 @@ name: tune-parameters
 description: Run a hyperparameter sweep for a forecast target (da/rt) and, if it wins, promote a re-tuned champion. Orchestrates the Optuna study, bakes the top-N params into parameters.py, retrains, scores vs the current champion on the same harness, and promotes only if better.
 disable-model-invocation: false
 allowed-tools: Read, Edit, Bash
-argument-hint: [da|rt] [--trials N]
+argument-hint: [da|rt] [--trials N] [--objective MODE]
 ---
 
 # Tune a forecast target
@@ -14,7 +14,31 @@ edit is done by `scripts/tune_parameters.py`; this skill orchestrates the flow
 around it and makes the promote decision.
 
 **Target** = the argument (`da` if omitted). **Trials** = `--trials N` (default
-100). Everything runs on the local GPU box.
+100). **Objective** = `--objective MODE` (default `mae_ci_da`), a key of
+`selection.OBJECTIVES` — how trials are ranked. Everything runs on the local GPU
+box.
+
+All three reach the study as env vars — `TARGET`, `NUM_TRIALS`, `OBJECTIVE_MODE`
+(plus `MODEL_TYPE`, default `tide`) — so nothing tracked needs editing to change
+a run. Before a full sweep, smoke the objective with `NUM_TRIALS=2`: it confirms
+the metric list survives a real model and the study path works end to end, for
+~2 minutes instead of ~1.5 hours.
+
+The objective mode is part of the study name, so switching modes starts a
+separate study rather than mixing incomparable trials. Modes:
+
+| Mode | Ranks on |
+|------|----------|
+| `mae_ci_da` (default) | MAE + 0.25x coverage error at each of the 80% and 90% bands |
+| `mae_ci_rt` | Same, weighted 0.4 per band |
+| `crps_ci` | CRPS + the 0.25 calibration term |
+| `crps` | CRPS alone (single-objective) — kept runnable as a baseline |
+
+**Match the mode to the target** (`mae_ci_da` for `da`, `mae_ci_rt` for `rt`).
+The weight is an exchange rate against that target's own error scale — RT's MAE
+runs ~6x DA's, so a weight that makes calibration decisive on DA makes it a
+near-tiebreaker on RT. A mismatched pair still runs; it just ranks by a formula
+tuned for the other target.
 
 ## Steps
 
@@ -22,17 +46,20 @@ around it and makes the promote decision.
    background (it is long — ~1 min/trial, so ~1.5 h for 100):
 
    ```
-   TARGET=<t> uv run python -c "import sys; sys.path[:0]=['.','src']; from notebooks.model_training.model import app; app.run()"
+   TARGET=<t> OBJECTIVE_MODE=<mode> uv run python -c "import sys; sys.path[:0]=['.','src']; from notebooks.model_training.model import app; app.run()"
    ```
 
    The study writes to `sqlite:///spp_trials.db`, study name
-   `spp_west[_da]_tide`. Monitor progress via the **DB, not the log** (the log is
-   progress-bar noise and its Optuna timestamps are **local time** — do not
-   compare them to `date -u`):
+   `spp_west[_da]_tide_<mode>`. Monitor progress via the **DB, not the log** (the
+   log is progress-bar noise and its Optuna timestamps are **local time** — do
+   not compare them to `date -u`). `study.best_value` **raises** under the
+   default two-objective modes, so rank the Pareto front by the composite:
 
    ```
-   uv run python -c "import optuna; s=optuna.load_study(study_name='<name>', storage='sqlite:///spp_trials.db'); \
-   d=[t for t in s.trials if str(t.state)=='TrialState.COMPLETE']; print(len(d),'complete, best', round(s.best_value,3))"
+   uv run python -c "import sys, optuna; sys.path.insert(0,'src'); import selection; \
+   m=selection.resolve_mode('<mode>'); s=optuna.load_study(study_name='<name>', storage='sqlite:///spp_trials.db'); \
+   d=[t for t in s.trials if str(t.state)=='TrialState.COMPLETE']; \
+   print(len(d),'complete, best score', round(min(selection.selection_score(t.values, m) for t in d),3))"
    ```
 
    Wait for it to reach the trial count (or plateau).
@@ -40,9 +67,12 @@ around it and makes the promote decision.
 2. **Bake the winners** into `parameters.py` (dry-run first, then write):
 
    ```
-   uv run python scripts/tune_parameters.py --target <t>            # preview
-   uv run python scripts/tune_parameters.py --target <t> --write    # apply
+   uv run python scripts/tune_parameters.py --target <t> --objective <mode>
+   uv run python scripts/tune_parameters.py --target <t> --objective <mode> --write
    ```
+
+   `--objective` picks both the study to read and the formula the trials are
+   ranked by, so a bake can never rank one mode's trials by another's.
 
    Then confirm the repo is still healthy: `uv run ruff check src/parameters.py`
    and `uv run pytest tests/unit -q`.
@@ -51,7 +81,7 @@ around it and makes the promote decision.
    `PROMOTE_CHAMPION=true`:
 
    ```
-   TARGET=<t> PROMOTE_CHAMPION=true uv run python <retrain runner>
+   TARGET=<t> OBJECTIVE_MODE=<mode> PROMOTE_CHAMPION=true uv run python <retrain runner>
    ```
 
    (Runner: a 3-line script that sets the env, `load_dotenv`, then
@@ -60,9 +90,11 @@ around it and makes the promote decision.
    `metrics.json`, then runs `evaluation.compare_candidate_to_champion` — a fast
    backtest of the candidate **and** the current champion on the same recent
    window over the fixed `node_list.EVAL_NODES` — and **only promotes if the
-   candidate wins on CRPS** (the first champion for a target promotes
-   unconditionally). Watch the log for the `Promote gate (<t>): candidate CRPS …
-   vs champion … -> PROMOTE / KEEP champion` line.
+   candidate wins on the mode's composite score** (the first champion for a
+   target promotes unconditionally). Watch the log for the
+   `Promote gate (<t>, <mode>): candidate score … vs champion … -> PROMOTE /
+   KEEP champion` line. Use the **same** mode the study ran under — the gate
+   must judge by what the sweep optimized.
 
 4. **Report** the top trials and the gate's promote decision. If params changed,
    remind the user to commit `src/parameters.py` and (at cutover) redeploy so the
@@ -74,7 +106,22 @@ around it and makes the promote decision.
 
 - `tune_parameters.py` only edits the marked `# >>> TIDE_PARAMS_<TARGET> >>>`
   block; it never touches the other target's params.
-- Never compare CRPS across targets (DA and RT are different scales).
-- The study is resumable: to add trials, set `REMOVE_PRIOR_MODELS=False` in
-  `notebooks/model_training/model.py` and re-run (Optuna continues via the
-  sqlite storage). `REMOVE_PRIOR_MODELS=True` starts fresh.
+- Never compare scores across targets (DA and RT are different scales) or
+  across objective modes (different formulas).
+- The study is resumable **within one mode**: to add trials, set
+  `REMOVE_PRIOR_MODELS=False` in `notebooks/model_training/model.py` and re-run
+  with the same `OBJECTIVE_MODE` (Optuna continues via the sqlite storage).
+  `REMOVE_PRIOR_MODELS=True` starts fresh.
+- **Never resume a study under a different mode.** Optuna *silently ignores* a
+  changed `directions` on an existing study: it keeps the stored objective
+  count, every trial then fails with "number of the values … did not match the
+  number of the objectives", and `study.optimize` does not propagate that — the
+  sweep would burn ~1.5 h and exit cleanly with nothing usable. The mode-suffixed
+  study name prevents this, and a guard in the notebook catches a hand-edited
+  name; do not work around either.
+- Every trial records MAE, CRPS, and both the realized coverage and the
+  coverage error at each band in `selection.DIAGNOSTIC_BANDS` (80% and 90%),
+  whichever mode ran. So a finished study can be **re-ranked** under a different
+  weighting offline — no re-running needed to compare objectives. The raw
+  coverage is what says whether a band over- or under-covers; the error is
+  unsigned.

@@ -197,17 +197,32 @@ class TestPrepLmp:
         assert max_time <= end_time
 
     def test_clips_outliers(self, mock_duckdb_connection):
-        """Test that outlier clipping runs without error."""
+        """Clipping runs, narrows the range, and keeps every row."""
         import data_engineering as de
 
-        result_no_clip = de.prep_lmp(mock_duckdb_connection, start_time=pd.Timestamp('2023-01-01'), clip_outliers=False)
-        result_with_clip = de.prep_lmp(mock_duckdb_connection, start_time=pd.Timestamp('2023-01-01'), clip_outliers=True)
+        start = pd.Timestamp('2023-01-01')
+        result_no_clip = de.prep_lmp(
+            mock_duckdb_connection, start_time=start, clip_quantiles=None)
+        result_with_clip = de.prep_lmp(
+            mock_duckdb_connection, start_time=start, clip_quantiles=(0.0025, 0.9975))
 
         # Both should return valid DataFrames
         assert isinstance(result_no_clip, pl.DataFrame)
         assert isinstance(result_with_clip, pl.DataFrame)
-        # Results should have same number of rows
+        # Clipping bounds values, it never drops rows.
         assert len(result_no_clip) == len(result_with_clip)
+        assert result_with_clip['LMP'].max() <= result_no_clip['LMP'].max()
+        assert result_with_clip['LMP'].min() >= result_no_clip['LMP'].min()
+
+    def test_no_clip_quantiles_leaves_prices_untouched(self, mock_duckdb_connection):
+        """None means raw prices — the contract the app's plotted actuals rely on."""
+        import data_engineering as de
+
+        start = pd.Timestamp('2023-01-01')
+        default = de.prep_lmp(mock_duckdb_connection, start_time=start)
+        explicit = de.prep_lmp(
+            mock_duckdb_connection, start_time=start, clip_quantiles=None)
+        assert default['LMP'].to_list() == explicit['LMP'].to_list()
 
     def test_creates_lmp_diff_column(self, mock_duckdb_connection):
         """Test that lmp_diff column is created."""

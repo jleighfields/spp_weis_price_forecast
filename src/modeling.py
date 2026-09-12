@@ -17,17 +17,18 @@ Dependencies:
     - torchmetrics: Model evaluation metrics
 """
 
+import functools
 import os
 import pickle
 import sys
-import numpy as np
 import pandas as pd
 import torch
-from typing import List, Optional, Any, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 
 
 from darts import TimeSeries
+from darts.metrics import mic
 from darts.utils.likelihood_models import QuantileRegression
 
 from darts.models import (
@@ -61,7 +62,8 @@ _src_dir = os.path.dirname(os.path.abspath(__file__))
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-import parameters
+import parameters  # noqa: E402  (imported after the sys.path shim above)
+import selection  # noqa: E402
 
 
 import pprint
@@ -484,53 +486,34 @@ def build_fit_tft(
     
 
 
-def get_ci_err(
-    actual_series: List[TimeSeries],
-    pred_series: List[TimeSeries],
-    n_jobs: int = 1,
-    verbose: bool = False,
-) -> List[float]:
-    """
-    Calculate confidence interval coverage error for predictions.
+def coverage_metric(interval: Tuple[float, float]) -> Callable[..., List[float]]:
+    """Build a Darts metric reporting realized coverage of one quantile band.
 
-    Computes how far the 80% prediction interval coverage deviates from
-    the expected 80% for each series.
+    Thin naming wrapper around ``darts.metrics.mic`` — the same coverage
+    definition ``evaluation.backtest_report`` uses, so the Optuna study and the
+    promote gate measure calibration identically rather than from two
+    definitions that could drift at the band edges.
+
+    ``backtest(metric=[...])`` identifies metrics by signature and name, so each
+    band needs its own named callable rather than one shared partial. Pass
+    several to score every band off the same forecasts — the extra bands cost
+    arithmetic, not forecasts.
+
+    Coverage is returned raw (a fraction in [0, 1]) rather than as an error, so
+    callers can see the *direction* of miscalibration; turn it into the ranking
+    term with ``selection.coverage_error``, which takes the absolute deviation.
 
     Args:
-        actual_series: List of actual target TimeSeries.
-        pred_series: List of predicted TimeSeries with quantiles.
-        n_jobs: Number of parallel jobs (currently unused).
-        verbose: Enable verbose output (currently unused).
+        interval: The ``(q_low, q_high)`` band to measure.
 
     Returns:
-        List[float]: Coverage error percentage for each series, where 0%
-            means perfect 80% coverage and higher values indicate worse
-            calibration.
+        A callable with ``mic``'s signature, that band already bound, and
+        ``__name__`` set to the band's coverage label (e.g. ``coverage_80``).
     """
-    ci_cover_err = []
-    for i, pred in enumerate(pred_series):
-        
-        series_qs = pred.quantile([0.1, 0.9]).to_dataframe()
-        val_y = actual_series[i].to_dataframe()
-
-        eval_df = series_qs.merge(
-            val_y,
-            how='inner',
-            left_index=True,
-            right_index=True,
-        )
-
-        # Column names in Darts 0.41+: LMP_q0.100, LMP_q0.900
-        _q_low = [c for c in eval_df.columns if 'q0.1' in c][0]
-        _q_high = [c for c in eval_df.columns if 'q0.9' in c][0]
-        cover = (
-            (eval_df[_q_high] > eval_df['LMP']) &
-            (eval_df[_q_low] < eval_df['LMP'])
-        ).mean() # should be about 80%
-
-        ci_cover_err += [100 * np.abs(cover - 0.8)]
-
-    return ci_cover_err
+    bound = functools.partial(mic, q_interval=interval)
+    functools.update_wrapper(bound, mic)
+    bound.__name__ = selection.coverage_label(interval)
+    return bound
 
 
 # ── Model checkpoint name → Darts model class mapping ────────────────────
