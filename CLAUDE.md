@@ -96,11 +96,14 @@ don't redeclare it, copy it, or compile it into a parallel mirror.
   different mode (Optuna silently ignores a changed `directions`). Don't
   hand-write a score formula at a call site — call `selection_score` /
   `evaluation.score_aggregate`.
-- Training-data **outlier clipping** → `parameters.CLIP_OUTLIERS` +
-  `CLIP_QUANTILES`. The Optuna study and the retrain both pass it, so params
-  are never tuned on one distribution and trained on another. Deliberately not
-  the default of `data_engineering.prep_lmp`: the app calls that for the
-  actuals it plots, and clipping those would hide real spikes from users.
+- Training-data **outlier clipping** → `TARGETS[<target>]['clip_quantiles']`
+  (a `(lower, upper)` pair, or `None` for raw prices). Per target because RT
+  and DA distributions are nothing alike. The Optuna study and the retrain both
+  pass it, so params are never tuned on one distribution and trained on
+  another. One field rather than a switch plus bounds — two knobs that must
+  agree are two knobs that can disagree. Deliberately not the default of
+  `data_engineering.prep_lmp` (it defaults to `None`): the app calls that for
+  the actuals it plots, and clipping those would hide real spikes from users.
 - Forecast **target** dimension → `parameters.TARGETS` (`'da'` day-ahead,
   the `DEFAULT_TARGET`/primary; `'rt'` real-time, parked) + `DEFAULT_TARGET`.
   Each target trains from its own source parquet (`create_database(target=…)`

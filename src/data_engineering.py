@@ -188,13 +188,13 @@ def prep_lmp(
     end_time: Optional[str] = None,
     baa: str = node_list.WEST_BAA,
     nodes: Optional[List[str]] = None,
-    clip_outliers: bool = False,
+    clip_quantiles: tuple[float, float] | None = None,
 ) -> pl.DataFrame:
     """
     Prepare LMP (Locational Marginal Price) data from DuckDB.
 
     Filters, transforms, and engineers features for LMP price data including
-    BAA/location filtering, time range filtering, outlier clipping, and price
+    BAA/location filtering, time range filtering, optional outlier clipping, and price
     differencing calculations.
 
     Args:
@@ -206,9 +206,10 @@ def prep_lmp(
             the im/ table holds both BAAs.
         nodes: Settlement locations to keep. Defaults to the modeled/app node
             list (node_list.MODEL_APP_NODES).
-        clip_outliers: If True, clip LMP to the parameters.CLIP_QUANTILES
-            bounds. Training paths pass parameters.CLIP_OUTLIERS; display paths
-            leave it False so plotted actuals show real prices.
+        clip_quantiles: ``(lower, upper)`` quantile pair to clip LMP to, or
+            None to leave prices raw. Training paths pass their target's
+            ``TARGETS[target]['clip_quantiles']``; display paths leave it None
+            so plotted actuals show real prices.
 
     Returns:
         pl.DataFrame: Processed LMP data with columns including 'unique_id',
@@ -236,12 +237,10 @@ def prep_lmp(
     # TODO: handle checks for start_time < end_time
     lmp = lmp.filter(pl.col("timestamp_mst_HE") >= start_time)
 
-    if clip_outliers:
-        # Bounds come from parameters.CLIP_QUANTILES (single home) rather than
-        # literals here. NOTE: these are whole-dataset quantiles across every
-        # node, not per-node, so one ceiling applies to cheap and expensive
-        # nodes alike.
-        _q_lwr, _q_upr = parameters.CLIP_QUANTILES
+    if clip_quantiles is not None:
+        # NOTE: whole-dataset quantiles across every node, not per-node, so one
+        # ceiling applies to cheap and expensive nodes alike.
+        _q_lwr, _q_upr = clip_quantiles
         clipped_lwr = lmp.select(pl.col("LMP").quantile(_q_lwr)).item()
         clipped_upr = lmp.select(pl.col("LMP").quantile(_q_upr)).item()
         lmp = lmp.with_columns(
@@ -470,7 +469,7 @@ def prep_all_df(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
-    clip_outliers: bool = False,
+    clip_quantiles: tuple[float, float] | None = None,
 ) -> pl.DataFrame:
     """
     Prepare combined dataset with all features for modeling.
@@ -484,7 +483,8 @@ def prep_all_df(
         con: DuckDB connection with required tables loaded.
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
-        clip_outliers: If True, clip LMP values to quantile bounds.
+        clip_quantiles: Quantile bounds to clip LMP to, or None for raw
+            prices. Passed through to prep_lmp.
 
     Returns:
         pl.DataFrame: Combined dataset with all features ready for modeling,
@@ -492,7 +492,7 @@ def prep_all_df(
             and rolling window aggregations.
     """
     log.info('preparing lmp')
-    lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
+    lmp = prep_lmp(con, start_time=start_time, end_time=end_time, clip_quantiles=clip_quantiles)
     log.info(f'{lmp.shape = }')
     log.info('preparing mtlf')
     mtlf = prep_mtlf(con, start_time=start_time, end_time=end_time)
@@ -635,7 +635,7 @@ def get_train_test_all(
     con: duckdb.DuckDBPyConnection,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
-    clip_outliers: bool = False,
+    clip_quantiles: tuple[float, float] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Split LMP data into train, test, and combined datasets.
@@ -647,7 +647,8 @@ def get_train_test_all(
         con: DuckDB connection with 'lmp' table loaded.
         start_time: Start of time range filter. If None, uses TRAIN_START.
         end_time: End of time range filter. If None, no upper bound.
-        clip_outliers: If True, clip LMP values to quantile bounds.
+        clip_quantiles: Quantile bounds to clip LMP to, or None for raw
+            prices. Passed through to prep_lmp.
 
     Returns:
         Tuple of (lmp_all, train_all, test_all, train_test_all) pandas DataFrames:
@@ -656,7 +657,7 @@ def get_train_test_all(
             - test_all: Test data (after split point)
             - train_test_all: Combined train and test data
     """
-    lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time, clip_outliers=clip_outliers)
+    lmp_all = prep_lmp(con, start_time=start_time, end_time=end_time, clip_quantiles=clip_quantiles)
     lmp_all = lmp_all.to_pandas()
     lmp_all.set_index('timestamp_mst', inplace=True)
 

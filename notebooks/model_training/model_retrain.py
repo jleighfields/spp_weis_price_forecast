@@ -158,15 +158,15 @@ def _(TARGET, de):
 @app.cell
 def _(con, de, log):
     log.info("preparing covariate data")
-    # Same clipping as the hyperparameter study (parameters.CLIP_OUTLIERS):
+    # Same clipping as the hyperparameter study (the target's own bounds):
     # params tuned on a clipped distribution must be trained on one too.
     all_df_pd = de.all_df_to_pandas(
-        de.prep_all_df(con, clip_outliers=parameters.CLIP_OUTLIERS)
+        de.prep_all_df(con, clip_quantiles=parameters.TARGETS[TARGET]["clip_quantiles"])
     )
     all_df_pd.info()
 
     lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(
-        con, clip_outliers=parameters.CLIP_OUTLIERS
+        con, clip_quantiles=parameters.TARGETS[TARGET]["clip_quantiles"]
     )
     con.close()
     return all_df_pd, lmp_all, test_all, train_all, train_test_all

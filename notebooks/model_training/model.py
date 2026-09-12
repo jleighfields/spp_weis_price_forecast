@@ -39,9 +39,9 @@ def _(os):
     # code — same pattern as TARGET / OBJECTIVE_MODE.
     NUM_TRIALS = int(os.environ.get("NUM_TRIALS", 100))
 
-    # Outlier clipping is NOT declared here: it lives in parameters
-    # (CLIP_OUTLIERS / CLIP_QUANTILES) so this study and the retrain cannot
-    # disagree about the distribution the params were chosen for.
+    # Outlier clipping is NOT declared here: the bounds live per target in
+    # parameters.TARGETS[...]["clip_quantiles"], so this study and the retrain
+    # cannot disagree about the distribution the params were chosen for.
 
     REMOVE_PRIOR_MODELS = True
     return MODEL_TYPE, NUM_TRIALS, REMOVE_PRIOR_MODELS, RUN_EXP
@@ -229,8 +229,10 @@ def _(con, de):
 
 
 @app.cell
-def _(con, de, parameters):
-    all_df = de.prep_all_df(con, clip_outliers=parameters.CLIP_OUTLIERS)
+def _(TARGET, con, de, parameters):
+    all_df = de.prep_all_df(
+        con, clip_quantiles=parameters.TARGETS[TARGET]["clip_quantiles"]
+    )
     all_df
     return (all_df,)
 
@@ -269,9 +271,9 @@ def _(mo):
 
 
 @app.cell
-def _(con, de, parameters):
+def _(TARGET, con, de, parameters):
     lmp_all, train_all, test_all, train_test_all = de.get_train_test_all(
-        con, clip_outliers=parameters.CLIP_OUTLIERS
+        con, clip_quantiles=parameters.TARGETS[TARGET]["clip_quantiles"]
     )
     return lmp_all, test_all, train_all
 
